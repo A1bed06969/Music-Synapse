@@ -28,9 +28,13 @@ export default function PrefectureMap({ data }: { data: PrefectureMapData[] }) {
   const dataByPrefecture = new Map(data.map((d) => [d.prefecture, d]))
   const selected = selectedPref ? dataByPrefecture.get(selectedPref) : null
 
+  if (data.length === 0) {
+    return <p className="text-sm text-white/40">この月は都道府県データがありません。</p>
+  }
+
   return (
     <div>
-      <svg viewBox="0 0 100 100" className="w-full max-w-md touch-none select-none" style={{ maxHeight: 420 }}>
+      <svg viewBox="12 2 76 74" className="w-full max-w-md select-none" style={{ maxHeight: 420 }}>
         {PREFECTURE_COORDS.map((coord) => {
           const entry = dataByPrefecture.get(coord.name)
           if (!entry) return null

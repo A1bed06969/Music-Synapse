@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { createClient } from '@/utils/Supabase/server'
 import { formatDate } from '@/utils/format'
-import PrefectureMap, { type PrefectureMapData } from '@/app/components/PrefectureMap'
+import PrefectureMap, { type PrefectureEntry, type PrefectureMapData } from '@/app/components/PrefectureMap'
 
 const MUSIC_TYPE_LABEL: Record<string, string> = {
   DOMESTIC: '邦楽',
@@ -132,7 +132,8 @@ export default async function OnAirPage({
   type PrefectureAgg = {
     prefecture: string
     mediaIds: Set<string>
-    entries: PrefectureMapData['entries']
+    entries: PrefectureEntry[]
+    entryKeys: Set<string>
   }
   const prefMap = new Map<string, PrefectureAgg>()
   for (const row of monthRows ?? []) {
@@ -151,10 +152,14 @@ export default async function OnAirPage({
     const targetHref = track ? `/tracks/${track.id}` : album ? `/albums/${album.id}` : artist ? `/artists/${artist.id}` : null
 
     if (!prefMap.has(media.prefecture)) {
-      prefMap.set(media.prefecture, { prefecture: media.prefecture, mediaIds: new Set(), entries: [] })
+      prefMap.set(media.prefecture, { prefecture: media.prefecture, mediaIds: new Set(), entries: [], entryKeys: new Set() })
     }
     const agg = prefMap.get(media.prefecture)!
     if (program?.media_id) agg.mediaIds.add(program.media_id)
+
+    const dedupeKey = `${program?.media_id ?? ''}|${targetHref ?? baseLabel}|${row.music_type}`
+    if (agg.entryKeys.has(dedupeKey)) continue
+    agg.entryKeys.add(dedupeKey)
     agg.entries.push({
       stationName: media.name,
       targetLabel: sub ? `${baseLabel} — ${sub}` : baseLabel,
@@ -165,7 +170,7 @@ export default async function OnAirPage({
   const prefectureData: PrefectureMapData[] = Array.from(prefMap.values()).map((agg) => ({
     prefecture: agg.prefecture,
     mediaCount: agg.mediaIds.size,
-    entries: agg.entries,
+    entries: agg.entries.slice().sort((a, b) => a.stationName.localeCompare(b.stationName, 'ja')),
   }))
 
   return (
@@ -221,9 +226,13 @@ export default async function OnAirPage({
         )}
       </div>
 
-      <div className="mt-8">
-        <PrefectureMap data={prefectureData} />
-      </div>
+      <section className="mt-8">
+        <h2 className="text-lg font-semibold">都道府県別プッシュ状況</h2>
+        <p className="mt-1 text-xs text-white/40">数字はその月にプッシュした局数</p>
+        <div className="mt-4">
+          <PrefectureMap data={prefectureData} />
+        </div>
+      </section>
 
       {ranking.length > 0 && (
         <section className="mt-8">

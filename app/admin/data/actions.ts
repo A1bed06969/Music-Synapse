@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { createAdminClient } from '@/utils/Supabase/admin'
+import { PREFECTURE_COORDS } from '@/utils/prefectures'
 
 const RELATION_STYLE_BY_TYPE: Record<string, 'solid' | 'dotted'> = {
   membership: 'solid',
@@ -168,6 +169,7 @@ export async function createMedia(formData: FormData) {
   const mediaType = String(formData.get('media_type') ?? '').trim()
   const area = String(formData.get('area') ?? '').trim()
   const prefecture = String(formData.get('prefecture') ?? '').trim()
+  const validPrefecture = PREFECTURE_COORDS.some((p) => p.name === prefecture) ? prefecture : null
 
   if (!name) {
     redirectWith('error', 'メディア名を入力してください。')
@@ -178,7 +180,7 @@ export async function createMedia(formData: FormData) {
     name,
     media_type: mediaType || null,
     area: area || null,
-    prefecture: prefecture || null,
+    prefecture: validPrefecture,
   })
 
   if (error) {
