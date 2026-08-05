@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { createClient } from '@/utils/Supabase/server'
 import { formatDate } from '@/utils/format'
+import PrefectureMap, { type PrefectureMapData } from '@/app/components/PrefectureMap'
 
 const MUSIC_TYPE_LABEL: Record<string, string> = {
   DOMESTIC: '邦楽',
@@ -85,7 +86,7 @@ export default async function OnAirPage({
     .from('radio_rotation')
     .select(
       `track_id, album_id, artist_id, music_type,
-       media_program:media_program_id(media_id),
+       media_program:media_program_id(media_id, media:media_id(name, prefecture)),
        track:track_id(id, title, artist:artist_id(name)),
        album:album_id(id, title, artist:artist_id(name)),
        artist:artist_id(id, name)`
@@ -127,6 +128,45 @@ export default async function OnAirPage({
   const ranking = Array.from(rankingMap.values())
     .sort((a, b) => b.mediaIds.size - a.mediaIds.size)
     .slice(0, 20)
+
+  type PrefectureAgg = {
+    prefecture: string
+    mediaIds: Set<string>
+    entries: PrefectureMapData['entries']
+  }
+  const prefMap = new Map<string, PrefectureAgg>()
+  for (const row of monthRows ?? []) {
+    const program = firstOf(row.media_program)
+    const media = program ? firstOf(program.media) : null
+    if (!media?.prefecture) continue
+
+    const track = firstOf(row.track)
+    const album = firstOf(row.album)
+    const artist = firstOf(row.artist)
+    const trackArtist = track ? firstOf(track.artist) : null
+    const albumArtist = album ? firstOf(album.artist) : null
+
+    const baseLabel = track?.title ?? album?.title ?? artist?.name ?? '—'
+    const sub = track ? trackArtist?.name : album ? albumArtist?.name : null
+    const targetHref = track ? `/tracks/${track.id}` : album ? `/albums/${album.id}` : artist ? `/artists/${artist.id}` : null
+
+    if (!prefMap.has(media.prefecture)) {
+      prefMap.set(media.prefecture, { prefecture: media.prefecture, mediaIds: new Set(), entries: [] })
+    }
+    const agg = prefMap.get(media.prefecture)!
+    if (program?.media_id) agg.mediaIds.add(program.media_id)
+    agg.entries.push({
+      stationName: media.name,
+      targetLabel: sub ? `${baseLabel} — ${sub}` : baseLabel,
+      targetHref,
+      musicType: row.music_type as 'DOMESTIC' | 'OVERSEAS',
+    })
+  }
+  const prefectureData: PrefectureMapData[] = Array.from(prefMap.values()).map((agg) => ({
+    prefecture: agg.prefecture,
+    mediaCount: agg.mediaIds.size,
+    entries: agg.entries,
+  }))
 
   return (
     <div className="mx-auto max-w-3xl px-6 py-12">
@@ -179,6 +219,10 @@ export default async function OnAirPage({
             </button>
           </form>
         )}
+      </div>
+
+      <div className="mt-8">
+        <PrefectureMap data={prefectureData} />
       </div>
 
       {ranking.length > 0 && (
