@@ -30,16 +30,20 @@ export const ARTIST_TYPE_LABEL: Record<string, string> = {
 }
 
 export function extractYoutubeVideoId(url: string): string | null {
+  const isValidId = (candidate: string | null): candidate is string =>
+    candidate !== null && /^[\w-]{11}$/.test(candidate)
+
   try {
     const parsed = new URL(url)
     if (parsed.hostname === 'youtu.be') {
-      return parsed.pathname.slice(1) || null
+      const id = parsed.pathname.slice(1) || null
+      return isValidId(id) ? id : null
     }
     if (parsed.hostname.endsWith('youtube.com')) {
       const v = parsed.searchParams.get('v')
-      if (v) return v
+      if (v) return isValidId(v) ? v : null
       const embedMatch = parsed.pathname.match(/^\/embed\/([^/]+)/)
-      if (embedMatch) return embedMatch[1]
+      if (embedMatch) return isValidId(embedMatch[1]) ? embedMatch[1] : null
     }
     return null
   } catch {

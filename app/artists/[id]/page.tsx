@@ -9,7 +9,7 @@ function SectionDivider({ label }: { label: string }) {
     <div className="mt-10 flex items-center gap-3">
       <span className="h-1 w-1 rounded-full bg-white/40" />
       <span className="flex-1 border-t border-white/10" />
-      <span className="text-xs uppercase tracking-wide text-white/40">{label}</span>
+      <h2 className="text-xs uppercase tracking-wide text-white/40">{label}</h2>
     </div>
   )
 }
@@ -45,15 +45,15 @@ export default async function ArtistDetailPage({
     new Set((relations ?? []).map((r) => (r.artist_id_a === id ? r.artist_id_b : r.artist_id_a)))
   )
 
-  const { data: others } = otherIds.length
-    ? await supabase.from('artist').select('id, name').in('id', otherIds)
-    : { data: [] }
-
-  const allRelationArtistIds = [id, ...otherIds]
-  const { data: artistGenres } = await supabase
-    .from('artist_genre')
-    .select('artist_id, genre:genre_id(name)')
-    .in('artist_id', allRelationArtistIds)
+  const [{ data: others }, { data: artistGenres }] = otherIds.length
+    ? await Promise.all([
+        supabase.from('artist').select('id, name').in('id', otherIds),
+        supabase
+          .from('artist_genre')
+          .select('artist_id, genre:genre_id(name)')
+          .in('artist_id', [id, ...otherIds]),
+      ])
+    : [{ data: [] }, { data: [] }]
 
   const categoryByArtist = new Map<string, string>()
   for (const row of artistGenres ?? []) {
@@ -69,12 +69,15 @@ export default async function ArtistDetailPage({
         category: categoryByArtist.get(a.id) ?? null,
       }))
     : []
-  const relationEdges: RelationEdge[] = (relations ?? []).map((r) => ({
-    source: r.artist_id_a,
-    target: r.artist_id_b,
-    style: (r.relation_style as 'solid' | 'dotted') ?? 'solid',
-    label: r.description ?? r.relation_type,
-  }))
+  const relationNodeIds = new Set(relationNodes.map((n) => n.id))
+  const relationEdges: RelationEdge[] = (relations ?? [])
+    .filter((r) => relationNodeIds.has(r.artist_id_a) && relationNodeIds.has(r.artist_id_b))
+    .map((r) => ({
+      source: r.artist_id_a,
+      target: r.artist_id_b,
+      style: (r.relation_style as 'solid' | 'dotted') ?? 'solid',
+      label: r.description ?? r.relation_type,
+    }))
 
   return (
     <div className="mx-auto max-w-3xl px-6 py-12">
@@ -213,6 +216,7 @@ export default async function ArtistDetailPage({
               title={`${artist.name} Latest MV`}
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
               allowFullScreen
+              loading="lazy"
               className="h-full w-full"
             />
           </div>
@@ -220,15 +224,19 @@ export default async function ArtistDetailPage({
       )}
 
       <SectionDivider label="Relation Graph" />
-      <div className="mt-4 max-w-sm overflow-hidden rounded-lg border border-white/10 bg-white/[0.02]">
+      <div className="mt-4 max-w-md overflow-hidden rounded-lg border border-white/10 bg-white/[0.02]">
         <RelationGraph nodes={relationNodes} edges={relationEdges} centerId={artist.id} />
       </div>
-      <Link
-        href={`/artists/${artist.id}/relations`}
-        className="mt-2 block text-right text-xs text-white/40 hover:text-white/70"
-      >
-        相関図を全画面で見る →
-      </Link>
+      {relationNodes.length > 0 && (
+        <div className="max-w-md">
+          <Link
+            href={`/artists/${artist.id}/relations`}
+            className="mt-2 block text-right text-xs text-white/40 hover:text-white/70"
+          >
+            相関図を全画面で見る →
+          </Link>
+        </div>
+      )}
     </div>
   )
 }
