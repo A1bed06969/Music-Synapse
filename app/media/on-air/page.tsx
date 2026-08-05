@@ -87,8 +87,8 @@ export default async function OnAirPage({
     .select(
       `track_id, album_id, artist_id, music_type,
        media_program:media_program_id(media_id, media:media_id(name, prefecture)),
-       track:track_id(id, title, artist:artist_id(name)),
-       album:album_id(id, title, artist:artist_id(name)),
+       track:track_id(id, title, artist:artist_id(name), album:album_id(jacket_url)),
+       album:album_id(id, title, jacket_url, artist:artist_id(name)),
        artist:artist_id(id, name)`
     )
     .gte('period_start_date', monthStart)
@@ -150,6 +150,8 @@ export default async function OnAirPage({
     const baseLabel = track?.title ?? album?.title ?? artist?.name ?? '—'
     const sub = track ? trackArtist?.name : album ? albumArtist?.name : null
     const targetHref = track ? `/tracks/${track.id}` : album ? `/albums/${album.id}` : artist ? `/artists/${artist.id}` : null
+    const trackAlbum = track ? firstOf(track.album) : null
+    const artworkUrl = track ? (trackAlbum?.jacket_url ?? null) : album ? (album.jacket_url ?? null) : null
 
     if (!prefMap.has(media.prefecture)) {
       prefMap.set(media.prefecture, { prefecture: media.prefecture, mediaIds: new Set(), entries: [], entryKeys: new Set() })
@@ -165,6 +167,7 @@ export default async function OnAirPage({
       targetLabel: sub ? `${baseLabel} — ${sub}` : baseLabel,
       targetHref,
       musicType: row.music_type as 'DOMESTIC' | 'OVERSEAS',
+      artworkUrl,
     })
   }
   const prefectureData: PrefectureMapData[] = Array.from(prefMap.values()).map((agg) => ({
