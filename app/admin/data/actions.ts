@@ -167,6 +167,7 @@ export async function createMedia(formData: FormData) {
   const name = String(formData.get('name') ?? '').trim()
   const mediaType = String(formData.get('media_type') ?? '').trim()
   const area = String(formData.get('area') ?? '').trim()
+  const prefecture = String(formData.get('prefecture') ?? '').trim()
 
   if (!name) {
     redirectWith('error', 'メディア名を入力してください。')
@@ -177,6 +178,7 @@ export async function createMedia(formData: FormData) {
     name,
     media_type: mediaType || null,
     area: area || null,
+    prefecture: prefecture || null,
   })
 
   if (error) {

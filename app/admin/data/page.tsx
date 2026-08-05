@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { createClient } from '@/utils/Supabase/server'
+import { PREFECTURE_COORDS } from '@/utils/prefectures'
 import {
   createGenre,
   linkArtistGenre,
@@ -391,6 +392,14 @@ export default async function AdminDataPage({
             ))}
           </select>
           <input name="area" placeholder="エリア(任意。例: 関西)" className={`${inputClass} max-w-[160px]`} />
+          <select name="prefecture" className={`${inputClass} max-w-[140px]`} defaultValue="">
+            <option value="">都道府県(任意)</option>
+            {PREFECTURE_COORDS.map((p) => (
+              <option key={p.name} value={p.name}>
+                {p.name}
+              </option>
+            ))}
+          </select>
           <button type="submit" className={buttonClass}>
             メディアを追加
           </button>
