@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { createClient } from '@/utils/Supabase/server'
 import { notFound } from 'next/navigation'
-import { formatDate, ARTIST_STREAMING_STATUS_LABEL, ARTIST_TYPE_LABEL } from '@/utils/format'
+import { formatDate, extractYoutubeVideoId, ARTIST_STREAMING_STATUS_LABEL, ARTIST_TYPE_LABEL } from '@/utils/format'
 
 function SectionDivider({ label }: { label: string }) {
   return (
@@ -33,6 +33,8 @@ export default async function ArtistDetailPage({
   if (error || !artist) {
     notFound()
   }
+
+  const mvVideoId = artist.url_latest_mv ? extractYoutubeVideoId(artist.url_latest_mv) : null
 
   return (
     <div className="mx-auto max-w-3xl px-6 py-12">
@@ -160,6 +162,21 @@ export default async function ArtistDetailPage({
             </Link>
           ))}
         </div>
+      )}
+
+      {mvVideoId && (
+        <>
+          <SectionDivider label="Latest MV" />
+          <div className="mt-4 aspect-video overflow-hidden rounded-md bg-black">
+            <iframe
+              src={`https://www.youtube.com/embed/${mvVideoId}`}
+              title={`${artist.name} Latest MV`}
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowFullScreen
+              className="h-full w-full"
+            />
+          </div>
+        </>
       )}
     </div>
   )
