@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { createClient } from '@/utils/Supabase/server'
 import { notFound } from 'next/navigation'
 import { formatDate, extractYoutubeVideoId, ARTIST_STREAMING_STATUS_LABEL, ARTIST_TYPE_LABEL } from '@/utils/format'
+import RelationGraph, { type RelationEdge, type RelationNode } from '@/app/components/RelationGraph'
 
 function SectionDivider({ label }: { label: string }) {
   return (
@@ -21,13 +22,17 @@ export default async function ArtistDetailPage({
   const { id } = await params
   const supabase = await createClient()
 
-  const [{ data: artist, error }, { data: albums }] = await Promise.all([
+  const [{ data: artist, error }, { data: albums }, { data: relations }] = await Promise.all([
     supabase.from('artist').select('*').eq('id', id).single(),
     supabase
       .from('album')
       .select('id, title, jacket_url, release_date, album_type')
       .eq('artist_id', id)
       .order('release_date', { ascending: false, nullsFirst: false }),
+    supabase
+      .from('artist_relation')
+      .select('artist_id_a, artist_id_b, relation_type, relation_style, description')
+      .or(`artist_id_a.eq.${id},artist_id_b.eq.${id}`),
   ])
 
   if (error || !artist) {
@@ -35,6 +40,41 @@ export default async function ArtistDetailPage({
   }
 
   const mvVideoId = artist.url_latest_mv ? extractYoutubeVideoId(artist.url_latest_mv) : null
+
+  const otherIds = Array.from(
+    new Set((relations ?? []).map((r) => (r.artist_id_a === id ? r.artist_id_b : r.artist_id_a)))
+  )
+
+  const { data: others } = otherIds.length
+    ? await supabase.from('artist').select('id, name').in('id', otherIds)
+    : { data: [] }
+
+  const allRelationArtistIds = [id, ...otherIds]
+  const { data: artistGenres } = await supabase
+    .from('artist_genre')
+    .select('artist_id, genre:genre_id(name)')
+    .in('artist_id', allRelationArtistIds)
+
+  const categoryByArtist = new Map<string, string>()
+  for (const row of artistGenres ?? []) {
+    if (categoryByArtist.has(row.artist_id)) continue
+    const genre = Array.isArray(row.genre) ? row.genre[0] : row.genre
+    if (genre?.name) categoryByArtist.set(row.artist_id, genre.name)
+  }
+
+  const relationNodes: RelationNode[] = otherIds.length
+    ? [{ id: artist.id, name: artist.name }, ...(others ?? [])].map((a) => ({
+        id: a.id,
+        name: a.name,
+        category: categoryByArtist.get(a.id) ?? null,
+      }))
+    : []
+  const relationEdges: RelationEdge[] = (relations ?? []).map((r) => ({
+    source: r.artist_id_a,
+    target: r.artist_id_b,
+    style: (r.relation_style as 'solid' | 'dotted') ?? 'solid',
+    label: r.description ?? r.relation_type,
+  }))
 
   return (
     <div className="mx-auto max-w-3xl px-6 py-12">
@@ -178,6 +218,17 @@ export default async function ArtistDetailPage({
           </div>
         </>
       )}
+
+      <SectionDivider label="Relation Graph" />
+      <div className="mt-4 max-w-sm overflow-hidden rounded-lg border border-white/10 bg-white/[0.02]">
+        <RelationGraph nodes={relationNodes} edges={relationEdges} centerId={artist.id} />
+      </div>
+      <Link
+        href={`/artists/${artist.id}/relations`}
+        className="mt-2 block text-right text-xs text-white/40 hover:text-white/70"
+      >
+        相関図を全画面で見る →
+      </Link>
     </div>
   )
 }
