@@ -3,6 +3,16 @@ import { createClient } from '@/utils/Supabase/server'
 import { notFound } from 'next/navigation'
 import { formatDate, ARTIST_STREAMING_STATUS_LABEL, ARTIST_TYPE_LABEL } from '@/utils/format'
 
+function SectionDivider({ label }: { label: string }) {
+  return (
+    <div className="mt-10 flex items-center gap-3">
+      <span className="h-1 w-1 rounded-full bg-white/40" />
+      <span className="flex-1 border-t border-white/10" />
+      <span className="text-xs uppercase tracking-wide text-white/40">{label}</span>
+    </div>
+  )
+}
+
 export default async function ArtistDetailPage({
   params,
 }: {
@@ -117,37 +127,40 @@ export default async function ArtistDetailPage({
         </div>
       </div>
 
-      {artist.bio && <p className="mt-8 text-sm leading-relaxed text-white/70">{artist.bio}</p>}
+      {artist.bio && (
+        <>
+          <SectionDivider label="Biography" />
+          <p className="mt-4 text-sm leading-relaxed text-white/70">{artist.bio}</p>
+        </>
+      )}
 
-      <section className="mt-10">
-        <h2 className="text-lg font-semibold">アルバム</h2>
-        {!albums || albums.length === 0 ? (
-          <p className="mt-4 text-sm text-white/40">まだアルバムが登録されていません。</p>
-        ) : (
-          <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
-            {albums.map((album) => (
-              <Link key={album.id} href={`/albums/${album.id}`} className="group block">
-                <div className="aspect-square overflow-hidden rounded-md bg-white/5">
-                  {album.jacket_url ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={album.jacket_url}
-                      alt={album.title}
-                      className="h-full w-full object-cover transition group-hover:scale-105"
-                    />
-                  ) : (
-                    <div className="flex h-full w-full items-center justify-center text-white/20">
-                      No Art
-                    </div>
-                  )}
-                </div>
-                <p className="mt-2 truncate text-sm font-medium">{album.title}</p>
-                <p className="text-xs text-white/40">{formatDate(album.release_date)}</p>
-              </Link>
-            ))}
-          </div>
-        )}
-      </section>
+      <SectionDivider label="Discography" />
+      {!albums || albums.length === 0 ? (
+        <p className="mt-4 text-sm text-white/40">まだアルバムが登録されていません。</p>
+      ) : (
+        <div className="mt-4 flex gap-4 overflow-x-auto pb-2">
+          {albums.map((album) => (
+            <Link key={album.id} href={`/albums/${album.id}`} className="group block w-28 flex-shrink-0">
+              <div className="aspect-square overflow-hidden rounded-md bg-white/5">
+                {album.jacket_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={album.jacket_url}
+                    alt={album.title}
+                    className="h-full w-full object-cover transition group-hover:scale-105"
+                  />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center text-white/20">
+                    No Art
+                  </div>
+                )}
+              </div>
+              <p className="mt-2 truncate text-sm font-medium">{album.title}</p>
+              <p className="text-xs text-white/40">{formatDate(album.release_date)}</p>
+            </Link>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
