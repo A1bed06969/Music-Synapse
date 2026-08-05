@@ -74,6 +74,29 @@ export default async function ArtistDetailPage({
             )}
           </div>
 
+          <div className="mt-3 flex flex-wrap gap-2">
+            {artist.apple_music_artist_id && (
+              <a
+                href={`https://music.apple.com/jp/artist/${encodeURIComponent(artist.name)}/${artist.apple_music_artist_id}`}
+                target="_blank"
+                rel="noreferrer"
+                className="rounded-md border border-white/15 px-3 py-1.5 text-xs hover:bg-white/5"
+              >
+                ▶ Apple Music
+              </a>
+            )}
+            {artist.spotify_artist_id && (
+              <a
+                href={`https://open.spotify.com/artist/${artist.spotify_artist_id}`}
+                target="_blank"
+                rel="noreferrer"
+                className="rounded-md border border-white/15 px-3 py-1.5 text-xs hover:bg-white/5"
+              >
+                ▶ Spotify
+              </a>
+            )}
+          </div>
+
           <div className="mt-3 flex gap-3 text-xs text-white/40">
             {artist.official_site_url && (
               <a href={artist.official_site_url} target="_blank" rel="noreferrer" className="hover:text-white/70">
@@ -90,9 +113,6 @@ export default async function ArtistDetailPage({
                 Instagram
               </a>
             )}
-            <Link href={`/artists/${artist.id}/relations`} className="hover:text-white/70">
-              🔗 相関図を見る
-            </Link>
           </div>
         </div>
       </div>
