@@ -28,3 +28,21 @@ export const ARTIST_TYPE_LABEL: Record<string, string> = {
   band: 'バンド',
   unit: 'ユニット',
 }
+
+export function extractYoutubeVideoId(url: string): string | null {
+  try {
+    const parsed = new URL(url)
+    if (parsed.hostname === 'youtu.be') {
+      return parsed.pathname.slice(1) || null
+    }
+    if (parsed.hostname.endsWith('youtube.com')) {
+      const v = parsed.searchParams.get('v')
+      if (v) return v
+      const embedMatch = parsed.pathname.match(/^\/embed\/([^/]+)/)
+      if (embedMatch) return embedMatch[1]
+    }
+    return null
+  } catch {
+    return null
+  }
+}
