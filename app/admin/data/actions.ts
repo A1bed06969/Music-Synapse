@@ -488,3 +488,65 @@ export async function createEventEdition(formData: FormData) {
   revalidatePath('/admin/data')
   redirectWith('success', '開催回を登録しました。')
 }
+
+export async function createEventAppearance(formData: FormData) {
+  const eventEditionId = String(formData.get('event_edition_id') ?? '')
+  const artistId = String(formData.get('artist_id') ?? '')
+  const stage = String(formData.get('stage') ?? '').trim()
+  const startTime = String(formData.get('start_time') ?? '').trim()
+  const endTime = String(formData.get('end_time') ?? '').trim()
+  const isHeadliner = formData.get('is_headliner') === 'on'
+
+  if (!eventEditionId || !artistId) {
+    redirectWith('error', '開催回とアーティストを選択してください。')
+  }
+
+  const supabase = createAdminClient()
+  const { error } = await supabase.from('event_appearance').insert({
+    event_edition_id: eventEditionId,
+    artist_id: artistId,
+    stage: stage || null,
+    start_time: startTime || null,
+    end_time: endTime || null,
+    is_headliner: isHeadliner,
+  })
+
+  if (error) {
+    redirectWith('error', `出演情報の登録に失敗しました: ${error.message}`)
+  }
+
+  revalidatePath('/admin/data')
+  revalidatePath(`/artists/${artistId}`)
+  redirectWith('success', '出演情報を登録しました。')
+}
+
+export async function createMusicEvent(formData: FormData) {
+  const artistId = String(formData.get('artist_id') ?? '')
+  const name = String(formData.get('name') ?? '').trim()
+  const eventDate = String(formData.get('event_date') ?? '').trim()
+  const venue = String(formData.get('venue') ?? '').trim()
+  const prefecture = String(formData.get('prefecture') ?? '').trim()
+  const description = String(formData.get('description') ?? '').trim()
+
+  if (!artistId || !name) {
+    redirectWith('error', 'アーティストと公演名を入力してください。')
+  }
+
+  const supabase = createAdminClient()
+  const { error } = await supabase.from('music_event').insert({
+    artist_id: artistId,
+    name,
+    event_date: eventDate || null,
+    venue: venue || null,
+    prefecture: prefecture || null,
+    description: description || null,
+  })
+
+  if (error) {
+    redirectWith('error', `単独公演の登録に失敗しました: ${error.message}`)
+  }
+
+  revalidatePath('/admin/data')
+  revalidatePath(`/artists/${artistId}`)
+  redirectWith('success', `単独公演「${name}」を登録しました。`)
+}
