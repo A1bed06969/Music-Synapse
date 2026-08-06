@@ -33,11 +33,11 @@ async function getLatestAlbums() {
   return data ?? []
 }
 
-const STAT_ITEMS: { key: 'artist' | 'album' | 'track' | 'event' | 'discGuide'; label: string }[] = [
+const STAT_ITEMS: { key: 'artist' | 'album' | 'track' | 'event' | 'discGuide'; label: string; href?: string }[] = [
   { key: 'artist', label: 'アーティスト' },
   { key: 'album', label: 'アルバム' },
   { key: 'track', label: 'トラック' },
-  { key: 'event', label: 'イベント' },
+  { key: 'event', label: 'イベント', href: '/events' },
   { key: 'discGuide', label: 'ディスクガイド' },
 ]
 
@@ -69,15 +69,24 @@ export default async function Home() {
       </section>
 
       <section className="mt-12 grid grid-cols-2 gap-3 sm:grid-cols-5">
-        {STAT_ITEMS.map((item) => (
-          <div
-            key={item.key}
-            className="rounded-lg border border-white/10 bg-white/[0.03] px-4 py-5 text-center"
-          >
-            <p className="text-2xl font-bold">{stats[item.key].toLocaleString()}</p>
-            <p className="mt-1 text-xs text-white/50">{item.label}</p>
-          </div>
-        ))}
+        {STAT_ITEMS.map((item) => {
+          const tileClass = 'rounded-lg border border-white/10 bg-white/[0.03] px-4 py-5 text-center'
+          const tileContent = (
+            <>
+              <p className="text-2xl font-bold">{stats[item.key].toLocaleString()}</p>
+              <p className="mt-1 text-xs text-white/50">{item.label}</p>
+            </>
+          )
+          return item.href ? (
+            <Link key={item.key} href={item.href} className={`${tileClass} transition hover:border-white/25`}>
+              {tileContent}
+            </Link>
+          ) : (
+            <div key={item.key} className={tileClass}>
+              {tileContent}
+            </div>
+          )
+        })}
       </section>
 
       <section className="mt-14">
