@@ -428,3 +428,63 @@ export async function updateArtist(formData: FormData) {
   revalidatePath(`/artists/${artistId}`)
   redirectWith('success', 'アーティスト情報を更新しました。')
 }
+
+export async function createEvent(formData: FormData) {
+  const name = String(formData.get('name') ?? '').trim()
+  const eventType = String(formData.get('event_type') ?? '').trim()
+  const foundedYearRaw = String(formData.get('founded_year') ?? '').trim()
+  const country = String(formData.get('country') ?? '').trim()
+  const prefecture = String(formData.get('prefecture') ?? '').trim()
+  const description = String(formData.get('description') ?? '').trim()
+
+  if (!name) {
+    redirectWith('error', 'イベント名を入力してください。')
+  }
+
+  const supabase = createAdminClient()
+  const { error } = await supabase.from('event').insert({
+    name,
+    event_type: eventType || null,
+    founded_year: foundedYearRaw ? Number(foundedYearRaw) : null,
+    country: country || null,
+    prefecture: prefecture || null,
+    description: description || null,
+  })
+
+  if (error) {
+    redirectWith('error', `イベントの登録に失敗しました: ${error.message}`)
+  }
+
+  revalidatePath('/admin/data')
+  redirectWith('success', `イベント「${name}」を登録しました。`)
+}
+
+export async function createEventEdition(formData: FormData) {
+  const eventId = String(formData.get('event_id') ?? '')
+  const yearRaw = String(formData.get('year') ?? '').trim()
+  const startDate = String(formData.get('start_date') ?? '').trim()
+  const endDate = String(formData.get('end_date') ?? '').trim()
+  const venue = String(formData.get('venue') ?? '').trim()
+  const description = String(formData.get('description') ?? '').trim()
+
+  if (!eventId || !yearRaw) {
+    redirectWith('error', 'イベントと年を入力してください。')
+  }
+
+  const supabase = createAdminClient()
+  const { error } = await supabase.from('event_edition').insert({
+    event_id: eventId,
+    year: Number(yearRaw),
+    start_date: startDate || null,
+    end_date: endDate || null,
+    venue: venue || null,
+    description: description || null,
+  })
+
+  if (error) {
+    redirectWith('error', `開催回の登録に失敗しました: ${error.message}`)
+  }
+
+  revalidatePath('/admin/data')
+  redirectWith('success', '開催回を登録しました。')
+}
