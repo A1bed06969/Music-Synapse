@@ -49,3 +49,24 @@ export function extractYoutubeVideoId(url: string): string | null {
     return null
   }
 }
+
+export function extractSpotifyTrackId(input: string): string | null {
+  const isValidId = (candidate: string): boolean => /^[0-9A-Za-z]{22}$/.test(candidate)
+
+  const trimmed = input.trim()
+  if (isValidId(trimmed)) return trimmed
+
+  const uriMatch = trimmed.match(/^spotify:track:([0-9A-Za-z]{22})$/)
+  if (uriMatch) return isValidId(uriMatch[1]) ? uriMatch[1] : null
+
+  try {
+    const parsed = new URL(trimmed)
+    if (parsed.hostname === 'open.spotify.com') {
+      const pathMatch = parsed.pathname.match(/\/track\/([0-9A-Za-z]{22})/)
+      if (pathMatch) return isValidId(pathMatch[1]) ? pathMatch[1] : null
+    }
+    return null
+  } catch {
+    return null
+  }
+}

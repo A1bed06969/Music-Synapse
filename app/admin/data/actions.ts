@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { createAdminClient } from '@/utils/Supabase/admin'
 import { PREFECTURE_COORDS } from '@/utils/prefectures'
+import { extractSpotifyTrackId } from '@/utils/format'
 
 const RELATION_STYLE_BY_TYPE: Record<string, 'solid' | 'dotted'> = {
   membership: 'solid',
@@ -561,7 +562,8 @@ export async function updateTrack(formData: FormData) {
     redirectWith('error', '不正なリクエストです。')
   }
 
-  const spotifyTrackId = String(formData.get('spotify_track_id') ?? '').trim()
+  const spotifyTrackIdRaw = String(formData.get('spotify_track_id') ?? '').trim()
+  const spotifyTrackId = spotifyTrackIdRaw ? extractSpotifyTrackId(spotifyTrackIdRaw) : null
   const amazonMusicTrackId = String(formData.get('amazon_music_track_id') ?? '').trim()
   const youtubeMusicTrackId = String(formData.get('youtube_music_track_id') ?? '').trim()
   const bandcampTrackId = String(formData.get('bandcamp_track_id') ?? '').trim()
@@ -580,7 +582,7 @@ export async function updateTrack(formData: FormData) {
   const { error } = await supabase
     .from('track')
     .update({
-      spotify_track_id: spotifyTrackId || null,
+      spotify_track_id: spotifyTrackId,
       amazon_music_track_id: amazonMusicTrackId || null,
       youtube_music_track_id: youtubeMusicTrackId || null,
       bandcamp_track_id: bandcampTrackId || null,
