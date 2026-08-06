@@ -5,15 +5,18 @@ import { formatDuration } from '@/utils/format'
 
 export default async function TrackDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>
+  searchParams: Promise<{ success?: string; error?: string }>
 }) {
   const { id } = await params
+  const { success, error: errorMessage } = await searchParams
   const supabase = await createClient()
 
   const { data: track, error } = await supabase
     .from('track')
-    .select('*, album:album_id(id, title, jacket_url), artist:artist_id(id, name)')
+    .select('*, album:album_id(id, title, jacket_url, apple_music_album_id), artist:artist_id(id, name)')
     .eq('id', id)
     .single()
 
@@ -29,13 +32,32 @@ export default async function TrackDetailPage({
   const album = Array.isArray(track.album) ? track.album[0] : track.album
   const artist = Array.isArray(track.artist) ? track.artist[0] : track.artist
 
+  const appleMusicSrc =
+    track.apple_music_track_id && album?.apple_music_album_id
+      ? `https://embed.music.apple.com/jp/album/${encodeURIComponent(track.title)}/${album.apple_music_album_id}?i=${track.apple_music_track_id}`
+      : null
+
   return (
     <div className="mx-auto max-w-2xl px-6 py-12">
-      {album && (
-        <Link href={`/albums/${album.id}`} className="text-xs text-white/40 hover:text-white/70">
-          ← {album.title}
-        </Link>
+      {success && (
+        <div className="mb-4 rounded-md border border-green-500/30 bg-green-500/5 px-4 py-3 text-sm">{success}</div>
       )}
+      {errorMessage && (
+        <div className="mb-4 rounded-md border border-red-500/30 bg-red-500/5 px-4 py-3 text-sm">{errorMessage}</div>
+      )}
+
+      <div className="flex items-center justify-between">
+        {album ? (
+          <Link href={`/albums/${album.id}`} className="text-xs text-white/40 hover:text-white/70">
+            ← {album.title}
+          </Link>
+        ) : (
+          <span />
+        )}
+        <Link href={`/admin/data/tracks/${id}/edit`} className="text-xs text-white/40 hover:text-white/70">
+          編集
+        </Link>
+      </div>
 
       <div className="mt-4 flex items-start gap-5">
         {album?.jacket_url ? (
@@ -57,6 +79,34 @@ export default async function TrackDetailPage({
           <p className="mt-2 text-sm text-white/40">{formatDuration(track.duration_seconds)}</p>
         </div>
       </div>
+
+      {(appleMusicSrc || track.spotify_track_id) && (
+        <section className="mt-6 space-y-3">
+          {appleMusicSrc && (
+            <iframe
+              allow="autoplay *; encrypted-media *; clipboard-write"
+              frameBorder="0"
+              height="175"
+              style={{ width: '100%', maxWidth: '660px', overflow: 'hidden', borderRadius: '10px' }}
+              sandbox="allow-forms allow-popups allow-same-origin allow-scripts allow-storage-access-by-user-activation allow-top-navigation-by-user-activation"
+              src={appleMusicSrc}
+              loading="lazy"
+            />
+          )}
+          {track.spotify_track_id && (
+            <iframe
+              style={{ borderRadius: '12px' }}
+              src={`https://open.spotify.com/embed/track/${track.spotify_track_id}?utm_source=generator`}
+              width="100%"
+              height="152"
+              frameBorder="0"
+              allowFullScreen
+              allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+              loading="lazy"
+            />
+          )}
+        </section>
+      )}
 
       {track.lyric_url && (
         <a
