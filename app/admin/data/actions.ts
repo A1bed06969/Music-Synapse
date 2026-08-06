@@ -553,3 +553,51 @@ export async function createMusicEvent(formData: FormData) {
   revalidatePath(`/artists/${artistId}`)
   redirectWith('success', `単独公演「${name}」を登録しました。`)
 }
+
+export async function updateTrack(formData: FormData) {
+  const trackId = String(formData.get('track_id') ?? '')
+
+  if (!trackId) {
+    redirectWith('error', '不正なリクエストです。')
+  }
+
+  const spotifyTrackId = String(formData.get('spotify_track_id') ?? '').trim()
+  const amazonMusicTrackId = String(formData.get('amazon_music_track_id') ?? '').trim()
+  const youtubeMusicTrackId = String(formData.get('youtube_music_track_id') ?? '').trim()
+  const bandcampTrackId = String(formData.get('bandcamp_track_id') ?? '').trim()
+  const soundcloudTrackId = String(formData.get('soundcloud_track_id') ?? '').trim()
+  const tidalTrackId = String(formData.get('tidal_track_id') ?? '').trim()
+  const youtubeVideoId = String(formData.get('youtube_video_id') ?? '').trim()
+  const lyricUrl = String(formData.get('lyric_url') ?? '').trim()
+  const isrc = String(formData.get('isrc') ?? '').trim()
+  const bpmRaw = String(formData.get('bpm') ?? '').trim()
+  const trackReview = String(formData.get('track_review') ?? '').trim()
+
+  const bpmNum = Number(bpmRaw)
+  const bpm = bpmRaw && !Number.isNaN(bpmNum) ? bpmNum : null
+
+  const supabase = createAdminClient()
+  const { error } = await supabase
+    .from('track')
+    .update({
+      spotify_track_id: spotifyTrackId || null,
+      amazon_music_track_id: amazonMusicTrackId || null,
+      youtube_music_track_id: youtubeMusicTrackId || null,
+      bandcamp_track_id: bandcampTrackId || null,
+      soundcloud_track_id: soundcloudTrackId || null,
+      tidal_track_id: tidalTrackId || null,
+      youtube_video_id: youtubeVideoId || null,
+      lyric_url: lyricUrl || null,
+      isrc: isrc || null,
+      bpm,
+      track_review: trackReview || null,
+    })
+    .eq('id', trackId)
+
+  if (error) {
+    redirect(`/tracks/${trackId}?error=${encodeURIComponent(`更新に失敗しました: ${error.message}`)}`)
+  }
+
+  revalidatePath(`/tracks/${trackId}`)
+  redirect(`/tracks/${trackId}?success=${encodeURIComponent('トラック情報を更新しました。')}`)
+}
