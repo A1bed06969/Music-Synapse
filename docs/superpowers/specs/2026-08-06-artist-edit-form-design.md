@@ -7,7 +7,7 @@
 ## ゴール
 
 - `/admin/data` にアーティスト一覧(名前+編集リンク)を追加する
-- `/admin/data/artists/[id]/edit` に、アプリ内で実際に表示へ使われている16項目を編集できる専用フォームを追加する
+- `/admin/data/artists/[id]/edit` に、アプリ内で実際に表示へ使われている14項目を編集できる専用フォームを追加する
 - 送信すると`artist`テーブルを更新し、`/admin/data`に成功/エラーメッセージ付きでリダイレクトする
 - `streaming_status`を「配信あり/なし」の2値に定義し直す(DBのCHECK制約含む)
 - `origin_prefecture`は都道府県セレクトではなく自由テキストにする(海外アーティストに対応するため)
@@ -36,12 +36,12 @@
 
 /admin/data/artists/[id]/edit/page.tsx (新規, Server Component)
   ├─ 対象artistをselect('*')で取得。存在しなければnotFound()
-  ├─ 16項目の入力欄を持つ<form action={updateArtist}>
+  ├─ 14項目の入力欄を持つ<form action={updateArtist}>
   │   各欄はartistの現在値をdefaultValueに設定(空ならプレースホルダーのみ)
   └─ 送信後は updateArtist アクションがリダイレクトを担当
 
 app/admin/data/actions.ts (既存ファイルに追記)
-  └─ updateArtist(formData): 16項目を読み取り、空文字はnullに変換して
+  └─ updateArtist(formData): 14項目を読み取り、空文字はnullに変換して
      .update().eq('id', artistId)。成功/失敗どちらも/admin/dataへredirectWith
 ```
 
@@ -71,7 +71,7 @@ app/admin/data/actions.ts (既存ファイルに追記)
 ### `app/admin/data/actions.ts` の変更
 
 - `updateArtist(formData: FormData)`を追加。
-- `artist_id`をhiddenフィールドから受け取り、16項目を`String(formData.get(...) ?? '').trim()`で読み取る。
+- `artist_id`をhiddenフィールドから受け取り、14項目を`String(formData.get(...) ?? '').trim()`で読み取る。
 - テキスト系は空文字→`null`。`formed_year`は空文字→`null`、それ以外は`Number(...)`。
 - `.from('artist').update({...}).eq('id', artistId)`。
 - 成功時: `revalidatePath('/admin/data')` + `revalidatePath('/artists/${artistId}')` (詳細ページのキャッシュも更新) + `redirectWith('success', 'アーティスト情報を更新しました。')`。
@@ -96,7 +96,7 @@ Supabase MCPの`apply_migration`(project_id: `ftvhglfthbcxhgnoninv`)で直接実
 
 1. `/admin/data`のアーティスト一覧から「編集」をクリック
 2. `/admin/data/artists/{id}/edit`が対象artistを取得し、現在値入りのフォームを表示
-3. フィールドを編集して送信 → `updateArtist`が16項目をUPDATE
+3. フィールドを編集して送信 → `updateArtist`が14項目をUPDATE
 4. `/admin/data`に成功メッセージ付きでリダイレクト。以後`/artists/{id}`でも新しい値が反映される
 
 ## エラーハンドリング
@@ -112,6 +112,6 @@ Supabase MCPの`apply_migration`(project_id: `ftvhglfthbcxhgnoninv`)で直接実
 - 実装後にPlaywright/curlで実機確認:
   1. `/admin/data`にアーティスト一覧と編集リンクが表示されることを確認
   2. 既存アーティストの編集ページで現在値(既に設定済みの`apple_music_artist_id`等、編集対象外の項目も含め表示崩れがないか)が正しく表示されることを確認
-  3. 16項目のうちいくつかを更新して送信し、`/admin/data`にリダイレクトして成功メッセージが出ることを確認
+  3. 14項目のうちいくつかを更新して送信し、`/admin/data`にリダイレクトして成功メッセージが出ることを確認
   4. `/artists/{id}`で更新内容(特にbio・url_latest_mv・spotify_artist_id・streaming_statusの新しい表示)が反映されていることを確認
   5. `streaming_status`を「あり」「なし」それぞれで保存できることを確認(マイグレーション後の制約が正しく機能しているか)
