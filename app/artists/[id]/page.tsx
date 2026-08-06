@@ -22,24 +22,48 @@ export default async function ArtistDetailPage({
   const { id } = await params
   const supabase = await createClient()
 
-  const [{ data: artist, error }, { data: albums }, { data: relations }] = await Promise.all([
-    supabase.from('artist').select('*').eq('id', id).single(),
-    supabase
-      .from('album')
-      .select('id, title, jacket_url, release_date, album_type')
-      .eq('artist_id', id)
-      .order('release_date', { ascending: false, nullsFirst: false }),
-    supabase
-      .from('artist_relation')
-      .select('artist_id_a, artist_id_b, relation_type, relation_style, description')
-      .or(`artist_id_a.eq.${id},artist_id_b.eq.${id}`),
-  ])
+  const [{ data: artist, error }, { data: albums }, { data: relations }, { data: musicEvents }, { data: eventAppearances }] =
+    await Promise.all([
+      supabase.from('artist').select('*').eq('id', id).single(),
+      supabase
+        .from('album')
+        .select('id, title, jacket_url, release_date, album_type')
+        .eq('artist_id', id)
+        .order('release_date', { ascending: false, nullsFirst: false }),
+      supabase
+        .from('artist_relation')
+        .select('artist_id_a, artist_id_b, relation_type, relation_style, description')
+        .or(`artist_id_a.eq.${id},artist_id_b.eq.${id}`),
+      supabase
+        .from('music_event')
+        .select('id, name, event_date, venue')
+        .eq('artist_id', id)
+        .order('event_date', { ascending: false, nullsFirst: false }),
+      supabase
+        .from('event_appearance')
+        .select('id, stage, is_headliner, event_edition:event_edition_id(year, event:event_id(name))')
+        .eq('artist_id', id),
+    ])
 
   if (error || !artist) {
     notFound()
   }
 
   const mvVideoId = artist.url_latest_mv ? extractYoutubeVideoId(artist.url_latest_mv) : null
+
+  const appearances = (eventAppearances ?? [])
+    .map((row) => {
+      const edition = Array.isArray(row.event_edition) ? row.event_edition[0] : row.event_edition
+      const event = edition ? (Array.isArray(edition.event) ? edition.event[0] : edition.event) : null
+      return {
+        id: row.id,
+        stage: row.stage,
+        isHeadliner: row.is_headliner,
+        eventName: event?.name ?? '—',
+        year: edition?.year ?? 0,
+      }
+    })
+    .sort((a, b) => b.year - a.year)
 
   const otherIds = Array.from(
     new Set((relations ?? []).map((r) => (r.artist_id_a === id ? r.artist_id_b : r.artist_id_a)))
@@ -178,6 +202,49 @@ export default async function ArtistDetailPage({
           <p className="mt-4 text-sm leading-relaxed text-white/70">{artist.bio}</p>
         </>
       )}
+
+      <SectionDivider label="Live & Festivals" />
+      <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="rounded-lg border border-white/10 bg-white/[0.02] p-4">
+          <p className="text-xs uppercase tracking-wide text-white/40">Live Info</p>
+          {!musicEvents || musicEvents.length === 0 ? (
+            <p className="mt-3 text-sm text-white/40">まだライブ情報がありません。</p>
+          ) : (
+            <ul className="mt-3 space-y-2 text-sm">
+              {musicEvents.map((live) => (
+                <li key={live.id}>
+                  <p className="font-medium">{live.name}</p>
+                  <p className="text-xs text-white/40">
+                    {formatDate(live.event_date)}
+                    {live.venue ? ` ・ ${live.venue}` : ''}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+        <div className="rounded-lg border border-white/10 bg-white/[0.02] p-4">
+          <p className="text-xs uppercase tracking-wide text-white/40">Festival Appearances</p>
+          {appearances.length === 0 ? (
+            <p className="mt-3 text-sm text-white/40">まだフェス出演歴がありません。</p>
+          ) : (
+            <ul className="mt-3 space-y-2 text-sm">
+              {appearances.map((a) => (
+                <li key={a.id}>
+                  <p className="font-medium">
+                    {a.eventName}
+                    {a.year > 0 ? `(${a.year})` : ''}
+                  </p>
+                  <p className="text-xs text-white/40">
+                    {a.stage ?? ''}
+                    {a.isHeadliner ? ' ・ ★ヘッドライナー' : ''}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
 
       <SectionDivider label="Discography" />
       {!albums || albums.length === 0 ? (
