@@ -373,3 +373,58 @@ export async function createSyncEntry(formData: FormData) {
   revalidatePath(`/media/sync/${syncWorkId}`)
   redirectWith('success', '起用楽曲を登録しました。')
 }
+
+export async function updateArtist(formData: FormData) {
+  const artistId = String(formData.get('artist_id') ?? '')
+
+  if (!artistId) {
+    redirectWith('error', '不正なリクエストです。')
+  }
+
+  const bio = String(formData.get('bio') ?? '').trim()
+  const nameKana = String(formData.get('name_kana') ?? '').trim()
+  const nameEn = String(formData.get('name_en') ?? '').trim()
+  const artistType = String(formData.get('artist_type') ?? '').trim()
+  const formedYearRaw = String(formData.get('formed_year') ?? '').trim()
+  const originPrefecture = String(formData.get('origin_prefecture') ?? '').trim()
+  const hometownCity = String(formData.get('hometown_city') ?? '').trim()
+  const streamingStatus = String(formData.get('streaming_status') ?? '').trim()
+  const officialSiteUrl = String(formData.get('official_site_url') ?? '').trim()
+  const snsXUrl = String(formData.get('sns_x_url') ?? '').trim()
+  const snsInstagramUrl = String(formData.get('sns_instagram_url') ?? '').trim()
+  const imageUrl = String(formData.get('image_url') ?? '').trim()
+  const spotifyArtistId = String(formData.get('spotify_artist_id') ?? '').trim()
+  const urlLatestMv = String(formData.get('url_latest_mv') ?? '').trim()
+
+  const formedYearNum = Number(formedYearRaw)
+  const formedYear = formedYearRaw && !Number.isNaN(formedYearNum) ? formedYearNum : null
+
+  const supabase = createAdminClient()
+  const { error } = await supabase
+    .from('artist')
+    .update({
+      bio: bio || null,
+      name_kana: nameKana || null,
+      name_en: nameEn || null,
+      artist_type: artistType || null,
+      formed_year: formedYear,
+      origin_prefecture: originPrefecture || null,
+      hometown_city: hometownCity || null,
+      streaming_status: streamingStatus || null,
+      official_site_url: officialSiteUrl || null,
+      sns_x_url: snsXUrl || null,
+      sns_instagram_url: snsInstagramUrl || null,
+      image_url: imageUrl || null,
+      spotify_artist_id: spotifyArtistId || null,
+      url_latest_mv: urlLatestMv || null,
+    })
+    .eq('id', artistId)
+
+  if (error) {
+    redirectWith('error', `更新に失敗しました: ${error.message}`)
+  }
+
+  revalidatePath('/admin/data')
+  revalidatePath(`/artists/${artistId}`)
+  redirectWith('success', 'アーティスト情報を更新しました。')
+}
