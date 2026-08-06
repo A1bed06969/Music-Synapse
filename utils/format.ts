@@ -18,9 +18,8 @@ export const STREAMING_STATUS_LABEL: Record<string, { label: string; icon: strin
 }
 
 export const ARTIST_STREAMING_STATUS_LABEL: Record<string, string> = {
-  all: '全解禁確定',
-  physical_only: 'フィジカルのみ',
-  partial: '一部限定配信',
+  available: 'あり',
+  none: 'なし',
 }
 
 export const ARTIST_TYPE_LABEL: Record<string, string> = {
