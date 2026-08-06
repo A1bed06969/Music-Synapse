@@ -155,6 +155,28 @@ export default async function AdminDataPage({
         <div className="mt-6 rounded-md border border-red-500/30 bg-red-500/5 px-4 py-3 text-sm">{error}</div>
       )}
 
+      {/* アーティスト */}
+      <section className="mt-10 border-t border-white/10 pt-8">
+        <h2 className="text-lg font-semibold">アーティスト</h2>
+        <p className="mt-2 text-xs text-white/40">
+          プロフィール項目(bio・URL・配信状況等)の編集はこちらから。新規登録はiTunes一括登録のみ対応。
+        </p>
+        {artistOptions.length === 0 ? (
+          <p className="mt-4 text-sm text-white/40">まだアーティストが登録されていません。</p>
+        ) : (
+          <ul className="mt-4 divide-y divide-white/10">
+            {artistOptions.map((a) => (
+              <li key={a.id} className="flex items-center justify-between py-2 text-sm">
+                <span>{a.name}</span>
+                <Link href={`/admin/data/artists/${a.id}/edit`} className="text-xs text-white/40 hover:text-white/70">
+                  編集 →
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
       {/* ジャンル */}
       <section className="mt-10 border-t border-white/10 pt-8">
         <h2 className="text-lg font-semibold">ジャンル</h2>
