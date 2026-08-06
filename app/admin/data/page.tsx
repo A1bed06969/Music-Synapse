@@ -152,7 +152,7 @@ export default async function AdminDataPage({
     supabase
       .from('event_appearance')
       .select(
-        'id, stage, is_headliner, artist:artist_id(name), event_edition:event_edition_id(year, event:event_id(name))'
+        'id, stage, venue, is_headliner, artist:artist_id(name), event_edition:event_edition_id(year, event:event_id(name))'
       )
       .order('id', { ascending: false }),
     supabase
@@ -867,6 +867,11 @@ export default async function AdminDataPage({
           </select>
           <span className="text-xs text-white/40">が出演</span>
           <input name="stage" placeholder="ステージ名(任意)" className={`${inputClass} max-w-[160px]`} />
+          <input
+            name="venue"
+            placeholder="会場(任意・複数会場フェスの場合のみ)"
+            className={`${inputClass} max-w-[220px]`}
+          />
           <input name="start_time" type="datetime-local" className={`${inputClass} max-w-[200px]`} />
           <input name="end_time" type="datetime-local" className={`${inputClass} max-w-[200px]`} />
           <label className="flex items-center gap-1.5 text-xs text-white/60">
@@ -888,6 +893,7 @@ export default async function AdminDataPage({
                 <li key={row.id}>
                   {artist?.name} — {event?.name}({edition?.year})
                   {row.stage ? ` / ${row.stage}` : ''}
+                  {row.venue ? ` @ ${row.venue}` : ''}
                   {row.is_headliner && <span className="text-white/30"> ★ヘッドライナー</span>}
                 </li>
               )

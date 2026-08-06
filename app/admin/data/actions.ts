@@ -493,6 +493,7 @@ export async function createEventAppearance(formData: FormData) {
   const eventEditionId = String(formData.get('event_edition_id') ?? '')
   const artistId = String(formData.get('artist_id') ?? '')
   const stage = String(formData.get('stage') ?? '').trim()
+  const venue = String(formData.get('venue') ?? '').trim()
   const startTime = String(formData.get('start_time') ?? '').trim()
   const endTime = String(formData.get('end_time') ?? '').trim()
   const isHeadliner = formData.get('is_headliner') === 'on'
@@ -506,6 +507,7 @@ export async function createEventAppearance(formData: FormData) {
     event_edition_id: eventEditionId,
     artist_id: artistId,
     stage: stage || null,
+    venue: venue || null,
     // datetime-local からの入力はタイムゾーン情報を持たないため、日本時間として保存する
     start_time: startTime ? `${startTime}:00+09:00` : null,
     end_time: endTime ? `${endTime}:00+09:00` : null,
