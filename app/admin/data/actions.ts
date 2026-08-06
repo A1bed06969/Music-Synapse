@@ -506,8 +506,9 @@ export async function createEventAppearance(formData: FormData) {
     event_edition_id: eventEditionId,
     artist_id: artistId,
     stage: stage || null,
-    start_time: startTime || null,
-    end_time: endTime || null,
+    // datetime-local からの入力はタイムゾーン情報を持たないため、日本時間として保存する
+    start_time: startTime ? `${startTime}:00+09:00` : null,
+    end_time: endTime ? `${endTime}:00+09:00` : null,
     is_headliner: isHeadliner,
   })
 
