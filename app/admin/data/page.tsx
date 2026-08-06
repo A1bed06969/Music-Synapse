@@ -15,6 +15,10 @@ import {
   createRankingEntry,
   createSyncWork,
   createSyncEntry,
+  createEvent,
+  createEventEdition,
+  createEventAppearance,
+  createMusicEvent,
 } from './actions'
 
 const RELATION_TYPE_OPTIONS = [
@@ -51,6 +55,18 @@ const WORK_TYPE_OPTIONS = [
   { value: 'tv_program', label: 'テレビ番組' },
 ]
 
+const EVENT_TYPE_OPTIONS = [
+  { value: 'festival', label: 'フェス' },
+  { value: 'one_off_live', label: '単発イベント' },
+  { value: 'other', label: 'その他' },
+]
+
+const EVENT_TYPE_LABEL: Record<string, string> = {
+  festival: 'フェス',
+  one_off_live: '単発イベント',
+  other: 'その他',
+}
+
 const inputClass =
   'w-full rounded-md border border-white/15 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-white/25 focus:border-white/30 focus:outline-none'
 const buttonClass =
@@ -81,6 +97,10 @@ export default async function AdminDataPage({
     { data: rankingEntries },
     { data: syncWorks },
     { data: syncEntries },
+    { data: events },
+    { data: eventEditions },
+    { data: eventAppearances },
+    { data: musicEvents },
   ] = await Promise.all([
     supabase.from('artist').select('id, name').order('name'),
     supabase.from('genre').select('id, name').order('name'),
@@ -124,6 +144,21 @@ export default async function AdminDataPage({
       .from('sync_entry')
       .select('id, usage_detail, sync_work:sync_work_id(title), track:track_id(title)')
       .order('id', { ascending: false }),
+    supabase.from('event').select('id, name, event_type').order('name'),
+    supabase
+      .from('event_edition')
+      .select('id, year, event:event_id(name)')
+      .order('year', { ascending: false }),
+    supabase
+      .from('event_appearance')
+      .select(
+        'id, stage, is_headliner, artist:artist_id(name), event_edition:event_edition_id(year, event:event_id(name))'
+      )
+      .order('id', { ascending: false }),
+    supabase
+      .from('music_event')
+      .select('id, name, event_date, artist:artist_id(name)')
+      .order('id', { ascending: false }),
   ])
 
   const artistOptions = artists ?? []
@@ -135,6 +170,11 @@ export default async function AdminDataPage({
   const mediaProgramOptions = mediaPrograms ?? []
   const rankingOptions = rankings ?? []
   const syncWorkOptions = syncWorks ?? []
+  const eventOptions = events ?? []
+  const eventEditionOptions = (eventEditions ?? []).map((row) => {
+    const event = Array.isArray(row.event) ? row.event[0] : row.event
+    return { id: row.id, label: `${event?.name ?? '?'}(${row.year})` }
+  })
 
   return (
     <div className="mx-auto max-w-3xl px-6 py-12">
@@ -723,6 +763,166 @@ export default async function AdminDataPage({
                 <li key={row.id}>
                   {work?.title} — {track?.title}
                   {row.usage_detail ? `(${row.usage_detail})` : ''}
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </section>
+
+      {/* イベント */}
+      <section className="mt-10 border-t border-white/10 pt-8">
+        <h2 className="text-lg font-semibold">イベント</h2>
+
+        <form action={createEvent} className="mt-4 space-y-2">
+          <div className="flex flex-wrap gap-2">
+            <input name="name" placeholder="イベント名(例: FUJI ROCK FESTIVAL)" required className={`${inputClass} max-w-xs`} />
+            <select name="event_type" className={`${inputClass} max-w-[140px]`} defaultValue="">
+              <option value="">種別(任意)</option>
+              {EVENT_TYPE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+            <input name="founded_year" type="number" placeholder="発祥年(任意)" className={`${inputClass} max-w-[140px]`} />
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <input name="country" placeholder="国(任意)" className={`${inputClass} max-w-[160px]`} />
+            <input name="prefecture" placeholder="都道府県(任意)" className={`${inputClass} max-w-[160px]`} />
+          </div>
+          <input name="description" placeholder="概要(任意)" className={inputClass} />
+          <button type="submit" className={buttonClass}>
+            イベントを追加
+          </button>
+        </form>
+
+        {events && events.length > 0 && (
+          <ul className="mt-4 space-y-1 text-sm text-white/60">
+            {events.map((e) => (
+              <li key={e.id}>
+                {e.name}
+                {e.event_type && (
+                  <span className="text-white/30"> ({EVENT_TYPE_LABEL[e.event_type] ?? e.event_type})</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+
+        <form action={createEventEdition} className="mt-6 flex flex-wrap gap-2">
+          <select name="event_id" required className={`${inputClass} max-w-xs`} defaultValue="">
+            <option value="" disabled>
+              イベントを選択
+            </option>
+            {eventOptions.map((e) => (
+              <option key={e.id} value={e.id}>
+                {e.name}
+              </option>
+            ))}
+          </select>
+          <input name="year" type="number" placeholder="年" required className={`${inputClass} max-w-[100px]`} />
+          <input name="start_date" type="date" className={`${inputClass} max-w-[160px]`} />
+          <input name="end_date" type="date" className={`${inputClass} max-w-[160px]`} />
+          <input name="venue" placeholder="会場(任意)" className={`${inputClass} max-w-xs`} />
+          <button type="submit" className={buttonClass}>
+            開催回を追加
+          </button>
+        </form>
+
+        {eventEditions && eventEditions.length > 0 && (
+          <ul className="mt-4 space-y-1 text-sm text-white/60">
+            {eventEditions.map((row) => {
+              const event = Array.isArray(row.event) ? row.event[0] : row.event
+              return (
+                <li key={row.id}>
+                  {event?.name}({row.year})
+                </li>
+              )
+            })}
+          </ul>
+        )}
+
+        <form action={createEventAppearance} className="mt-6 flex flex-wrap items-center gap-2">
+          <select name="event_edition_id" required className={`${inputClass} max-w-xs`} defaultValue="">
+            <option value="" disabled>
+              開催回を選択
+            </option>
+            {eventEditionOptions.map((row) => (
+              <option key={row.id} value={row.id}>
+                {row.label}
+              </option>
+            ))}
+          </select>
+          <span className="text-xs text-white/40">に</span>
+          <select name="artist_id" required className={`${inputClass} max-w-xs`} defaultValue="">
+            <option value="" disabled>
+              アーティストを選択
+            </option>
+            {artistOptions.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}
+              </option>
+            ))}
+          </select>
+          <span className="text-xs text-white/40">が出演</span>
+          <input name="stage" placeholder="ステージ名(任意)" className={`${inputClass} max-w-[160px]`} />
+          <input name="start_time" type="datetime-local" className={`${inputClass} max-w-[200px]`} />
+          <input name="end_time" type="datetime-local" className={`${inputClass} max-w-[200px]`} />
+          <label className="flex items-center gap-1.5 text-xs text-white/60">
+            <input name="is_headliner" type="checkbox" className="h-3.5 w-3.5" />
+            ヘッドライナー
+          </label>
+          <button type="submit" className={buttonClass}>
+            出演情報を追加
+          </button>
+        </form>
+
+        {eventAppearances && eventAppearances.length > 0 && (
+          <ul className="mt-4 space-y-1 text-sm text-white/60">
+            {eventAppearances.map((row) => {
+              const artist = Array.isArray(row.artist) ? row.artist[0] : row.artist
+              const edition = Array.isArray(row.event_edition) ? row.event_edition[0] : row.event_edition
+              const event = edition ? (Array.isArray(edition.event) ? edition.event[0] : edition.event) : null
+              return (
+                <li key={row.id}>
+                  {artist?.name} — {event?.name}({edition?.year})
+                  {row.stage ? ` / ${row.stage}` : ''}
+                  {row.is_headliner && <span className="text-white/30"> ★ヘッドライナー</span>}
+                </li>
+              )
+            })}
+          </ul>
+        )}
+
+        <form action={createMusicEvent} className="mt-6 flex flex-wrap gap-2">
+          <select name="artist_id" required className={`${inputClass} max-w-xs`} defaultValue="">
+            <option value="" disabled>
+              アーティストを選択
+            </option>
+            {artistOptions.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}
+              </option>
+            ))}
+          </select>
+          <input name="name" placeholder="公演名(例: ○○ホール ワンマンライブ)" required className={`${inputClass} max-w-xs`} />
+          <input name="event_date" type="date" className={`${inputClass} max-w-[160px]`} />
+          <input name="venue" placeholder="会場(任意)" className={`${inputClass} max-w-xs`} />
+          <input name="prefecture" placeholder="都道府県(任意)" className={`${inputClass} max-w-[160px]`} />
+          <button type="submit" className={buttonClass}>
+            単独公演を追加
+          </button>
+        </form>
+
+        {musicEvents && musicEvents.length > 0 && (
+          <ul className="mt-4 space-y-1 text-sm text-white/60">
+            {musicEvents.map((row) => {
+              const artist = Array.isArray(row.artist) ? row.artist[0] : row.artist
+              return (
+                <li key={row.id}>
+                  {artist?.name} — {row.name}
+                  {row.event_date ? `(${row.event_date})` : ''}
                 </li>
               )
             })}
