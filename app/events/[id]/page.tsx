@@ -57,6 +57,9 @@ export default async function EventDetailPage({
       .from('event_appearance')
       .select('id, stage, venue, is_headliner, artist:artist_id(id, name)')
       .eq('event_edition_id', selectedEdition.id)
+      .order('is_headliner', { ascending: false })
+      .order('start_time', { ascending: true, nullsFirst: false })
+      .order('id', { ascending: true })
 
     appearances = (appearanceRows ?? []).map((row) => {
       const artist = Array.isArray(row.artist) ? row.artist[0] : row.artist
@@ -73,6 +76,12 @@ export default async function EventDetailPage({
 
   const distinctVenues = new Set(appearances.map((a) => a.venue ?? ''))
   const groupByVenue = distinctVenues.size > 1
+
+  // 会場が複数ある開催回では会場名が下の見出しに出るため、ここでは
+  // event_edition 自体の会場が未設定なら(誤解を招く「会場未定」表示を避けるため)何も出さない
+  const venueSummary = selectedEdition
+    ? (selectedEdition.venue ?? (!groupByVenue ? (appearances[0]?.venue ?? null) : null))
+    : null
 
   const venueGroups = new Map<string, Appearance[]>()
   for (const a of appearances) {
@@ -121,9 +130,9 @@ export default async function EventDetailPage({
 
           <div className="mt-4 rounded-lg border border-white/10 bg-white/[0.02] p-4">
             <p className="text-sm text-white/70">
-              {selectedEdition.venue ?? '会場未定'}
+              {venueSummary}
               {selectedEdition.start_date &&
-                ` ・ ${formatDate(selectedEdition.start_date)}${
+                `${venueSummary ? ' ・ ' : ''}${formatDate(selectedEdition.start_date)}${
                   selectedEdition.end_date && selectedEdition.end_date !== selectedEdition.start_date
                     ? `〜${formatDate(selectedEdition.end_date)}`
                     : ''

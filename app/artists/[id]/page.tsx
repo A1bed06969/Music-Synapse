@@ -41,7 +41,7 @@ export default async function ArtistDetailPage({
         .order('event_date', { ascending: false, nullsFirst: false }),
       supabase
         .from('event_appearance')
-        .select('id, stage, is_headliner, event_edition:event_edition_id(year, event:event_id(name))')
+        .select('id, stage, venue, is_headliner, event_edition:event_edition_id(year, venue, event:event_id(name))')
         .eq('artist_id', id),
     ])
 
@@ -58,6 +58,7 @@ export default async function ArtistDetailPage({
       return {
         id: row.id,
         stage: row.stage,
+        venue: row.venue ?? edition?.venue ?? null,
         isHeadliner: row.is_headliner,
         eventName: event?.name ?? '—',
         year: edition?.year ?? 0,
@@ -237,6 +238,7 @@ export default async function ArtistDetailPage({
                   </p>
                   <p className="text-xs text-white/40">
                     {a.stage ?? ''}
+                    {a.venue ? ` @ ${a.venue}` : ''}
                     {a.isHeadliner ? ' ・ ★ヘッドライナー' : ''}
                   </p>
                 </li>
