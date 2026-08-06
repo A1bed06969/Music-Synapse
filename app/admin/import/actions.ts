@@ -48,7 +48,7 @@ async function importOneArtist(artistUrl: string): Promise<ImportResult> {
   // ② アーティストをupsert(apple_music_artist_idで既存判定)
   const { data: existingArtist } = await supabase
     .from('artist')
-    .select('id')
+    .select('id, official_site_url')
     .eq('apple_music_artist_id', String(itunesArtist.artistId))
     .maybeSingle()
 
@@ -60,7 +60,8 @@ async function importOneArtist(artistUrl: string): Promise<ImportResult> {
       .from('artist')
       .update({
         name: itunesArtist.artistName,
-        official_site_url: itunesArtist.artistLinkUrl ?? null,
+        // 手動編集フォームで設定済みの値は、再取込では上書きしない(空のときだけiTunesの値で埋める)
+        official_site_url: existingArtist.official_site_url ?? (itunesArtist.artistLinkUrl ?? null),
         last_synced_at: new Date().toISOString(),
       })
       .eq('id', artistId)
