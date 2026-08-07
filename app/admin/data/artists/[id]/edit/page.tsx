@@ -29,12 +29,20 @@ export default async function ArtistEditPage({
         <Link href="/admin/data" className="text-xs text-white/40 hover:text-white/70">
           ← 管理画面に戻る
         </Link>
-        <Link
-          href={`/admin/data/artists/${artist.id}/collaborators`}
-          className="text-xs text-white/40 hover:text-white/70"
-        >
-          コラボアーティストを探す
-        </Link>
+        <div className="flex gap-3">
+          <Link
+            href={`/admin/data/artists/${artist.id}/musicbrainz`}
+            className="text-xs text-white/40 hover:text-white/70"
+          >
+            MusicBrainzで検索
+          </Link>
+          <Link
+            href={`/admin/data/artists/${artist.id}/collaborators`}
+            className="text-xs text-white/40 hover:text-white/70"
+          >
+            コラボアーティストを探す
+          </Link>
+        </div>
       </div>
 
       <h1 className="mt-4 text-2xl font-bold">{artist.name} を編集</h1>
