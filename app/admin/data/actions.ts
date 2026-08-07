@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { createAdminClient } from '@/utils/Supabase/admin'
 import { PREFECTURE_COORDS } from '@/utils/prefectures'
-import { extractSpotifyTrackId } from '@/utils/format'
+import { extractSpotifyTrackId, extractYoutubeVideoId } from '@/utils/format'
 
 const RELATION_STYLE_BY_TYPE: Record<string, 'solid' | 'dotted'> = {
   membership: 'solid',
@@ -569,7 +569,8 @@ export async function updateTrack(formData: FormData) {
   const bandcampTrackId = String(formData.get('bandcamp_track_id') ?? '').trim()
   const soundcloudTrackId = String(formData.get('soundcloud_track_id') ?? '').trim()
   const tidalTrackId = String(formData.get('tidal_track_id') ?? '').trim()
-  const youtubeVideoId = String(formData.get('youtube_video_id') ?? '').trim()
+  const youtubeVideoIdRaw = String(formData.get('youtube_video_id') ?? '').trim()
+  const youtubeVideoId = youtubeVideoIdRaw ? extractYoutubeVideoId(youtubeVideoIdRaw) : null
   const lyricUrl = String(formData.get('lyric_url') ?? '').trim()
   const isrc = String(formData.get('isrc') ?? '').trim()
   const bpmRaw = String(formData.get('bpm') ?? '').trim()
@@ -588,7 +589,7 @@ export async function updateTrack(formData: FormData) {
       bandcamp_track_id: bandcampTrackId || null,
       soundcloud_track_id: soundcloudTrackId || null,
       tidal_track_id: tidalTrackId || null,
-      youtube_video_id: youtubeVideoId || null,
+      youtube_video_id: youtubeVideoId,
       lyric_url: lyricUrl || null,
       isrc: isrc || null,
       bpm,

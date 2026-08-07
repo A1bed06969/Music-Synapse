@@ -32,8 +32,11 @@ export function extractYoutubeVideoId(url: string): string | null {
   const isValidId = (candidate: string | null): candidate is string =>
     candidate !== null && /^[\w-]{11}$/.test(candidate)
 
+  const trimmed = url.trim()
+  if (isValidId(trimmed)) return trimmed
+
   try {
-    const parsed = new URL(url)
+    const parsed = new URL(trimmed)
     if (parsed.hostname === 'youtu.be') {
       const id = parsed.pathname.slice(1) || null
       return isValidId(id) ? id : null
