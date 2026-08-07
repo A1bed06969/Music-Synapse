@@ -130,3 +130,69 @@ export function millisToSeconds(millis?: number): number | null {
   if (!millis) return null
   return Math.round(millis / 1000)
 }
+
+export type ItunesArtistSearchResult = {
+  artistId: number
+  artistName: string
+  primaryGenreName?: string
+  artistLinkUrl?: string
+}
+
+/**
+ * アーティスト名でApple Musicを検索し、候補を返す(上位5件)。
+ * 同名・類似名の別人がヒットすることがあるため、呼び出し側で必ず人間の確認を挟むこと。
+ */
+export async function searchArtist(name: string): Promise<ItunesArtistSearchResult[]> {
+  const url = `https://itunes.apple.com/search?term=${encodeURIComponent(name)}&entity=musicArtist&limit=5&country=JP`
+  const res = await fetch(url)
+  if (!res.ok) {
+    throw new Error(`iTunes API error (artist search): ${res.status}`)
+  }
+  const data = await res.json()
+  return (data.results ?? [])
+    .filter((r: any) => r.wrapperType === 'artist')
+    .map((r: any) => ({
+      artistId: r.artistId,
+      artistName: r.artistName,
+      primaryGenreName: r.primaryGenreName,
+      artistLinkUrl: r.artistLinkUrl,
+    }))
+}
+
+/**
+ * アルバム一覧のartistNameから、本人名義と異なる連名クレジットを人名単位に分解して返す。
+ * 括弧の深さを追跡し、深さ0の「,」「&」でのみ分割する(例:
+ * "ACAね(ずっと真夜中でいいのに。), Rin音, Yaffle" は
+ * ["ACAね(ずっと真夜中でいいのに。)", "Rin音", "Yaffle"] に分解され、本人名義"Yaffle"は除外される)。
+ */
+export function extractCollaboratorNames(primaryArtistName: string, albums: ItunesAlbum[]): string[] {
+  const names = new Set<string>()
+
+  for (const album of albums) {
+    if (!album.artistName || album.artistName === primaryArtistName) continue
+
+    let depth = 0
+    let current = ''
+    const parts: string[] = []
+    for (const ch of album.artistName) {
+      if (ch === '(' || ch === '（') depth++
+      if (ch === ')' || ch === '）') depth = Math.max(0, depth - 1)
+      if (depth === 0 && (ch === ',' || ch === '&')) {
+        parts.push(current)
+        current = ''
+      } else {
+        current += ch
+      }
+    }
+    parts.push(current)
+
+    for (const part of parts) {
+      const trimmed = part.trim()
+      if (trimmed && trimmed !== primaryArtistName) {
+        names.add(trimmed)
+      }
+    }
+  }
+
+  return Array.from(names)
+}
