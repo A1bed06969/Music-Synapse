@@ -5,6 +5,27 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+// MusicBrainz's public API intermittently returns 503 "server is currently
+// busy" under load, unrelated to the query itself (confirmed live: the same
+// query failed once then succeeded seconds later). Retry a bounded number of
+// times before giving up, still respecting the 1 req/sec limit between
+// attempts.
+async function fetchMusicBrainz(url: string, label: string): Promise<any> {
+  const maxAttempts = 3
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    await sleep(1000)
+    const res = await fetch(url, { headers: { 'User-Agent': USER_AGENT } })
+    if (res.ok) {
+      return res.json()
+    }
+    if (res.status === 503 && attempt < maxAttempts) {
+      continue
+    }
+    throw new Error(`MusicBrainz API error (${label}): ${res.status}`)
+  }
+  throw new Error(`MusicBrainz API error (${label}): retries exhausted`)
+}
+
 export type MusicBrainzSearchResult = {
   mbid: string
   name: string
@@ -15,13 +36,8 @@ export type MusicBrainzSearchResult = {
 }
 
 export async function searchArtist(name: string): Promise<MusicBrainzSearchResult[]> {
-  await sleep(1000)
   const url = `${MUSICBRAINZ_BASE}/artist?query=${encodeURIComponent(name)}&fmt=json&limit=5`
-  const res = await fetch(url, { headers: { 'User-Agent': USER_AGENT } })
-  if (!res.ok) {
-    throw new Error(`MusicBrainz API error (artist search): ${res.status}`)
-  }
-  const data = await res.json()
+  const data = await fetchMusicBrainz(url, 'artist search')
   return (data.artists ?? []).map((a: any) => ({
     mbid: a.id,
     name: a.name,
@@ -110,13 +126,8 @@ export type MusicBrainzArtistDetails = {
 }
 
 export async function fetchArtistDetails(mbid: string): Promise<MusicBrainzArtistDetails> {
-  await sleep(1000)
   const url = `${MUSICBRAINZ_BASE}/artist/${mbid}?inc=url-rels+genres&fmt=json`
-  const res = await fetch(url, { headers: { 'User-Agent': USER_AGENT } })
-  if (!res.ok) {
-    throw new Error(`MusicBrainz API error (artist detail): ${res.status}`)
-  }
-  const data = await res.json()
+  const data = await fetchMusicBrainz(url, 'artist detail')
 
   let officialHomepage: string | null = null
   let twitterUrl: string | null = null
