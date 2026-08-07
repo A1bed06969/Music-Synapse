@@ -4,6 +4,19 @@ import { notFound } from 'next/navigation'
 import { formatDate, extractYoutubeVideoId, ARTIST_STREAMING_STATUS_LABEL, ARTIST_TYPE_LABEL } from '@/utils/format'
 import RelationGraph, { type RelationEdge, type RelationNode } from '@/app/components/RelationGraph'
 
+const LINK_TYPE_LABEL: Record<string, string> = {
+  streaming: 'ストリーミング',
+  'free streaming': '無料ストリーミング',
+  'social network': 'SNS',
+  'other databases': 'データベース',
+  allmusic: 'AllMusic',
+  discogs: 'Discogs',
+  wikidata: 'Wikidata',
+  IMDb: 'IMDb',
+  youtube: 'YouTube',
+  'youtube music': 'YouTube Music',
+}
+
 function SectionDivider({ label }: { label: string }) {
   return (
     <div className="mt-10 flex items-center gap-3">
@@ -22,28 +35,35 @@ export default async function ArtistDetailPage({
   const { id } = await params
   const supabase = await createClient()
 
-  const [{ data: artist, error }, { data: albums }, { data: relations }, { data: musicEvents }, { data: eventAppearances }] =
-    await Promise.all([
-      supabase.from('artist').select('*').eq('id', id).single(),
-      supabase
-        .from('album')
-        .select('id, title, jacket_url, release_date, album_type')
-        .eq('artist_id', id)
-        .order('release_date', { ascending: false, nullsFirst: false }),
-      supabase
-        .from('artist_relation')
-        .select('artist_id_a, artist_id_b, relation_type, relation_style, description')
-        .or(`artist_id_a.eq.${id},artist_id_b.eq.${id}`),
-      supabase
-        .from('music_event')
-        .select('id, name, event_date, venue')
-        .eq('artist_id', id)
-        .order('event_date', { ascending: false, nullsFirst: false }),
-      supabase
-        .from('event_appearance')
-        .select('id, stage, venue, is_headliner, event_edition:event_edition_id(year, venue, event:event_id(name))')
-        .eq('artist_id', id),
-    ])
+  const [
+    { data: artist, error },
+    { data: albums },
+    { data: relations },
+    { data: musicEvents },
+    { data: eventAppearances },
+    { data: externalLinks },
+  ] = await Promise.all([
+    supabase.from('artist').select('*').eq('id', id).single(),
+    supabase
+      .from('album')
+      .select('id, title, jacket_url, release_date, album_type')
+      .eq('artist_id', id)
+      .order('release_date', { ascending: false, nullsFirst: false }),
+    supabase
+      .from('artist_relation')
+      .select('artist_id_a, artist_id_b, relation_type, relation_style, description')
+      .or(`artist_id_a.eq.${id},artist_id_b.eq.${id}`),
+    supabase
+      .from('music_event')
+      .select('id, name, event_date, venue')
+      .eq('artist_id', id)
+      .order('event_date', { ascending: false, nullsFirst: false }),
+    supabase
+      .from('event_appearance')
+      .select('id, stage, venue, is_headliner, event_edition:event_edition_id(year, venue, event:event_id(name))')
+      .eq('artist_id', id),
+    supabase.from('artist_external_link').select('id, link_type, url').eq('artist_id', id),
+  ])
 
   if (error || !artist) {
     notFound()
@@ -196,6 +216,25 @@ export default async function ArtistDetailPage({
           </div>
         </div>
       </div>
+
+      {externalLinks && externalLinks.length > 0 && (
+        <>
+          <SectionDivider label="External Links" />
+          <div className="mt-4 flex flex-wrap gap-2 text-xs">
+            {externalLinks.map((link) => (
+              <a
+                key={link.id}
+                href={link.url}
+                target="_blank"
+                rel="noreferrer"
+                className="rounded-md border border-white/15 px-3 py-1.5 hover:bg-white/5"
+              >
+                {LINK_TYPE_LABEL[link.link_type] ?? link.link_type}
+              </a>
+            ))}
+          </div>
+        </>
+      )}
 
       {artist.bio && (
         <>
