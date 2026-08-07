@@ -25,9 +25,17 @@ export default async function ArtistEditPage({
 
   return (
     <div className="mx-auto max-w-3xl px-6 py-12">
-      <Link href="/admin/data" className="text-xs text-white/40 hover:text-white/70">
-        ← 管理画面に戻る
-      </Link>
+      <div className="flex items-center justify-between">
+        <Link href="/admin/data" className="text-xs text-white/40 hover:text-white/70">
+          ← 管理画面に戻る
+        </Link>
+        <Link
+          href={`/admin/data/artists/${artist.id}/collaborators`}
+          className="text-xs text-white/40 hover:text-white/70"
+        >
+          コラボアーティストを探す
+        </Link>
+      </div>
 
       <h1 className="mt-4 text-2xl font-bold">{artist.name} を編集</h1>
 
