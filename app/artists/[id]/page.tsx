@@ -2,8 +2,8 @@ import Link from 'next/link'
 import { createClient } from '@/utils/Supabase/server'
 import { notFound } from 'next/navigation'
 import { formatDate, extractYoutubeVideoId, ARTIST_STREAMING_STATUS_LABEL, ARTIST_TYPE_LABEL } from '@/utils/format'
-import { getLinkLabel } from '@/utils/musicbrainz'
 import RelationGraph, { type RelationEdge, type RelationNode } from '@/app/components/RelationGraph'
+import ArtistLinkIcons from '@/app/components/ArtistLinkIcons'
 
 function SectionDivider({ label }: { label: string }) {
   return (
@@ -167,67 +167,17 @@ export default async function ArtistDetailPage({
             )}
           </div>
 
-          <div className="mt-3 flex flex-wrap gap-2">
-            {artist.apple_music_artist_id && (
-              <a
-                href={`https://music.apple.com/jp/artist/${encodeURIComponent(artist.name)}/${artist.apple_music_artist_id}`}
-                target="_blank"
-                rel="noreferrer"
-                className="rounded-md border border-white/15 px-3 py-1.5 text-xs hover:bg-white/5"
-              >
-                ▶ Apple Music
-              </a>
-            )}
-            {artist.spotify_artist_id && (
-              <a
-                href={`https://open.spotify.com/artist/${artist.spotify_artist_id}`}
-                target="_blank"
-                rel="noreferrer"
-                className="rounded-md border border-white/15 px-3 py-1.5 text-xs hover:bg-white/5"
-              >
-                ▶ Spotify
-              </a>
-            )}
-          </div>
-
-          <div className="mt-3 flex gap-3 text-xs text-white/40">
-            {artist.official_site_url && (
-              <a href={artist.official_site_url} target="_blank" rel="noreferrer" className="hover:text-white/70">
-                公式サイト
-              </a>
-            )}
-            {artist.sns_x_url && (
-              <a href={artist.sns_x_url} target="_blank" rel="noreferrer" className="hover:text-white/70">
-                X
-              </a>
-            )}
-            {artist.sns_instagram_url && (
-              <a href={artist.sns_instagram_url} target="_blank" rel="noreferrer" className="hover:text-white/70">
-                Instagram
-              </a>
-            )}
-          </div>
+          <ArtistLinkIcons
+            artistName={artist.name}
+            officialSiteUrl={artist.official_site_url}
+            snsXUrl={artist.sns_x_url}
+            snsInstagramUrl={artist.sns_instagram_url}
+            appleMusicArtistId={artist.apple_music_artist_id}
+            spotifyArtistId={artist.spotify_artist_id}
+            externalLinks={externalLinks ?? []}
+          />
         </div>
       </div>
-
-      {externalLinks && externalLinks.length > 0 && (
-        <>
-          <SectionDivider label="External Links" />
-          <div className="mt-4 flex flex-wrap gap-2 text-xs">
-            {externalLinks.map((link) => (
-              <a
-                key={link.id}
-                href={link.url}
-                target="_blank"
-                rel="noreferrer"
-                className="rounded-md border border-white/15 px-3 py-1.5 hover:bg-white/5"
-              >
-                {getLinkLabel(link.url, link.link_type)}
-              </a>
-            ))}
-          </div>
-        </>
-      )}
 
       {artist.bio && (
         <>
