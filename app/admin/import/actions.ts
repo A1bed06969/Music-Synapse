@@ -99,9 +99,12 @@ async function importOneArtist(artistUrl: string): Promise<ImportResult> {
 
     let albumId: string
 
+    // ④ このアルバムのトラック一覧を取得(アルバム名の正しい日本語表記もここから取る)
+    const { tracks: itunesTracks, localizedCollectionName } = await fetchTracksForAlbum(itunesAlbum.collectionId)
+
     const albumPayload = {
       artist_id: artistId,
-      title: itunesAlbum.collectionName,
+      title: localizedCollectionName ?? itunesAlbum.collectionName,
       release_date: itunesAlbum.releaseDate ? itunesAlbum.releaseDate.slice(0, 10) : null,
       track_count: itunesAlbum.trackCount ?? null,
       album_type: itunesAlbum.collectionType === 'Album' ? 'Album' : null,
@@ -129,9 +132,6 @@ async function importOneArtist(artistUrl: string): Promise<ImportResult> {
       }
       albumId = insertedAlbum.id
     }
-
-    // ④ このアルバムのトラック一覧を取得して登録
-    const itunesTracks = await fetchTracksForAlbum(itunesAlbum.collectionId)
 
     for (const itunesTrack of itunesTracks) {
       const { data: existingTrack } = await supabase
