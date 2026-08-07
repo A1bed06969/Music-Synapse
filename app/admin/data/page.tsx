@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { createClient } from '@/utils/Supabase/server'
 import { PREFECTURE_COORDS } from '@/utils/prefectures'
+import SearchableSelect from './SearchableSelect'
 import {
   createGenre,
   linkArtistGenre,
@@ -166,6 +167,10 @@ export default async function AdminDataPage({
   const labelOptions = labels ?? []
   const albumOptions = albums ?? []
   const trackOptions = tracks ?? []
+  const trackPickerItems = trackOptions.map((t) => {
+    const artist = Array.isArray(t.artist) ? t.artist[0] : t.artist
+    return { id: t.id, label: `${t.title}${artist?.name ? ` — ${artist.name}` : ''}` }
+  })
   const mediaOptions = mediaList ?? []
   const mediaProgramOptions = mediaPrograms ?? []
   const rankingOptions = rankings ?? []
@@ -536,18 +541,7 @@ export default async function AdminDataPage({
             </select>
           </div>
           <div className="flex flex-wrap gap-2">
-            <select name="track_id" className={`${inputClass} max-w-xs`} defaultValue="">
-              <option value="">(トラック指定なし)</option>
-              {trackOptions.map((t) => {
-                const artist = Array.isArray(t.artist) ? t.artist[0] : t.artist
-                return (
-                  <option key={t.id} value={t.id}>
-                    {t.title}
-                    {artist?.name ? ` — ${artist.name}` : ''}
-                  </option>
-                )
-              })}
-            </select>
+            <SearchableSelect items={trackPickerItems} name="track_id" placeholder="トラックを検索(任意)" />
             <select name="album_id" className={`${inputClass} max-w-xs`} defaultValue="">
               <option value="">(アルバム指定なし)</option>
               {albumOptions.map((a) => (
@@ -638,18 +632,7 @@ export default async function AdminDataPage({
             <input name="period_date" type="date" required className={`${inputClass} max-w-[160px]`} />
           </div>
           <div className="flex flex-wrap gap-2">
-            <select name="track_id" className={`${inputClass} max-w-xs`} defaultValue="">
-              <option value="">(トラック指定なし)</option>
-              {trackOptions.map((t) => {
-                const artist = Array.isArray(t.artist) ? t.artist[0] : t.artist
-                return (
-                  <option key={t.id} value={t.id}>
-                    {t.title}
-                    {artist?.name ? ` — ${artist.name}` : ''}
-                  </option>
-                )
-              })}
-            </select>
+            <SearchableSelect items={trackPickerItems} name="track_id" placeholder="トラックを検索(任意)" />
             <select name="album_id" className={`${inputClass} max-w-xs`} defaultValue="">
               <option value="">(アルバム指定なし)</option>
               {albumOptions.map((a) => (
@@ -733,20 +716,7 @@ export default async function AdminDataPage({
             ))}
           </select>
           <span className="text-xs text-white/40">で</span>
-          <select name="track_id" required className={`${inputClass} max-w-xs`} defaultValue="">
-            <option value="" disabled>
-              トラックを選択
-            </option>
-            {trackOptions.map((t) => {
-              const artist = Array.isArray(t.artist) ? t.artist[0] : t.artist
-              return (
-                <option key={t.id} value={t.id}>
-                  {t.title}
-                  {artist?.name ? ` — ${artist.name}` : ''}
-                </option>
-              )
-            })}
-          </select>
+          <SearchableSelect items={trackPickerItems} name="track_id" placeholder="トラックを選択" />
           <span className="text-xs text-white/40">を使用</span>
           <input name="usage_detail" placeholder="使用箇所(任意。例: OPテーマ)" className={`${inputClass} max-w-xs`} />
           <button type="submit" className={buttonClass}>
