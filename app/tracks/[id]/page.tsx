@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/utils/Supabase/server'
-import { formatDuration } from '@/utils/format'
+import { formatDuration, extractYoutubeVideoId } from '@/utils/format'
 
 export default async function TrackDetailPage({
   params,
@@ -37,7 +37,9 @@ export default async function TrackDetailPage({
       ? `https://embed.music.apple.com/jp/album/${encodeURIComponent(track.title)}/${album.apple_music_album_id}?i=${track.apple_music_track_id}`
       : null
 
-  const youtubeSrc = track.youtube_video_id ? `https://www.youtube.com/embed/${track.youtube_video_id}` : null
+  const youtubeVideoId = track.youtube_video_id ? extractYoutubeVideoId(track.youtube_video_id) : null
+  const youtubeSrc = youtubeVideoId ? `https://www.youtube.com/embed/${youtubeVideoId}` : null
+  const hasPlayer = Boolean(youtubeSrc || appleMusicSrc || track.spotify_track_id)
 
   return (
     <div className="mx-auto max-w-2xl px-6 py-12">
@@ -82,16 +84,14 @@ export default async function TrackDetailPage({
         </div>
       </div>
 
-      {(track.track_review || youtubeSrc || appleMusicSrc || track.spotify_track_id) && (
+      {(track.track_review || hasPlayer) && (
         <div
           className={
-            track.track_review && (youtubeSrc || appleMusicSrc || track.spotify_track_id)
-              ? 'mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2'
-              : 'mt-6'
+            track.track_review && hasPlayer ? 'mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2' : 'mt-6'
           }
         >
           {track.track_review && <p className="text-sm leading-relaxed text-white/70">{track.track_review}</p>}
-          {(youtubeSrc || appleMusicSrc || track.spotify_track_id) && (
+          {hasPlayer && (
             <div className="space-y-3">
               {youtubeSrc && (
                 <div className="aspect-video overflow-hidden rounded-md bg-black">
@@ -178,7 +178,6 @@ export default async function TrackDetailPage({
           </ul>
         </section>
       )}
-
     </div>
   )
 }
