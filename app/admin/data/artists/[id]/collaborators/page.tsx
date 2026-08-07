@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation'
 import { createClient } from '@/utils/Supabase/server'
 import { fetchArtistWithAlbums, extractCollaboratorNames, searchArtist } from '@/utils/itunes'
 import { importSelectedCollaborators } from './actions'
+import SubmitButton from './SubmitButton'
 
 export default async function CollaboratorsPage({
   params,
@@ -44,18 +45,28 @@ export default async function CollaboratorsPage({
 
   const results = await Promise.all(
     names.map(async (name) => {
+      let rawCandidates
       try {
-        const candidates = await searchArtist(name)
-        const filtered = candidates.filter((c) => !existingIds.has(String(c.artistId)))
-        return { name, candidates: filtered }
-      } catch {
-        return { name, candidates: [] }
+        rawCandidates = await searchArtist(name)
+      } catch (err) {
+        console.error(`コラボアーティスト候補の検索に失敗しました (${name}):`, err)
+        return { name, candidates: [], reason: 'error' as const }
       }
+      if (rawCandidates.length === 0) {
+        return { name, candidates: [], reason: 'none' as const }
+      }
+      const filtered = rawCandidates.filter((c) => !existingIds.has(String(c.artistId)))
+      if (filtered.length === 0) {
+        return { name, candidates: [], reason: 'already-registered' as const }
+      }
+      return { name, candidates: filtered, reason: 'found' as const }
     })
   )
 
-  const withCandidates = results.filter((r) => r.candidates.length > 0)
-  const notFoundNames = results.filter((r) => r.candidates.length === 0).map((r) => r.name)
+  const withCandidates = results.filter((r) => r.reason === 'found')
+  const notFoundNames = results.filter((r) => r.reason === 'none').map((r) => r.name)
+  const alreadyRegisteredNames = results.filter((r) => r.reason === 'already-registered').map((r) => r.name)
+  const searchFailedNames = results.filter((r) => r.reason === 'error').map((r) => r.name)
 
   return (
     <div className="mx-auto max-w-2xl px-6 py-12">
@@ -108,17 +119,18 @@ export default async function CollaboratorsPage({
               </div>
             </div>
           ))}
-          <button
-            type="submit"
-            className="rounded-md bg-white px-4 py-2 text-sm font-medium text-black transition hover:bg-white/85"
-          >
-            選択したアーティストを登録する
-          </button>
+          <SubmitButton />
         </form>
       )}
 
       {notFoundNames.length > 0 && (
         <p className="mt-8 text-xs text-white/40">見つからなかった名前: {notFoundNames.join('、')}</p>
+      )}
+      {alreadyRegisteredNames.length > 0 && (
+        <p className="mt-2 text-xs text-white/40">登録済み: {alreadyRegisteredNames.join('、')}</p>
+      )}
+      {searchFailedNames.length > 0 && (
+        <p className="mt-2 text-xs text-white/40">検索に失敗した名前: {searchFailedNames.join('、')}</p>
       )}
     </div>
   )
