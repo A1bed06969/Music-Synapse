@@ -32,6 +32,7 @@ export default async function ArtistEditPage({
         <div className="flex gap-3">
           <Link
             href={`/admin/data/artists/${artist.id}/musicbrainz`}
+            prefetch={false}
             className="text-xs text-white/40 hover:text-white/70"
           >
             MusicBrainzで検索

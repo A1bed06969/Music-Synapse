@@ -1,22 +1,9 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/utils/Supabase/server'
-import { searchArtist, fetchArtistDetails } from '@/utils/musicbrainz'
+import { searchArtist, fetchArtistDetails, getLinkLabel } from '@/utils/musicbrainz'
 import { importMusicBrainzData } from './actions'
 import SubmitButton from './SubmitButton'
-
-const LINK_TYPE_LABEL: Record<string, string> = {
-  streaming: 'ストリーミング',
-  'free streaming': '無料ストリーミング',
-  'social network': 'SNS',
-  'other databases': 'データベース',
-  allmusic: 'AllMusic',
-  discogs: 'Discogs',
-  wikidata: 'Wikidata',
-  IMDb: 'IMDb',
-  youtube: 'YouTube',
-  'youtube music': 'YouTube Music',
-}
 
 export default async function MusicBrainzPage({
   params,
@@ -29,7 +16,11 @@ export default async function MusicBrainzPage({
   const { mbid, success, error: errorMessage } = await searchParams
   const supabase = await createClient()
 
-  const { data: artist, error } = await supabase.from('artist').select('id, name').eq('id', id).single()
+  const { data: artist, error } = await supabase
+    .from('artist')
+    .select('id, name, official_site_url, sns_x_url, sns_instagram_url')
+    .eq('id', id)
+    .single()
 
   if (error || !artist) {
     notFound()
@@ -51,7 +42,13 @@ export default async function MusicBrainzPage({
       )}
 
       {mbid ? (
-        <MusicBrainzPreview artistId={id} mbid={mbid} />
+        <MusicBrainzPreview
+          artistId={id}
+          mbid={mbid}
+          currentOfficialSiteUrl={artist.official_site_url}
+          currentSnsXUrl={artist.sns_x_url}
+          currentSnsInstagramUrl={artist.sns_instagram_url}
+        />
       ) : (
         <MusicBrainzSearchResults artistId={id} artistName={artist.name} />
       )}
@@ -75,22 +72,41 @@ async function MusicBrainzSearchResults({ artistId, artistName }: { artistId: st
   return (
     <div className="mt-8 space-y-2">
       {results.map((r) => (
-        <Link
-          key={r.mbid}
-          href={`/admin/data/artists/${artistId}/musicbrainz?mbid=${r.mbid}`}
-          className="block rounded-md border border-white/15 px-4 py-3 text-sm hover:bg-white/5"
-        >
-          <span className="font-medium">{r.name}</span>
-          <span className="ml-2 text-xs text-white/40">
-            {r.type ?? '種別不明'} / {r.country ?? '国不明'} / {r.beginYear ? `${r.beginYear}年〜` : '結成年不明'}
-          </span>
-        </Link>
+        <div key={r.mbid} className="rounded-md border border-white/15 px-4 py-3 text-sm hover:bg-white/5">
+          <Link href={`/admin/data/artists/${artistId}/musicbrainz?mbid=${r.mbid}`} prefetch={false} className="block">
+            <span className="font-medium">{r.name}</span>
+            <span className="ml-2 text-xs text-white/40">
+              {r.type ?? '種別不明'} / {r.country ?? '国不明'} / {r.beginYear ? `${r.beginYear}年〜` : '結成年不明'}
+              {r.score !== null ? ` / 一致度: ${r.score}%` : ''}
+            </span>
+          </Link>
+          <a
+            href={`https://musicbrainz.org/artist/${r.mbid}`}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-1 inline-block text-xs text-white/30 underline hover:text-white/60"
+          >
+            MusicBrainzで確認 →
+          </a>
+        </div>
       ))}
     </div>
   )
 }
 
-async function MusicBrainzPreview({ artistId, mbid }: { artistId: string; mbid: string }) {
+async function MusicBrainzPreview({
+  artistId,
+  mbid,
+  currentOfficialSiteUrl,
+  currentSnsXUrl,
+  currentSnsInstagramUrl,
+}: {
+  artistId: string
+  mbid: string
+  currentOfficialSiteUrl: string | null
+  currentSnsXUrl: string | null
+  currentSnsInstagramUrl: string | null
+}) {
   let details
   try {
     details = await fetchArtistDetails(mbid)
@@ -99,10 +115,15 @@ async function MusicBrainzPreview({ artistId, mbid }: { artistId: string; mbid: 
     return <p className="mt-8 text-sm text-white/40">MusicBrainzからの取得に失敗しました。</p>
   }
 
+  const sortedLinks = [...details.links].sort(
+    (a, b) => a.type.localeCompare(b.type) || a.url.localeCompare(b.url)
+  )
+
   return (
     <div className="mt-8">
       <Link
         href={`/admin/data/artists/${artistId}/musicbrainz`}
+        prefetch={false}
         className="text-xs text-white/40 hover:text-white/70"
       >
         ← 候補一覧に戻る
@@ -111,20 +132,21 @@ async function MusicBrainzPreview({ artistId, mbid }: { artistId: string; mbid: 
       <div className="mt-4 space-y-4 text-sm">
         <div>
           <p className="text-xs uppercase tracking-wide text-white/40">公式サイト・SNS</p>
-          <p className="mt-1 text-white/70">
-            公式サイト: {details.officialHomepage ?? 'なし'} / X: {details.twitterUrl ?? 'なし'} / Instagram:{' '}
-            {details.instagramUrl ?? 'なし'}
-          </p>
+          <div className="mt-1 space-y-1 text-white/70">
+            <ProfileFieldPreview label="公式サイト" mbValue={details.officialHomepage} currentValue={currentOfficialSiteUrl} />
+            <ProfileFieldPreview label="X" mbValue={details.twitterUrl} currentValue={currentSnsXUrl} />
+            <ProfileFieldPreview label="Instagram" mbValue={details.instagramUrl} currentValue={currentSnsInstagramUrl} />
+          </div>
         </div>
         <div>
-          <p className="text-xs uppercase tracking-wide text-white/40">外部リンク({details.links.length}件)</p>
-          {details.links.length === 0 ? (
+          <p className="text-xs uppercase tracking-wide text-white/40">外部リンク({sortedLinks.length}件)</p>
+          {sortedLinks.length === 0 ? (
             <p className="mt-1 text-white/40">なし</p>
           ) : (
             <ul className="mt-1 space-y-1 text-white/70">
-              {details.links.map((link, i) => (
+              {sortedLinks.map((link, i) => (
                 <li key={i}>
-                  {LINK_TYPE_LABEL[link.type] ?? link.type}: {link.url}
+                  {getLinkLabel(link.url, link.type)}: {link.url}
                 </li>
               ))}
             </ul>
@@ -142,5 +164,25 @@ async function MusicBrainzPreview({ artistId, mbid }: { artistId: string; mbid: 
         <SubmitButton />
       </form>
     </div>
+  )
+}
+
+function ProfileFieldPreview({
+  label,
+  mbValue,
+  currentValue,
+}: {
+  label: string
+  mbValue: string | null
+  currentValue: string | null
+}) {
+  const willBeSkipped = Boolean(mbValue) && Boolean(currentValue)
+  return (
+    <p>
+      {label}: {mbValue ?? 'なし'}
+      {willBeSkipped && (
+        <span className="ml-1 text-amber-400/80">(既存の値があるため上書きされません)</span>
+      )}
+    </p>
   )
 }

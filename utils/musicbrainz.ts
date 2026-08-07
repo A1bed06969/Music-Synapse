@@ -11,6 +11,7 @@ export type MusicBrainzSearchResult = {
   country: string | null
   type: string | null
   beginYear: number | null
+  score: number | null
 }
 
 export async function searchArtist(name: string): Promise<MusicBrainzSearchResult[]> {
@@ -27,6 +28,7 @@ export async function searchArtist(name: string): Promise<MusicBrainzSearchResul
     country: a.country ?? null,
     type: a.type ?? null,
     beginYear: a['life-span']?.begin ? Number(String(a['life-span'].begin).slice(0, 4)) : null,
+    score: a.score != null && !Number.isNaN(Number(a.score)) ? Number(a.score) : null,
   }))
 }
 
@@ -42,6 +44,62 @@ const ALLOWED_LINK_TYPES = new Set([
   'youtube',
   'youtube music',
 ])
+
+export const LINK_TYPE_LABEL: Record<string, string> = {
+  streaming: 'ストリーミング',
+  'free streaming': '無料ストリーミング',
+  'social network': 'SNS',
+  'other databases': 'データベース',
+  allmusic: 'AllMusic',
+  discogs: 'Discogs',
+  wikidata: 'Wikidata',
+  IMDb: 'IMDb',
+  youtube: 'YouTube',
+  'youtube music': 'YouTube Music',
+}
+
+// Root domain -> recognizable service name, used so visually-identical
+// link_type chips (e.g. multiple "streaming" links) can be told apart at a
+// glance. Matched against the hostname's own value or as a suffix (so
+// subdomains like `open.qobuz.com` or `s.awa.fm` still match `qobuz.com` /
+// `awa.fm`).
+const DOMAIN_SERVICE_LABEL: Record<string, string> = {
+  'apple.com': 'Apple Music',
+  'spotify.com': 'Spotify',
+  'amazon.com': 'Amazon Music',
+  'amazon.co.jp': 'Amazon Music',
+  'tidal.com': 'Tidal',
+  'qobuz.com': 'Qobuz',
+  'awa.fm': 'AWA',
+  'line.me': 'LINE Music',
+  'discogs.com': 'Discogs',
+  'allmusic.com': 'AllMusic',
+  'wikidata.org': 'Wikidata',
+  'imdb.com': 'IMDb',
+}
+
+/**
+ * Prefer a recognizable service name derived from the link URL's hostname
+ * (so e.g. multiple `streaming`-typed links can be told apart), falling back
+ * to the generic link_type label when the host isn't in our small map.
+ */
+export function getLinkLabel(url: string, linkType: string): string {
+  try {
+    const hostname = new URL(url).hostname.replace(/^www\./, '')
+
+    if (hostname === 'music.youtube.com') return 'YouTube Music'
+    if (hostname === 'youtube.com' || hostname.endsWith('.youtube.com')) return 'YouTube'
+
+    for (const [domain, label] of Object.entries(DOMAIN_SERVICE_LABEL)) {
+      if (hostname === domain || hostname.endsWith(`.${domain}`)) {
+        return label
+      }
+    }
+    return LINK_TYPE_LABEL[linkType] ?? linkType
+  } catch {
+    return LINK_TYPE_LABEL[linkType] ?? linkType
+  }
+}
 
 export type MusicBrainzArtistDetails = {
   officialHomepage: string | null

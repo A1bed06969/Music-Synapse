@@ -2,20 +2,8 @@ import Link from 'next/link'
 import { createClient } from '@/utils/Supabase/server'
 import { notFound } from 'next/navigation'
 import { formatDate, extractYoutubeVideoId, ARTIST_STREAMING_STATUS_LABEL, ARTIST_TYPE_LABEL } from '@/utils/format'
+import { getLinkLabel } from '@/utils/musicbrainz'
 import RelationGraph, { type RelationEdge, type RelationNode } from '@/app/components/RelationGraph'
-
-const LINK_TYPE_LABEL: Record<string, string> = {
-  streaming: 'ストリーミング',
-  'free streaming': '無料ストリーミング',
-  'social network': 'SNS',
-  'other databases': 'データベース',
-  allmusic: 'AllMusic',
-  discogs: 'Discogs',
-  wikidata: 'Wikidata',
-  IMDb: 'IMDb',
-  youtube: 'YouTube',
-  'youtube music': 'YouTube Music',
-}
 
 function SectionDivider({ label }: { label: string }) {
   return (
@@ -62,7 +50,12 @@ export default async function ArtistDetailPage({
       .from('event_appearance')
       .select('id, stage, venue, is_headliner, event_edition:event_edition_id(year, venue, event:event_id(name))')
       .eq('artist_id', id),
-    supabase.from('artist_external_link').select('id, link_type, url').eq('artist_id', id),
+    supabase
+      .from('artist_external_link')
+      .select('id, link_type, url')
+      .eq('artist_id', id)
+      .order('link_type', { ascending: true })
+      .order('url', { ascending: true }),
   ])
 
   if (error || !artist) {
@@ -229,7 +222,7 @@ export default async function ArtistDetailPage({
                 rel="noreferrer"
                 className="rounded-md border border-white/15 px-3 py-1.5 hover:bg-white/5"
               >
-                {LINK_TYPE_LABEL[link.link_type] ?? link.link_type}
+                {getLinkLabel(link.url, link.link_type)}
               </a>
             ))}
           </div>

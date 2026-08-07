@@ -62,8 +62,12 @@ export async function importMusicBrainzData(formData: FormData) {
     }
   }
 
+  let genresLinked = 0
   for (const genreName of details.genres) {
-    const { data: existingGenre } = await supabase.from('genre').select('id').eq('name', genreName).maybeSingle()
+    // Case-insensitive lookup: MusicBrainz returns lowercase genre names
+    // (e.g. "j-pop") but this app's existing genres may be title-cased
+    // (e.g. "J-POP") — an exact match would otherwise create duplicates.
+    const { data: existingGenre } = await supabase.from('genre').select('id').ilike('name', genreName).maybeSingle()
     let genreId = existingGenre?.id as string | undefined
     if (!genreId) {
       const { data: createdGenre, error: createError } = await supabase
@@ -80,10 +84,19 @@ export async function importMusicBrainzData(formData: FormData) {
     const { error: linkError } = await supabase.from('artist_genre').upsert({ artist_id: artistId, genre_id: genreId })
     if (linkError) {
       console.error(`ジャンル「${genreName}」の紐付けに失敗しました:`, linkError)
+    } else {
+      genresLinked += 1
     }
   }
 
   revalidatePath('/admin/data')
   revalidatePath(`/artists/${artistId}`)
-  redirectWith(artistId, 'success', 'MusicBrainzのデータを取り込みました。')
+
+  const linkCount = details.links.length
+  const profileFieldCount = Object.keys(fieldUpdate).length
+  redirectWith(
+    artistId,
+    'success',
+    `外部リンク${linkCount}件・ジャンル${genresLinked}件を取り込みました(プロフィール${profileFieldCount}件を更新)`
+  )
 }
