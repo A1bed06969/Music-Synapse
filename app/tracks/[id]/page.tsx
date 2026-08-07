@@ -37,6 +37,8 @@ export default async function TrackDetailPage({
       ? `https://embed.music.apple.com/jp/album/${encodeURIComponent(track.title)}/${album.apple_music_album_id}?i=${track.apple_music_track_id}`
       : null
 
+  const youtubeSrc = track.youtube_video_id ? `https://www.youtube.com/embed/${track.youtube_video_id}` : null
+
   return (
     <div className="mx-auto max-w-2xl px-6 py-12">
       {success && (
@@ -80,32 +82,55 @@ export default async function TrackDetailPage({
         </div>
       </div>
 
-      {(appleMusicSrc || track.spotify_track_id) && (
-        <section className="mt-6 space-y-3">
-          {appleMusicSrc && (
-            <iframe
-              allow="autoplay *; encrypted-media *; clipboard-write"
-              frameBorder="0"
-              height="175"
-              style={{ width: '100%', maxWidth: '660px', overflow: 'hidden', borderRadius: '10px' }}
-              sandbox="allow-forms allow-popups allow-same-origin allow-scripts allow-storage-access-by-user-activation allow-top-navigation-by-user-activation"
-              src={appleMusicSrc}
-              loading="lazy"
-            />
+      {(track.track_review || youtubeSrc || appleMusicSrc || track.spotify_track_id) && (
+        <div
+          className={
+            track.track_review && (youtubeSrc || appleMusicSrc || track.spotify_track_id)
+              ? 'mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2'
+              : 'mt-6'
+          }
+        >
+          {track.track_review && <p className="text-sm leading-relaxed text-white/70">{track.track_review}</p>}
+          {(youtubeSrc || appleMusicSrc || track.spotify_track_id) && (
+            <div className="space-y-3">
+              {youtubeSrc && (
+                <div className="aspect-video overflow-hidden rounded-md bg-black">
+                  <iframe
+                    src={youtubeSrc}
+                    title={track.title}
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen
+                    loading="lazy"
+                    className="h-full w-full"
+                  />
+                </div>
+              )}
+              {appleMusicSrc && (
+                <iframe
+                  allow="autoplay *; encrypted-media *; clipboard-write"
+                  frameBorder="0"
+                  height="175"
+                  style={{ width: '100%', maxWidth: '660px', overflow: 'hidden', borderRadius: '10px' }}
+                  sandbox="allow-forms allow-popups allow-same-origin allow-scripts allow-storage-access-by-user-activation allow-top-navigation-by-user-activation"
+                  src={appleMusicSrc}
+                  loading="lazy"
+                />
+              )}
+              {track.spotify_track_id && (
+                <iframe
+                  style={{ borderRadius: '12px' }}
+                  src={`https://open.spotify.com/embed/track/${track.spotify_track_id}?utm_source=generator`}
+                  width="100%"
+                  height="152"
+                  frameBorder="0"
+                  allowFullScreen
+                  allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+                  loading="lazy"
+                />
+              )}
+            </div>
           )}
-          {track.spotify_track_id && (
-            <iframe
-              style={{ borderRadius: '12px' }}
-              src={`https://open.spotify.com/embed/track/${track.spotify_track_id}?utm_source=generator`}
-              width="100%"
-              height="152"
-              frameBorder="0"
-              allowFullScreen
-              allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
-              loading="lazy"
-            />
-          )}
-        </section>
+        </div>
       )}
 
       {track.lyric_url && (
@@ -154,9 +179,6 @@ export default async function TrackDetailPage({
         </section>
       )}
 
-      {track.track_review && (
-        <p className="mt-8 text-sm leading-relaxed text-white/70">{track.track_review}</p>
-      )}
     </div>
   )
 }
