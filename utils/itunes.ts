@@ -73,10 +73,29 @@ export async function fetchArtistWithAlbums(artistId: string): Promise<{
 
   // トップレベルのartistオブジェクトのartistNameはcountry=JPを指定していてもローマ字化
   // されていることがある(例:「名誉伝説」が"MEIYO DENSETSU"になる)。同じレスポンス内の
-  // アルバム(collection)側のartistNameは一貫して正しく日本語化されているため、
-  // 取得できればそちらを正としてアーティスト名を上書きする。
-  if (artist && albums.length > 0 && albums[0].artistName) {
-    artist.artistName = albums[0].artistName
+  // アルバム(collection)側のartistNameは一貫して正しく日本語化されているが、コラボ・
+  // features作品では複数アーティストの連名になっていることがあるため、先頭のアルバムを
+  // 単純採用すると誤ったアーティスト名になりうる(例: 直近リリースがフィーチャリング作品だと
+  // 「ACAね(...), Rin音, Yaffle」のような連名がそのまま採用されてしまう)。
+  // そのため全アルバムの中で最も出現頻度が高いartistNameを採用する
+  // (通常は本人名義のソロリリースが大多数を占めるため)。
+  if (artist && albums.length > 0) {
+    const nameCounts = new Map<string, number>()
+    for (const album of albums) {
+      if (!album.artistName) continue
+      nameCounts.set(album.artistName, (nameCounts.get(album.artistName) ?? 0) + 1)
+    }
+    let mostCommonName: string | null = null
+    let mostCommonCount = 0
+    for (const [name, count] of nameCounts) {
+      if (count > mostCommonCount) {
+        mostCommonName = name
+        mostCommonCount = count
+      }
+    }
+    if (mostCommonName) {
+      artist.artistName = mostCommonName
+    }
   }
 
   return { artist, albums }
