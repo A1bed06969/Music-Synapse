@@ -23,6 +23,32 @@ const LISTEN_TYPES = new Set(['streaming', 'free streaming', 'youtube', 'youtube
 const SOCIAL_TYPE = 'social network'
 const INFO_TYPES = new Set(['other databases', 'allmusic', 'discogs', 'wikidata', 'IMDb'])
 
+/**
+ * 同じサービスを指す重複リンクを除外する。ホスト名(大文字小文字を無視)
+ * が同じ場合は同一サービスとみなし、先に追加された方(専用カラム由来。
+ * 専用カラムのアイテムはexternalLinksループより前にpushされる)を残す。
+ * Apple Musicのようにリージョン違いのパス(/jp/artist/... と
+ * /gb/artist/...)がartist_external_linkに複数登録されるケースがあるため、
+ * パスは無視してホスト名のみで判定する。URLとして不正な場合は生の文字列
+ * をそのままキーとして使う(パースエラーで例外を投げない)。
+ */
+function dedupeByUrl(items: LinkItem[]): LinkItem[] {
+  const seen = new Set<string>()
+  const result: LinkItem[] = []
+  for (const item of items) {
+    let key: string
+    try {
+      key = new URL(item.href).hostname.toLowerCase()
+    } catch {
+      key = item.href
+    }
+    if (seen.has(key)) continue
+    seen.add(key)
+    result.push(item)
+  }
+  return result
+}
+
 function IconBadge({ item }: { item: LinkItem }) {
   if (item.icon) {
     return (
@@ -144,9 +170,9 @@ export default function ArtistLinkIcons({
 
   return (
     <div>
-      <CategoryRow label="視聴" items={listenItems} />
-      <CategoryRow label="公式・SNS" items={officialSnsItems} />
-      <CategoryRow label="情報" items={infoItems} />
+      <CategoryRow label="視聴" items={dedupeByUrl(listenItems)} />
+      <CategoryRow label="公式・SNS" items={dedupeByUrl(officialSnsItems)} />
+      <CategoryRow label="情報" items={dedupeByUrl(infoItems)} />
     </div>
   )
 }
