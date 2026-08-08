@@ -21,6 +21,7 @@
 - 定期実行の自動収集(スケジュールジョブ)。今回も既存パターン通り、手動トリガー
 - MusicBrainzの全リリースを総当たりで自動巡回すること。1回の実行は管理者が選んだ1アルバム分のリリースに対してのみ行う
 - 演奏楽器別クレジット(ギター・ドラム等performer系)の取り込み。役割は主要7種類(producer/mix/mastering/composer/lyricist/arranger/artwork)に絞る
+- MusicBrainzのWork(楽曲)単位の関係性を追いかけること。lyricist等、Work単位でしか管理されていないクレジットの欠落は既知の制限として受容する(詳細は「データモデル」内の役割の正規化を参照)
 - 同姓同名の人物を高精度に名寄せする仕組み。MBID/Discogs IDが無い場合は名前の完全一致のみで判定し、誤判定のリスクは人間の確認プロセスに委ねる
 - `credit_person`の編集UI(削除・統合等)。今回は取り込みと表示のみ
 - Discogsの実装は、MusicBrainz分が完成した後の後続タスクとして扱う(設計・スキーマは両ソース共通で今回まとめて決めるが、実装順序は段階的にする)
@@ -66,7 +67,9 @@ create unique index artist_relation_dedup_key on artist_relation (artist_id_a, a
 -- 適用前に既存データに重複が無いことを確認する
 ```
 
-役割(role)の正規化: MusicBrainzのリリースrelationとDiscogsのクレジット欄はそれぞれ独自の表記(例: MusicBrainzの`producer`、Discogsの`Producer`/`Executive-Producer`)を持つため、取り込み時に上記7種類のいずれかへマッピングする許可リスト方式とする。対応しない役割(演奏楽器別クレジット等)は取り込み対象外(MusicBrainzリンク種別の絞り込みと同じ方針)。
+役割(role)の正規化: MusicBrainzのリリースrelationとDiscogsのクレジット欄はそれぞれ独自の表記(例: MusicBrainzの`producer`、Discogsの`Producer`/`Executive-Producer`)を持つため、取り込み時に上記7種類のいずれかへマッピングする許可リスト方式とする。対応しない役割(演奏楽器別クレジット等)は取り込み対象外(MusicBrainzリンク種別の絞り込みと同じ方針)。MusicBrainz側の実際のtype文字列は実データで確認済み: `producer`→producer, `mix`→mix, `mastering`→mastering, `composer`→composer, `arranger`→arranger, `design/illustration`→artwork, `lyricist`→lyricist(文字列としては標準だが実データでの出現は未確認)。
+
+**既知の制限(データソース側の制約)**: MusicBrainzでは作詞(lyricist)クレジットの多くが「Work(楽曲そのものを表す抽象エンティティ、個々のリリースとは別物)」単位で管理されており、今回採用するリリース単位の取得方法(`release`エンティティへの`inc=artist-rels`)では拾えないことを実データで確認済み(日本で最も著名な作詞家の一人、秋元康の実データで、production関連は取得できるがlyricistは1件も無いことを確認)。composer/arrangerは稀にリリース単位でも取得できる(John Williamsの実データで確認)。Work単位まで追いかければ完全に取得できるが、リリース→収録曲一覧→各曲のWork→関係性という追加のAPI呼び出し(1アルバムあたり数十秒〜数分規模)が必要になるため、今回は実装しない。取得できるものだけ取り込み、lyricist等の欠落は既知の制限として受容する。
 
 ## アーキテクチャ
 
