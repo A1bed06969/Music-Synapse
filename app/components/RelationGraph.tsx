@@ -17,7 +17,7 @@ import {
 import { polygonHull } from 'd3-polygon'
 import { line, curveCatmullRomClosed } from 'd3-shape'
 
-export type RelationNode = { id: string; name: string; category?: string | null }
+export type RelationNode = { id: string; name: string; category?: string | null; type?: 'artist' | 'person' }
 export type RelationEdge = {
   source: string
   target: string
@@ -187,7 +187,8 @@ export default function RelationGraph({
       current.node.fx = null
       current.node.fy = null
       if (!current.moved) {
-        router.push(`/artists/${current.node.id}`)
+        const path = current.node.type === 'person' ? '/people' : '/artists'
+        router.push(`${path}/${current.node.id}`)
       }
     }
 
@@ -268,6 +269,7 @@ export default function RelationGraph({
                   fill={isCenter ? '#fff' : 'rgba(255,255,255,0.14)'}
                   stroke="rgba(255,255,255,0.4)"
                   strokeWidth={1}
+                  strokeDasharray={node.type === 'person' ? '3 3' : undefined}
                 />
                 <text
                   y={isCenter ? 42 : 32}

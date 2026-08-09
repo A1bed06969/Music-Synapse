@@ -2,7 +2,8 @@ import Link from 'next/link'
 import { createClient } from '@/utils/Supabase/server'
 import { notFound } from 'next/navigation'
 import { formatDate, extractYoutubeVideoId, ARTIST_STREAMING_STATUS_LABEL, ARTIST_TYPE_LABEL } from '@/utils/format'
-import RelationGraph, { type RelationEdge, type RelationNode } from '@/app/components/RelationGraph'
+import RelationGraph from '@/app/components/RelationGraph'
+import { buildArtistRelationGraph } from '@/utils/relationGraphData'
 import ArtistLinkIcons from '@/app/components/ArtistLinkIcons'
 
 function SectionDivider({ label }: { label: string }) {
@@ -24,38 +25,31 @@ export default async function ArtistDetailPage({
   const supabase = await createClient()
 
   const [
-    { data: artist, error },
-    { data: albums },
-    { data: relations },
-    { data: musicEvents },
-    { data: eventAppearances },
-    { data: externalLinks },
+    [{ data: artist, error }, { data: albums }, { data: musicEvents }, { data: eventAppearances }, { data: externalLinks }],
+    relationGraph,
   ] = await Promise.all([
-    supabase.from('artist').select('*').eq('id', id).single(),
-    supabase
-      .from('album')
-      .select('id, title, jacket_url, release_date, album_type')
-      .eq('artist_id', id)
-      .order('release_date', { ascending: false, nullsFirst: false }),
-    supabase
-      .from('artist_relation')
-      .select('artist_id_a, artist_id_b, relation_type, relation_style, description')
-      .or(`artist_id_a.eq.${id},artist_id_b.eq.${id}`),
-    supabase
-      .from('music_event')
-      .select('id, name, event_date, venue')
-      .eq('artist_id', id)
-      .order('event_date', { ascending: false, nullsFirst: false }),
-    supabase
-      .from('event_appearance')
-      .select('id, stage, venue, is_headliner, event_edition:event_edition_id(year, venue, event:event_id(name))')
-      .eq('artist_id', id),
-    supabase
-      .from('artist_external_link')
-      .select('id, link_type, url')
-      .eq('artist_id', id)
-      .order('link_type', { ascending: true })
-      .order('url', { ascending: true }),
+    Promise.all([
+      supabase.from('artist').select('*').eq('id', id).single(),
+      supabase
+        .from('album')
+        .select('id, title, jacket_url, release_date, album_type')
+        .eq('artist_id', id)
+        .order('release_date', { ascending: false, nullsFirst: false }),
+      supabase
+        .from('music_event')
+        .select('id, name, event_date, venue')
+        .eq('artist_id', id)
+        .order('event_date', { ascending: false, nullsFirst: false }),
+      supabase
+        .from('event_appearance')
+        .select('id, stage, venue, is_headliner, event_edition:event_edition_id(year, venue, event:event_id(name))')
+        .eq('artist_id', id),
+      supabase.from('artist_external_link').select('id, link_type, url').eq('artist_id', id).order('link_type', { ascending: true }).order('url', { ascending: true }),
+    ]),
+    (async () => {
+      const { data: nameRow } = await supabase.from('artist').select('name').eq('id', id).single()
+      return buildArtistRelationGraph(supabase, id, nameRow?.name ?? '')
+    })(),
   ])
 
   if (error || !artist) {
@@ -78,44 +72,6 @@ export default async function ArtistDetailPage({
       }
     })
     .sort((a, b) => b.year - a.year)
-
-  const otherIds = Array.from(
-    new Set((relations ?? []).map((r) => (r.artist_id_a === id ? r.artist_id_b : r.artist_id_a)))
-  )
-
-  const [{ data: others }, { data: artistGenres }] = otherIds.length
-    ? await Promise.all([
-        supabase.from('artist').select('id, name').in('id', otherIds),
-        supabase
-          .from('artist_genre')
-          .select('artist_id, genre:genre_id(name)')
-          .in('artist_id', [id, ...otherIds]),
-      ])
-    : [{ data: [] }, { data: [] }]
-
-  const categoryByArtist = new Map<string, string>()
-  for (const row of artistGenres ?? []) {
-    if (categoryByArtist.has(row.artist_id)) continue
-    const genre = Array.isArray(row.genre) ? row.genre[0] : row.genre
-    if (genre?.name) categoryByArtist.set(row.artist_id, genre.name)
-  }
-
-  const relationNodes: RelationNode[] = otherIds.length
-    ? [{ id: artist.id, name: artist.name }, ...(others ?? [])].map((a) => ({
-        id: a.id,
-        name: a.name,
-        category: categoryByArtist.get(a.id) ?? null,
-      }))
-    : []
-  const relationNodeIds = new Set(relationNodes.map((n) => n.id))
-  const relationEdges: RelationEdge[] = (relations ?? [])
-    .filter((r) => relationNodeIds.has(r.artist_id_a) && relationNodeIds.has(r.artist_id_b))
-    .map((r) => ({
-      source: r.artist_id_a,
-      target: r.artist_id_b,
-      style: (r.relation_style as 'solid' | 'dotted') ?? 'solid',
-      label: r.description ?? r.relation_type,
-    }))
 
   return (
     <div className="mx-auto max-w-3xl px-6 py-12">
@@ -276,9 +232,9 @@ export default async function ArtistDetailPage({
 
       <SectionDivider label="Relation Graph" />
       <div className="mt-4 max-w-md overflow-hidden rounded-lg border border-white/10 bg-white/[0.02]">
-        <RelationGraph nodes={relationNodes} edges={relationEdges} centerId={artist.id} />
+        <RelationGraph nodes={relationGraph.nodes} edges={relationGraph.edges} centerId={artist.id} />
       </div>
-      {relationNodes.length > 0 && (
+      {relationGraph.nodes.length > 0 && (
         <div className="max-w-md">
           <Link
             href={`/artists/${artist.id}/relations`}
