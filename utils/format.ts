@@ -73,3 +73,13 @@ export function extractSpotifyTrackId(input: string): string | null {
     return null
   }
 }
+
+export const CREDIT_ROLE_LABEL: Record<string, string> = {
+  producer: 'プロデューサー',
+  mix: 'ミックス',
+  mastering: 'マスタリング',
+  composer: '作曲',
+  lyricist: '作詞',
+  arranger: '編曲',
+  artwork: 'アートワーク',
+}

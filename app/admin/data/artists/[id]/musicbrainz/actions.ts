@@ -29,11 +29,14 @@ export async function importMusicBrainzData(formData: FormData) {
 
   const { data: currentArtist } = await supabase
     .from('artist')
-    .select('official_site_url, sns_x_url, sns_instagram_url')
+    .select('official_site_url, sns_x_url, sns_instagram_url, musicbrainz_id')
     .eq('id', artistId)
     .single()
 
   const fieldUpdate: Record<string, string> = {}
+  if (!currentArtist?.musicbrainz_id) {
+    fieldUpdate.musicbrainz_id = mbid
+  }
   if (!currentArtist?.official_site_url && details.officialHomepage) {
     fieldUpdate.official_site_url = details.officialHomepage
   }

@@ -171,3 +171,68 @@ export async function fetchArtistDetails(mbid: string): Promise<MusicBrainzArtis
 
   return { officialHomepage, twitterUrl, instagramUrl, links, genres }
 }
+
+export type MusicBrainzReleaseSearchResult = {
+  mbid: string
+  title: string
+  date: string | null
+  country: string | null
+  score: number | null
+}
+
+function escapeLuceneQueryValue(value: string): string {
+  return value.replace(/"/g, '\\"')
+}
+
+export async function searchRelease(title: string, artistName: string): Promise<MusicBrainzReleaseSearchResult[]> {
+  const query = `release:"${escapeLuceneQueryValue(title)}" AND artist:"${escapeLuceneQueryValue(artistName)}"`
+  const url = `${MUSICBRAINZ_BASE}/release?query=${encodeURIComponent(query)}&fmt=json&limit=5`
+  const data = await fetchMusicBrainz(url, 'release search')
+  return (data.releases ?? []).map((r: any) => {
+    const event = Array.isArray(r['release-events']) ? r['release-events'][0] : null
+    return {
+      mbid: r.id,
+      title: r.title,
+      date: event?.date ?? null,
+      country: event?.area?.name ?? null,
+      score: r.score != null && !Number.isNaN(Number(r.score)) ? Number(r.score) : null,
+    }
+  })
+}
+
+export type MusicBrainzReleaseCredit = {
+  personName: string
+  personMbid: string
+  role: 'producer' | 'mix' | 'mastering' | 'composer' | 'lyricist' | 'arranger' | 'artwork'
+  sourceUrl: string
+}
+
+const RELEASE_ROLE_TYPE_MAP: Record<string, MusicBrainzReleaseCredit['role']> = {
+  producer: 'producer',
+  mix: 'mix',
+  mastering: 'mastering',
+  composer: 'composer',
+  lyricist: 'lyricist',
+  arranger: 'arranger',
+  'design/illustration': 'artwork',
+}
+
+export async function fetchReleaseCredits(releaseMbid: string): Promise<MusicBrainzReleaseCredit[]> {
+  const url = `${MUSICBRAINZ_BASE}/release/${releaseMbid}?inc=artist-rels&fmt=json`
+  const data = await fetchMusicBrainz(url, 'release credits')
+  const sourceUrl = `https://musicbrainz.org/release/${releaseMbid}`
+
+  const credits: MusicBrainzReleaseCredit[] = []
+  for (const rel of data.relations ?? []) {
+    const role = RELEASE_ROLE_TYPE_MAP[rel.type]
+    if (!role) continue
+    if (!rel.artist?.id || !rel.artist?.name) continue
+    credits.push({
+      personName: rel.artist.name,
+      personMbid: rel.artist.id,
+      role,
+      sourceUrl,
+    })
+  }
+  return credits
+}
