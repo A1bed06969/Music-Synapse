@@ -40,6 +40,7 @@ export async function buildArtistRelationGraph(
   const personNodes: RelationNode[] = []
   const personEdges: RelationEdge[] = []
   const seenPersonIds = new Set<string>()
+  const seenPersonEdgeKeys = new Set<string>()
   for (const credit of artistCredits ?? []) {
     const person = Array.isArray(credit.credit_person) ? credit.credit_person[0] : credit.credit_person
     if (!person) continue
@@ -47,6 +48,9 @@ export async function buildArtistRelationGraph(
       seenPersonIds.add(person.id)
       personNodes.push({ id: person.id, name: person.name, category: null, type: 'person' })
     }
+    const edgeKey = `${person.id}|${credit.role}`
+    if (seenPersonEdgeKeys.has(edgeKey)) continue
+    seenPersonEdgeKeys.add(edgeKey)
     personEdges.push({
       source: artistId,
       target: person.id,

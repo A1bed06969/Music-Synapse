@@ -76,14 +76,19 @@ export async function createRelation(formData: FormData) {
 
   const relationStyle = RELATION_STYLE_BY_TYPE[relationType]
 
+  const [artist_id_a, artist_id_b] = [artistIdA, artistIdB].sort()
+
   const supabase = createAdminClient()
-  const { error } = await supabase.from('artist_relation').insert({
-    artist_id_a: artistIdA,
-    artist_id_b: artistIdB,
-    relation_type: relationType,
-    relation_style: relationStyle,
-    description: description || null,
-  })
+  const { error } = await supabase.from('artist_relation').upsert(
+    {
+      artist_id_a,
+      artist_id_b,
+      relation_type: relationType,
+      relation_style: relationStyle,
+      description: description || null,
+    },
+    { onConflict: 'artist_id_a,artist_id_b,relation_type', ignoreDuplicates: true }
+  )
 
   if (error) {
     redirectWith('error', `相関データの登録に失敗しました: ${error.message}`)
