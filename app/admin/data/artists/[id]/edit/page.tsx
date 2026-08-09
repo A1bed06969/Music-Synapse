@@ -17,7 +17,10 @@ export default async function ArtistEditPage({
   const { id } = await params
   const supabase = await createClient()
 
-  const { data: artist, error } = await supabase.from('artist').select('*').eq('id', id).single()
+  const [{ data: artist, error }, { data: albums }] = await Promise.all([
+    supabase.from('artist').select('*').eq('id', id).single(),
+    supabase.from('album').select('id, title').eq('artist_id', id).order('release_date', { ascending: false }),
+  ])
 
   if (error || !artist) {
     notFound()
@@ -140,6 +143,28 @@ export default async function ArtistEditPage({
           保存
         </button>
       </form>
+
+      <div className="mt-10">
+        <h2 className="text-xs uppercase tracking-wide text-white/40">アルバム別クレジット取り込み</h2>
+        {!albums || albums.length === 0 ? (
+          <p className="mt-3 text-sm text-white/40">まだアルバムが登録されていません。</p>
+        ) : (
+          <ul className="mt-3 space-y-1.5 text-sm">
+            {albums.map((album) => (
+              <li key={album.id} className="flex items-center justify-between gap-2">
+                <span>{album.title}</span>
+                <Link
+                  href={`/admin/data/albums/${album.id}/credits`}
+                  prefetch={false}
+                  className="text-xs text-white/40 hover:text-white/70"
+                >
+                  クレジットを取り込む →
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </div>
   )
 }
