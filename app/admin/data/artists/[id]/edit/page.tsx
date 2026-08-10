@@ -46,6 +46,13 @@ export default async function ArtistEditPage({
           >
             コラボアーティストを探す
           </Link>
+          <Link
+            href={`/admin/data/artists/${artist.id}/geo-search`}
+            prefetch={false}
+            className="text-xs text-white/40 hover:text-white/70"
+          >
+            Wikidataで座標を検索
+          </Link>
         </div>
       </div>
 
