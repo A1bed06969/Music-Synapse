@@ -6,10 +6,17 @@ import { createAdminClient } from '@/utils/Supabase/admin'
 
 export async function importVenueLocation(formData: FormData) {
   const venueName = String(formData.get('venue_name') ?? '')
-  const latitude = Number(formData.get('latitude') ?? '')
-  const longitude = Number(formData.get('longitude') ?? '')
+  const latitudeRaw = formData.get('latitude')
+  const longitudeRaw = formData.get('longitude')
 
-  if (!venueName || Number.isNaN(latitude) || Number.isNaN(longitude)) {
+  if (!venueName || latitudeRaw === null || longitudeRaw === null) {
+    redirect('/admin/data/venues')
+  }
+
+  const latitude = Number(latitudeRaw)
+  const longitude = Number(longitudeRaw)
+
+  if (Number.isNaN(latitude) || Number.isNaN(longitude)) {
     redirect('/admin/data/venues')
   }
 
