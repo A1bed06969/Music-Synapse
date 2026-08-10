@@ -16,10 +16,14 @@ export default async function ArtistGeoPage({
     .select('artist_id, artist:artist_id(id, origin_latitude)')
     .eq('link_type', 'wikidata')
 
-  const eligibleCount = (wikidataLinks ?? []).filter((l) => {
+  const eligibleArtistIds = new Set<string>()
+  for (const l of wikidataLinks ?? []) {
     const artist = Array.isArray(l.artist) ? l.artist[0] : l.artist
-    return artist && artist.origin_latitude == null
-  }).length
+    if (artist && artist.origin_latitude == null) {
+      eligibleArtistIds.add(artist.id as string)
+    }
+  }
+  const eligibleCount = eligibleArtistIds.size
 
   return (
     <div className="mx-auto max-w-2xl px-6 py-12">

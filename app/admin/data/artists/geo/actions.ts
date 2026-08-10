@@ -13,13 +13,16 @@ export async function runBulkOriginUpdate() {
     .select('artist_id, url, artist:artist_id(id, name, origin_latitude)')
     .eq('link_type', 'wikidata')
 
-  const eligible = (wikidataLinks ?? [])
-    .map((l) => {
-      const artist = Array.isArray(l.artist) ? l.artist[0] : l.artist
-      if (!artist || artist.origin_latitude != null) return null
-      return { artistId: artist.id as string, name: artist.name as string, url: l.url as string }
-    })
-    .filter((v): v is { artistId: string; name: string; url: string } => v !== null)
+  const eligibleByArtistId = new Map<string, { artistId: string; name: string; url: string }>()
+  for (const l of wikidataLinks ?? []) {
+    const artist = Array.isArray(l.artist) ? l.artist[0] : l.artist
+    if (!artist || artist.origin_latitude != null) continue
+    const artistId = artist.id as string
+    // 同一アーティストに複数のWikidataリンクがある場合、最初の1件のみを採用する(二重処理防止)
+    if (eligibleByArtistId.has(artistId)) continue
+    eligibleByArtistId.set(artistId, { artistId, name: artist.name as string, url: l.url as string })
+  }
+  const eligible = Array.from(eligibleByArtistId.values())
 
   let updated = 0
   let notFound = 0
