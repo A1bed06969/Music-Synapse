@@ -7,11 +7,13 @@ function sleep(ms: number) {
 
 // MusicBrainz's public API intermittently returns 503 "server is currently
 // busy" under load, unrelated to the query itself (confirmed live: the same
-// query failed once then succeeded seconds later). Retry a bounded number of
-// times before giving up, still respecting the 1 req/sec limit between
-// attempts.
+// query failed once then succeeded seconds later). A 3-attempt retry wasn't
+// always enough — a longer overload spell (observed right after a heavy burst
+// of our own requests, e.g. a multi-artist bulk import) can outlast a ~3s
+// window. Retry a bounded number of times before giving up, still respecting
+// the 1 req/sec limit between attempts.
 async function fetchMusicBrainz(url: string, label: string): Promise<any> {
-  const maxAttempts = 3
+  const maxAttempts = 5
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     await sleep(1000)
     const res = await fetch(url, { headers: { 'User-Agent': USER_AGENT } })
