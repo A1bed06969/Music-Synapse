@@ -30,6 +30,8 @@ export default async function VenuesPage({
   const unresolvedVenues = Array.from(allVenueNames)
     .filter((name) => !knownNames.has(name))
     .sort()
+  const unresolvedVenueSet = new Set(unresolvedVenues)
+  const isKnownUnresolvedVenue = venue !== undefined && unresolvedVenueSet.has(venue)
 
   return (
     <div className="mx-auto max-w-2xl px-6 py-12">
@@ -47,7 +49,11 @@ export default async function VenuesPage({
       )}
 
       {venue ? (
-        <VenueCandidates venueName={venue} />
+        isKnownUnresolvedVenue ? (
+          <VenueCandidates venueName={venue} />
+        ) : (
+          <p className="mt-8 text-sm text-white/40">不明な会場です。</p>
+        )
       ) : unresolvedVenues.length === 0 ? (
         <p className="mt-8 text-sm text-white/40">未登録の会場はありません。</p>
       ) : (

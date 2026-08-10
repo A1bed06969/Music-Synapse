@@ -5,6 +5,8 @@ import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/utils/Supabase/admin'
 import { fetchOriginCoordinates } from '@/utils/wikidata'
 
+const MAX_PER_RUN = 30
+
 export async function runBulkOriginUpdate() {
   const supabase = createAdminClient()
 
@@ -23,12 +25,14 @@ export async function runBulkOriginUpdate() {
     eligibleByArtistId.set(artistId, { artistId, name: artist.name as string, url: l.url as string })
   }
   const eligible = Array.from(eligibleByArtistId.values())
+  const remaining = Math.max(0, eligible.length - MAX_PER_RUN)
+  const toProcess = eligible.slice(0, MAX_PER_RUN)
 
   let updated = 0
   let notFound = 0
   let failed = 0
 
-  for (const { artistId, name, url } of eligible) {
+  for (const { artistId, name, url } of toProcess) {
     const qidMatch = url.match(/\/(Q\d+)$/)
     if (!qidMatch) {
       failed += 1
@@ -64,7 +68,9 @@ export async function runBulkOriginUpdate() {
 
   revalidatePath('/admin/data/artists/geo')
 
-  const message = `更新${updated}件・座標データなし${notFound}件・失敗${failed}件`
+  const message =
+    `更新${updated}件・座標データなし${notFound}件・失敗${failed}件` +
+    (remaining > 0 ? `、残り${remaining}件は次回の実行で処理されます` : '')
   if (updated === 0 && failed > 0) {
     redirect(`/admin/data/artists/geo?error=${encodeURIComponent(message)}`)
   }

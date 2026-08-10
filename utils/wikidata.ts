@@ -34,6 +34,7 @@ export type WikidataOriginCoordinates = {
 }
 
 export async function fetchOriginCoordinates(qid: string): Promise<WikidataOriginCoordinates | null> {
+  if (!/^Q\d+$/.test(qid)) return null
   await sleep(300)
   const query = `SELECT ?place ?placeLabel ?coord WHERE { wd:${qid} wdt:P19|wdt:P740 ?place . ?place wdt:P625 ?coord . SERVICE wikibase:label { bd:serviceParam wikibase:language "ja,en". } } LIMIT 1`
   const url = `${WIKIDATA_SPARQL_ENDPOINT}?query=${encodeURIComponent(query)}&format=json`

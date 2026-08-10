@@ -3,6 +3,8 @@ import { createClient } from '@/utils/Supabase/server'
 import { runBulkOriginUpdate } from './actions'
 import SubmitButton from './SubmitButton'
 
+export const maxDuration = 60
+
 export default async function ArtistGeoPage({
   searchParams,
 }: {
