@@ -10,10 +10,17 @@ function redirectWith(artistId: string, result: 'success' | 'error', message: st
 
 export async function importOriginCoordinates(formData: FormData) {
   const artistId = String(formData.get('artist_id') ?? '')
-  const latitude = Number(formData.get('latitude') ?? '')
-  const longitude = Number(formData.get('longitude') ?? '')
+  const latitudeRaw = formData.get('latitude')
+  const longitudeRaw = formData.get('longitude')
 
-  if (!artistId || Number.isNaN(latitude) || Number.isNaN(longitude)) {
+  if (!artistId || latitudeRaw === null || longitudeRaw === null) {
+    redirect('/admin/data')
+  }
+
+  const latitude = Number(latitudeRaw)
+  const longitude = Number(longitudeRaw)
+
+  if (Number.isNaN(latitude) || Number.isNaN(longitude)) {
     redirect('/admin/data')
   }
 
