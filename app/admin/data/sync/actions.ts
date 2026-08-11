@@ -37,19 +37,23 @@ export async function createSyncWork(formData: FormData) {
 
 export async function createSyncEntry(formData: FormData) {
   const syncWorkId = String(formData.get('sync_work_id') ?? '')
-  const trackId = String(formData.get('track_id') ?? '')
+  // 同じ曲がシングル/EP版とアルバム収録版など複数のtrack行に分かれている
+  // ことがあるため、track_idは複数選択できる(1回の送信で両方に登録できる)
+  const trackIds = formData.getAll('track_id').map(String).filter(Boolean)
   const usageDetail = String(formData.get('usage_detail') ?? '').trim()
 
-  if (!syncWorkId || !trackId) {
+  if (!syncWorkId || trackIds.length === 0) {
     redirectWith('error', '作品とトラックを選択してください。')
   }
 
   const supabase = createAdminClient()
-  const { error } = await supabase.from('sync_entry').insert({
-    sync_work_id: syncWorkId,
-    track_id: trackId,
-    usage_detail: usageDetail || null,
-  })
+  const { error } = await supabase.from('sync_entry').insert(
+    trackIds.map((trackId) => ({
+      sync_work_id: syncWorkId,
+      track_id: trackId,
+      usage_detail: usageDetail || null,
+    }))
+  )
 
   if (error) {
     redirectWith('error', `起用楽曲の登録に失敗しました: ${error.message}`)
@@ -57,5 +61,8 @@ export async function createSyncEntry(formData: FormData) {
 
   revalidatePath('/admin/data/sync')
   revalidatePath(`/media/sync/${syncWorkId}`)
-  redirectWith('success', '起用楽曲を登録しました。')
+  for (const trackId of trackIds) {
+    revalidatePath(`/tracks/${trackId}`)
+  }
+  redirectWith('success', `起用楽曲を登録しました(${trackIds.length}件)。`)
 }

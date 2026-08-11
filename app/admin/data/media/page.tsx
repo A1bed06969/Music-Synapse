@@ -165,7 +165,12 @@ export default async function MediaAdminPage({
           </select>
         </div>
         <div className="flex flex-wrap gap-2">
-          <SearchableSelect searchAction={searchTracks} name="track_id" placeholder="トラックを検索(任意)" />
+          <SearchableSelect
+            searchAction={searchTracks}
+            name="track_id"
+            placeholder="トラックを検索(任意。同じ曲の別版も追加可)"
+            multiple
+          />
           <SearchableSelect searchAction={searchAlbums} name="album_id" placeholder="アルバムを検索(任意)" />
           <select name="artist_id" className={`${inputClass} max-w-xs`} defaultValue="">
             <option value="">(アーティスト指定なし)</option>

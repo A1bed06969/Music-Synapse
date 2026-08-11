@@ -81,7 +81,7 @@ export default async function SyncAdminPage({
           ))}
         </select>
         <span className="text-xs text-white/40">で</span>
-        <SearchableSelect searchAction={searchTracks} name="track_id" placeholder="トラックを選択" />
+        <SearchableSelect searchAction={searchTracks} name="track_id" placeholder="トラックを選択(同じ曲の別版も追加可)" multiple />
         <span className="text-xs text-white/40">を使用</span>
         <input name="usage_detail" placeholder="使用箇所(任意。例: OPテーマ)" className={`${inputClass} max-w-xs`} />
         <button type="submit" className={buttonClass}>

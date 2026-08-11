@@ -65,7 +65,9 @@ export async function createRadioRotation(formData: FormData) {
   const periodType = String(formData.get('period_type') ?? '')
   const periodStartDate = String(formData.get('period_start_date') ?? '')
   const musicType = String(formData.get('music_type') ?? '')
-  const trackId = String(formData.get('track_id') ?? '')
+  // 同じ曲がシングル/EP版とアルバム収録版など複数のtrack行に分かれている
+  // ことがあるため、track_idは複数選択できる(1回の送信で両方に登録できる)
+  const trackIds = formData.getAll('track_id').map(String).filter(Boolean)
   const albumId = String(formData.get('album_id') ?? '')
   const artistId = String(formData.get('artist_id') ?? '')
   const note = String(formData.get('note') ?? '').trim()
@@ -74,22 +76,49 @@ export async function createRadioRotation(formData: FormData) {
     redirectWith('error', '番組・集計周期・対象期間・邦楽/洋楽を入力してください。')
   }
 
-  const targetCount = [trackId, albumId, artistId].filter(Boolean).length
+  const targetCount = [trackIds.length > 0, Boolean(albumId), Boolean(artistId)].filter(Boolean).length
   if (targetCount !== 1) {
     redirectWith('error', 'プッシュ対象は「トラック」「アルバム」「アーティスト」のうちどれか1つだけ選んでください。')
   }
 
+  type RadioRotationRow = {
+    media_program_id: string
+    period_type: string
+    period_start_date: string
+    music_type: string
+    track_id: string | null
+    album_id: string | null
+    artist_id: string | null
+    note: string | null
+  }
+
+  const rows: RadioRotationRow[] =
+    trackIds.length > 0
+      ? trackIds.map((trackId) => ({
+          media_program_id: mediaProgramId,
+          period_type: periodType,
+          period_start_date: periodStartDate,
+          music_type: musicType,
+          track_id: trackId,
+          album_id: null,
+          artist_id: null,
+          note: note || null,
+        }))
+      : [
+          {
+            media_program_id: mediaProgramId,
+            period_type: periodType,
+            period_start_date: periodStartDate,
+            music_type: musicType,
+            track_id: null,
+            album_id: albumId || null,
+            artist_id: artistId || null,
+            note: note || null,
+          },
+        ]
+
   const supabase = createAdminClient()
-  const { error } = await supabase.from('radio_rotation').insert({
-    media_program_id: mediaProgramId,
-    period_type: periodType,
-    period_start_date: periodStartDate,
-    music_type: musicType,
-    track_id: trackId || null,
-    album_id: albumId || null,
-    artist_id: artistId || null,
-    note: note || null,
-  })
+  const { error } = await supabase.from('radio_rotation').insert(rows)
 
   if (error) {
     redirectWith('error', `オンエアデータの登録に失敗しました: ${error.message}`)
@@ -97,5 +126,8 @@ export async function createRadioRotation(formData: FormData) {
 
   revalidatePath('/admin/data/media')
   revalidatePath('/media/on-air')
-  redirectWith('success', 'オンエアデータを登録しました。')
+  for (const trackId of trackIds) {
+    revalidatePath(`/tracks/${trackId}`)
+  }
+  redirectWith('success', `オンエアデータを登録しました(${rows.length}件)。`)
 }

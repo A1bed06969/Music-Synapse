@@ -38,7 +38,9 @@ export async function createAwardEntry(formData: FormData) {
   const year = String(formData.get('year') ?? '').trim()
   const category = String(formData.get('category') ?? '').trim()
   const result = String(formData.get('result') ?? '')
-  const trackId = String(formData.get('track_id') ?? '')
+  // 同じ曲がシングル/EP版とアルバム収録版など複数のtrack行に分かれている
+  // ことがあるため、track_idは複数選択できる(1回の送信で両方に登録できる)
+  const trackIds = formData.getAll('track_id').map(String).filter(Boolean)
   const albumId = String(formData.get('album_id') ?? '')
   const artistId = String(formData.get('artist_id') ?? '')
 
@@ -46,21 +48,46 @@ export async function createAwardEntry(formData: FormData) {
     redirectWith('error', '賞・年・結果を入力してください。')
   }
 
-  const targetCount = [trackId, albumId, artistId].filter(Boolean).length
+  const targetCount = [trackIds.length > 0, Boolean(albumId), Boolean(artistId)].filter(Boolean).length
   if (targetCount !== 1) {
     redirectWith('error', '対象は「トラック」「アルバム」「アーティスト」のうちどれか1つだけ選んでください。')
   }
 
+  type AwardEntryRow = {
+    award_id: string
+    year: number
+    category: string | null
+    result: string
+    track_id: string | null
+    album_id: string | null
+    artist_id: string | null
+  }
+
+  const rows: AwardEntryRow[] =
+    trackIds.length > 0
+      ? trackIds.map((trackId) => ({
+          award_id: awardId,
+          year: Number(year),
+          category: category || null,
+          result,
+          track_id: trackId,
+          album_id: null,
+          artist_id: null,
+        }))
+      : [
+          {
+            award_id: awardId,
+            year: Number(year),
+            category: category || null,
+            result,
+            track_id: null,
+            album_id: albumId || null,
+            artist_id: artistId || null,
+          },
+        ]
+
   const supabase = createAdminClient()
-  const { error } = await supabase.from('award_entry').insert({
-    award_id: awardId,
-    year: Number(year),
-    category: category || null,
-    result,
-    track_id: trackId || null,
-    album_id: albumId || null,
-    artist_id: artistId || null,
-  })
+  const { error } = await supabase.from('award_entry').insert(rows)
 
   if (error) {
     redirectWith('error', `受賞・ノミネートの登録に失敗しました: ${error.message}`)
@@ -69,5 +96,8 @@ export async function createAwardEntry(formData: FormData) {
   revalidatePath('/admin/data/awards')
   revalidatePath('/chronology/awards')
   if (artistId) revalidatePath(`/artists/${artistId}`)
-  redirectWith('success', '受賞・ノミネートを登録しました。')
+  for (const trackId of trackIds) {
+    revalidatePath(`/tracks/${trackId}`)
+  }
+  redirectWith('success', `受賞・ノミネートを登録しました(${rows.length}件)。`)
 }
