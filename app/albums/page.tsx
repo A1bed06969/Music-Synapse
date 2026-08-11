@@ -8,6 +8,8 @@ type AlbumRow = {
   title: string
   title_kana: string | null
   jacket_url: string | null
+  release_date: string | null
+  streaming_status: string | null
   artist: { name: string } | { name: string }[] | null
 }
 
@@ -19,7 +21,7 @@ async function fetchAllAlbums(supabase: Awaited<ReturnType<typeof createClient>>
   while (true) {
     const { data } = await supabase
       .from('album')
-      .select('id, title, title_kana, jacket_url, artist:artist_id(name)')
+      .select('id, title, title_kana, jacket_url, release_date, streaming_status, artist:artist_id(name)')
       .range(offset, offset + PAGE_SIZE - 1)
     if (!data || data.length === 0) break
     rows.push(...data)
@@ -29,7 +31,12 @@ async function fetchAllAlbums(supabase: Awaited<ReturnType<typeof createClient>>
   return rows
 }
 
-export default async function AlbumsPage() {
+export default async function AlbumsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ sort?: string }>
+}) {
+  const { sort } = await searchParams
   const supabase = await createClient()
 
   const data = await fetchAllAlbums(supabase)
@@ -42,10 +49,12 @@ export default async function AlbumsPage() {
         title: a.title,
         title_kana: a.title_kana,
         jacket_url: a.jacket_url,
+        releaseDate: a.release_date,
+        streamingStatus: a.streaming_status,
         artistName: artist?.name ?? null,
       }
     })
     .sort((a, b) => (a.title_kana ?? a.title).localeCompare(b.title_kana ?? b.title, 'ja'))
 
-  return <AlbumBrowseClient albums={albums} />
+  return <AlbumBrowseClient albums={albums} initialSort={sort === 'release' ? 'release' : 'kana'} />
 }
