@@ -3,8 +3,46 @@
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { createAdminClient } from '@/utils/Supabase/admin'
+import { createClient } from '@/utils/Supabase/server'
 import { PREFECTURE_COORDS } from '@/utils/prefectures'
 import { extractSpotifyTrackId, extractYoutubeVideoId } from '@/utils/format'
+
+export type PickerItem = { id: string; label: string }
+
+// SearchableSelect用のサーバーサイド検索。track/albumは件数が多く
+// (2026年8月時点で4,000件超/1,000件超)、PostgRESTの1クエリ最大1000件の
+// 制約上、全件を先読みしてクライアント側で絞り込む方式だと一部が欠落する
+// (実例: マカロニえんぴつ「はしりがき」がヒットしなかった不具合)。
+// 入力のたびにサーバー側でその場検索する方式に変更し、この問題を解消する。
+export async function searchTracks(query: string): Promise<PickerItem[]> {
+  const trimmed = query.trim()
+  if (!trimmed) return []
+  const supabase = await createClient()
+  const { data } = await supabase
+    .from('track')
+    .select('id, title, artist:artist_id(name)')
+    .ilike('title', `%${trimmed}%`)
+    .limit(20)
+  return (data ?? []).map((t) => {
+    const artist = Array.isArray(t.artist) ? t.artist[0] : t.artist
+    return { id: t.id, label: `${t.title}${artist?.name ? ` — ${artist.name}` : ''}` }
+  })
+}
+
+export async function searchAlbums(query: string): Promise<PickerItem[]> {
+  const trimmed = query.trim()
+  if (!trimmed) return []
+  const supabase = await createClient()
+  const { data } = await supabase
+    .from('album')
+    .select('id, title, artist:artist_id(name)')
+    .ilike('title', `%${trimmed}%`)
+    .limit(20)
+  return (data ?? []).map((a) => {
+    const artist = Array.isArray(a.artist) ? a.artist[0] : a.artist
+    return { id: a.id, label: `${a.title}${artist?.name ? ` — ${artist.name}` : ''}` }
+  })
+}
 
 const RELATION_STYLE_BY_TYPE: Record<string, 'solid' | 'dotted'> = {
   membership: 'solid',

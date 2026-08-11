@@ -22,6 +22,8 @@ import {
   createMusicEvent,
   createAward,
   createAwardEntry,
+  searchTracks,
+  searchAlbums,
 } from './actions'
 
 const RELATION_TYPE_OPTIONS = [
@@ -92,8 +94,6 @@ export default async function AdminDataPage({
     { data: artists },
     { data: genres },
     { data: labels },
-    { data: albums },
-    { data: tracks },
     { data: mediaList },
     { data: mediaPrograms },
     { data: artistGenres },
@@ -115,8 +115,6 @@ export default async function AdminDataPage({
     supabase.from('artist').select('id, name').order('name'),
     supabase.from('genre').select('id, name').order('name'),
     supabase.from('label').select('id, name').order('name'),
-    supabase.from('album').select('id, title, artist:artist_id(name)').order('title'),
-    supabase.from('track').select('id, title, artist:artist_id(name)').order('title'),
     supabase.from('media').select('id, name, area').order('name'),
     supabase.from('media_program').select('id, program_name, period_type, media:media_id(name)').order('program_name'),
     supabase
@@ -181,16 +179,6 @@ export default async function AdminDataPage({
   const artistOptions = artists ?? []
   const genreOptions = genres ?? []
   const labelOptions = labels ?? []
-  const albumOptions = albums ?? []
-  const trackOptions = tracks ?? []
-  const trackPickerItems = trackOptions.map((t) => {
-    const artist = Array.isArray(t.artist) ? t.artist[0] : t.artist
-    return { id: t.id, label: `${t.title}${artist?.name ? ` — ${artist.name}` : ''}` }
-  })
-  const albumPickerItems = albumOptions.map((a) => {
-    const artist = Array.isArray(a.artist) ? a.artist[0] : a.artist
-    return { id: a.id, label: `${a.title}${artist?.name ? ` — ${artist.name}` : ''}` }
-  })
   const mediaOptions = mediaList ?? []
   const mediaProgramOptions = mediaPrograms ?? []
   const rankingOptions = rankings ?? []
@@ -438,7 +426,7 @@ export default async function AdminDataPage({
         )}
 
         <form action={linkAlbumLabel} className="mt-6 flex flex-wrap items-center gap-2">
-          <SearchableSelect items={albumPickerItems} name="album_id" placeholder="アルバムを選択" />
+          <SearchableSelect searchAction={searchAlbums} name="album_id" placeholder="アルバムを選択" />
           <span className="text-xs text-white/40">を</span>
           <select name="label_id" required className={`${inputClass} max-w-xs`} defaultValue="">
             <option value="" disabled>
@@ -571,8 +559,8 @@ export default async function AdminDataPage({
             </select>
           </div>
           <div className="flex flex-wrap gap-2">
-            <SearchableSelect items={trackPickerItems} name="track_id" placeholder="トラックを検索(任意)" />
-            <SearchableSelect items={albumPickerItems} name="album_id" placeholder="アルバムを検索(任意)" />
+            <SearchableSelect searchAction={searchTracks} name="track_id" placeholder="トラックを検索(任意)" />
+            <SearchableSelect searchAction={searchAlbums} name="album_id" placeholder="アルバムを検索(任意)" />
             <select name="artist_id" className={`${inputClass} max-w-xs`} defaultValue="">
               <option value="">(アーティスト指定なし)</option>
               {artistOptions.map((a) => (
@@ -655,8 +643,8 @@ export default async function AdminDataPage({
             <input name="period_date" type="date" required className={`${inputClass} max-w-[160px]`} />
           </div>
           <div className="flex flex-wrap gap-2">
-            <SearchableSelect items={trackPickerItems} name="track_id" placeholder="トラックを検索(任意)" />
-            <SearchableSelect items={albumPickerItems} name="album_id" placeholder="アルバムを検索(任意)" />
+            <SearchableSelect searchAction={searchTracks} name="track_id" placeholder="トラックを検索(任意)" />
+            <SearchableSelect searchAction={searchAlbums} name="album_id" placeholder="アルバムを検索(任意)" />
             <select name="artist_id" className={`${inputClass} max-w-xs`} defaultValue="">
               <option value="">(アーティスト指定なし)</option>
               {artistOptions.map((a) => (
@@ -732,7 +720,7 @@ export default async function AdminDataPage({
             ))}
           </select>
           <span className="text-xs text-white/40">で</span>
-          <SearchableSelect items={trackPickerItems} name="track_id" placeholder="トラックを選択" />
+          <SearchableSelect searchAction={searchTracks} name="track_id" placeholder="トラックを選択" />
           <span className="text-xs text-white/40">を使用</span>
           <input name="usage_detail" placeholder="使用箇所(任意。例: OPテーマ)" className={`${inputClass} max-w-xs`} />
           <button type="submit" className={buttonClass}>
@@ -976,8 +964,8 @@ export default async function AdminDataPage({
             </select>
           </div>
           <div className="flex flex-wrap gap-2">
-            <SearchableSelect items={trackPickerItems} name="track_id" placeholder="トラックを検索(任意)" />
-            <SearchableSelect items={albumPickerItems} name="album_id" placeholder="アルバムを検索(任意)" />
+            <SearchableSelect searchAction={searchTracks} name="track_id" placeholder="トラックを検索(任意)" />
+            <SearchableSelect searchAction={searchAlbums} name="album_id" placeholder="アルバムを検索(任意)" />
             <select name="artist_id" className={`${inputClass} max-w-xs`} defaultValue="">
               <option value="">(アーティスト指定なし)</option>
               {artistOptions.map((a) => (

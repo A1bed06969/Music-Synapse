@@ -1,29 +1,52 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState, useTransition } from 'react'
 
 type Item = { id: string; label: string }
 
 export default function SearchableSelect({
-  items,
+  searchAction,
   name,
   placeholder,
 }: {
-  items: Item[]
+  searchAction: (query: string) => Promise<Item[]>
   name: string
   placeholder: string
 }) {
   const [query, setQuery] = useState('')
+  const [results, setResults] = useState<Item[]>([])
+  const [isPending, startTransition] = useTransition()
   const [selected, setSelected] = useState<Item | null>(null)
   const [open, setOpen] = useState(false)
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const requestIdRef = useRef(0)
 
-  const filtered = query
-    ? items.filter((item) => item.label.toLowerCase().includes(query.toLowerCase())).slice(0, 20)
-    : []
+  // Server ActionをuseEffect/イベントハンドラから直接呼ぶ場合、Next.jsの規約上
+  // startTransitionで包む必要がある(<form action>やformActionでは自動的に
+  // 包まれるが、この検索欄のような都度呼び出しでは手動で包む必要がある)。
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    if (!query) {
+      setResults([])
+      return
+    }
+    debounceRef.current = setTimeout(() => {
+      const requestId = ++requestIdRef.current
+      startTransition(async () => {
+        const items = await searchAction(query)
+        if (requestId !== requestIdRef.current) return // 古いリクエストの結果は無視
+        setResults(items)
+      })
+    }, 250)
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+    }
+  }, [query, searchAction])
 
   function selectItem(item: Item) {
     setSelected(item)
     setQuery('')
+    setResults([])
     setOpen(false)
   }
 
@@ -35,7 +58,7 @@ export default function SearchableSelect({
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === 'Enter') {
       e.preventDefault()
-      if (filtered.length > 0) selectItem(filtered[0])
+      if (results.length > 0) selectItem(results[0])
     } else if (e.key === 'Escape') {
       setOpen(false)
     }
@@ -73,10 +96,12 @@ export default function SearchableSelect({
       )}
       {open && query && (
         <div className="absolute z-10 mt-1 max-h-64 w-full overflow-y-auto rounded-md border border-white/15 bg-black shadow-lg">
-          {filtered.length === 0 ? (
+          {isPending ? (
+            <p className="px-3 py-2 text-sm text-white/40">検索中...</p>
+          ) : results.length === 0 ? (
             <p className="px-3 py-2 text-sm text-white/40">該当なし</p>
           ) : (
-            filtered.map((item) => (
+            results.map((item) => (
               <button
                 key={item.id}
                 type="button"
