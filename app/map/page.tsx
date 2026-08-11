@@ -17,7 +17,7 @@ export default async function MapPage() {
 
   const { data: artists } = await supabase
     .from('artist')
-    .select('id, name, image_url, origin_latitude, origin_longitude')
+    .select('id, name, image_url, origin_latitude, origin_longitude, origin_prefecture, hometown_city')
     .not('origin_latitude', 'is', null)
     .not('origin_longitude', 'is', null)
 
@@ -51,13 +51,14 @@ export default async function MapPage() {
       const albumsHtml = (albumsByArtist.get(a.id) ?? [])
         .map(
           (album) =>
-            `<div style="margin-top:4px;font-size:12px;">${
+            `<div style="margin-top:4px;font-size:12px;"><a href="/albums/${escapeHtml(album.id)}" style="color:inherit;">${
               album.jacketUrl
                 ? `<img src="${escapeHtml(album.jacketUrl)}" alt="" style="width:32px;height:32px;object-fit:cover;border-radius:4px;vertical-align:middle;margin-right:4px;" />`
                 : ''
-            }${escapeHtml(album.title)}</div>`
+            }${escapeHtml(album.title)}</a></div>`
         )
         .join('')
+      const placeName = a.hometown_city ?? a.origin_prefecture
       return {
         id: `artist-${a.id}`,
         latitude: Number(a.origin_latitude),
@@ -69,7 +70,9 @@ export default async function MapPage() {
             : ''
         }<div style="margin-top:4px;font-weight:bold;"><a href="/artists/${escapeHtml(a.id)}" style="color:inherit;">${escapeHtml(
           a.name
-        )}</a></div>${albumsHtml}</div>`,
+        )}</a></div>${
+          placeName ? `<div style="font-size:12px;color:#aaa;">${escapeHtml(placeName)}</div>` : ''
+        }${albumsHtml}</div>`,
       }
     })
 
@@ -85,25 +88,22 @@ export default async function MapPage() {
 
   type VenueEventLink = { label: string; href: string }
 
+  // 同じ会場で開催され続けているイベントは、開催年ごとにリンクを分けると
+  // 「年によって会場が違うのでは」という誤解を招くため、イベント単位で1本に
+  // まとめる(年ごとの切り替えはイベント詳細ページ側のタブに任せる)
   function eventsForVenue(normalizedName: string): VenueEventLink[] {
-    const linksByHref = new Map<string, VenueEventLink>()
+    const linksByKey = new Map<string, VenueEventLink>()
 
     for (const row of musicEvents ?? []) {
       if (!row.venue || normalizeVenueName(row.venue) !== normalizedName) continue
       if (!row.artist_id) continue
-      const link = { label: row.name, href: `/artists/${row.artist_id}` }
-      linksByHref.set(link.href, link)
+      linksByKey.set(`artist-${row.artist_id}`, { label: row.name, href: `/artists/${row.artist_id}` })
     }
 
     for (const row of eventEditions ?? []) {
-      if (row.venue && normalizeVenueName(row.venue) === normalizedName) {
-        const event = Array.isArray(row.event) ? row.event[0] : row.event
-        const link = {
-          label: `${event?.name ?? '?'}(${row.year})`,
-          href: `/events/${row.event_id}?year=${row.year}`,
-        }
-        linksByHref.set(link.href, link)
-      }
+      if (!row.venue || normalizeVenueName(row.venue) !== normalizedName) continue
+      const event = Array.isArray(row.event) ? row.event[0] : row.event
+      linksByKey.set(`event-${row.event_id}`, { label: event?.name ?? '?', href: `/events/${row.event_id}` })
     }
 
     for (const row of eventAppearances ?? []) {
@@ -111,14 +111,10 @@ export default async function MapPage() {
       const edition = Array.isArray(row.event_edition) ? row.event_edition[0] : row.event_edition
       if (!edition) continue
       const event = Array.isArray(edition.event) ? edition.event[0] : edition.event
-      const link = {
-        label: `${event?.name ?? '?'}(${edition.year})`,
-        href: `/events/${edition.event_id}?year=${edition.year}`,
-      }
-      linksByHref.set(link.href, link)
+      linksByKey.set(`event-${edition.event_id}`, { label: event?.name ?? '?', href: `/events/${edition.event_id}` })
     }
 
-    return Array.from(linksByHref.values())
+    return Array.from(linksByKey.values())
   }
 
   const venueMarkers: MapMarker[] = (venueLocations ?? []).map((v) => {
@@ -146,13 +142,36 @@ export default async function MapPage() {
     }
   })
 
-  const markers: MapMarker[] = [...artistMarkers, ...venueMarkers]
+  const { data: recordShops } = await supabase
+    .from('recordshop')
+    .select('id, name, address, official_site_url, hours, latitude, longitude')
+    .not('latitude', 'is', null)
+    .not('longitude', 'is', null)
+
+  const shopMarkers: MapMarker[] = (recordShops ?? []).map((s) => {
+    const detailsHtml = [
+      s.address ? `<div style="font-size:12px;color:#aaa;">${escapeHtml(s.address)}</div>` : '',
+      s.hours ? `<div style="margin-top:2px;font-size:12px;">${escapeHtml(s.hours)}</div>` : '',
+      s.official_site_url
+        ? `<div style="margin-top:4px;font-size:12px;"><a href="${escapeHtml(s.official_site_url)}">公式サイト</a></div>`
+        : '',
+    ].join('')
+    return {
+      id: `shop-${s.id}`,
+      latitude: Number(s.latitude),
+      longitude: Number(s.longitude),
+      color: '#5ad66f',
+      popupHtml: `<div style="min-width:160px;"><div style="font-weight:bold;">${escapeHtml(s.name)}</div>${detailsHtml}</div>`,
+    }
+  })
+
+  const markers: MapMarker[] = [...artistMarkers, ...venueMarkers, ...shopMarkers]
 
   return (
     <div className="mx-auto max-w-5xl px-6 py-12">
       <h1 className="text-2xl font-bold">マップ</h1>
       <p className="mt-2 text-sm text-white/50">
-        アーティストの出身地・結成地(赤)とイベント会場(青)を地図で表示します。
+        アーティストの出身地・結成地(赤)、イベント会場(青)、レコードショップ(緑)を地図で表示します。
       </p>
       <div className="mt-8">
         <MapClientWrapper markers={markers} />
