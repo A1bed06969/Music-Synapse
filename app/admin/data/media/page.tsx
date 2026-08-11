@@ -197,9 +197,17 @@ export default async function MediaAdminPage({
             const artist = Array.isArray(row.artist) ? row.artist[0] : row.artist
             const target = track?.title ?? album?.title ?? artist?.name
             return (
-              <li key={row.id}>
-                {row.period_start_date} {media?.name} {program?.program_name} — {target}
-                <span className="text-white/30"> ({row.music_type === 'DOMESTIC' ? '邦楽' : '洋楽'})</span>
+              <li key={row.id} className="flex items-center justify-between gap-2">
+                <span>
+                  {row.period_start_date} {media?.name} {program?.program_name} — {target}
+                  <span className="text-white/30"> ({row.music_type === 'DOMESTIC' ? '邦楽' : '洋楽'})</span>
+                </span>
+                <Link
+                  href={`/admin/data/media/rotation/${row.id}/edit`}
+                  className="shrink-0 text-xs text-white/40 hover:text-white/70"
+                >
+                  編集 →
+                </Link>
               </li>
             )
           })}

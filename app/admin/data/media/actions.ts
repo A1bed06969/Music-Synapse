@@ -131,3 +131,71 @@ export async function createRadioRotation(formData: FormData) {
   }
   redirectWith('success', `オンエアデータを登録しました(${rows.length}件)。`)
 }
+
+export async function updateRadioRotation(formData: FormData) {
+  const id = String(formData.get('id') ?? '')
+  const mediaProgramId = String(formData.get('media_program_id') ?? '')
+  const periodType = String(formData.get('period_type') ?? '')
+  const periodStartDate = String(formData.get('period_start_date') ?? '')
+  const musicType = String(formData.get('music_type') ?? '')
+  const trackId = String(formData.get('track_id') ?? '')
+  const albumId = String(formData.get('album_id') ?? '')
+  const artistId = String(formData.get('artist_id') ?? '')
+  const note = String(formData.get('note') ?? '').trim()
+  const previousTrackId = String(formData.get('previous_track_id') ?? '')
+
+  if (!id || !mediaProgramId || !periodType || !periodStartDate || !musicType) {
+    redirectWith('error', '番組・集計周期・対象期間・邦楽/洋楽を入力してください。')
+  }
+
+  const targetCount = [Boolean(trackId), Boolean(albumId), Boolean(artistId)].filter(Boolean).length
+  if (targetCount !== 1) {
+    redirectWith('error', 'プッシュ対象は「トラック」「アルバム」「アーティスト」のうちどれか1つだけ選んでください。')
+  }
+
+  const supabase = createAdminClient()
+  const { error } = await supabase
+    .from('radio_rotation')
+    .update({
+      media_program_id: mediaProgramId,
+      period_type: periodType,
+      period_start_date: periodStartDate,
+      music_type: musicType,
+      track_id: trackId || null,
+      album_id: albumId || null,
+      artist_id: artistId || null,
+      note: note || null,
+    })
+    .eq('id', id)
+
+  if (error) {
+    redirectWith('error', `更新に失敗しました: ${error.message}`)
+  }
+
+  revalidatePath('/admin/data/media')
+  revalidatePath('/media/on-air')
+  if (trackId) revalidatePath(`/tracks/${trackId}`)
+  if (previousTrackId && previousTrackId !== trackId) revalidatePath(`/tracks/${previousTrackId}`)
+  redirectWith('success', 'オンエアデータを更新しました。')
+}
+
+export async function deleteRadioRotation(formData: FormData) {
+  const id = String(formData.get('id') ?? '')
+  const trackId = String(formData.get('track_id') ?? '')
+
+  if (!id) {
+    redirectWith('error', '不正なリクエストです。')
+  }
+
+  const supabase = createAdminClient()
+  const { error } = await supabase.from('radio_rotation').delete().eq('id', id)
+
+  if (error) {
+    redirectWith('error', `削除に失敗しました: ${error.message}`)
+  }
+
+  revalidatePath('/admin/data/media')
+  revalidatePath('/media/on-air')
+  if (trackId) revalidatePath(`/tracks/${trackId}`)
+  redirectWith('success', 'オンエアデータを削除しました。')
+}

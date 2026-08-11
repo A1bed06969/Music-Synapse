@@ -101,3 +101,74 @@ export async function createAwardEntry(formData: FormData) {
   }
   redirectWith('success', `受賞・ノミネートを登録しました(${rows.length}件)。`)
 }
+
+export async function updateAwardEntry(formData: FormData) {
+  const id = String(formData.get('id') ?? '')
+  const awardId = String(formData.get('award_id') ?? '')
+  const year = String(formData.get('year') ?? '').trim()
+  const category = String(formData.get('category') ?? '').trim()
+  const result = String(formData.get('result') ?? '')
+  const trackId = String(formData.get('track_id') ?? '')
+  const albumId = String(formData.get('album_id') ?? '')
+  const artistId = String(formData.get('artist_id') ?? '')
+  const previousArtistId = String(formData.get('previous_artist_id') ?? '')
+  const previousTrackId = String(formData.get('previous_track_id') ?? '')
+
+  if (!id || !awardId || !year || !result) {
+    redirectWith('error', '賞・年・結果を入力してください。')
+  }
+
+  const targetCount = [Boolean(trackId), Boolean(albumId), Boolean(artistId)].filter(Boolean).length
+  if (targetCount !== 1) {
+    redirectWith('error', '対象は「トラック」「アルバム」「アーティスト」のうちどれか1つだけ選んでください。')
+  }
+
+  const supabase = createAdminClient()
+  const { error } = await supabase
+    .from('award_entry')
+    .update({
+      award_id: awardId,
+      year: Number(year),
+      category: category || null,
+      result,
+      track_id: trackId || null,
+      album_id: albumId || null,
+      artist_id: artistId || null,
+    })
+    .eq('id', id)
+
+  if (error) {
+    redirectWith('error', `更新に失敗しました: ${error.message}`)
+  }
+
+  revalidatePath('/admin/data/awards')
+  revalidatePath('/chronology/awards')
+  if (artistId) revalidatePath(`/artists/${artistId}`)
+  if (previousArtistId && previousArtistId !== artistId) revalidatePath(`/artists/${previousArtistId}`)
+  if (trackId) revalidatePath(`/tracks/${trackId}`)
+  if (previousTrackId && previousTrackId !== trackId) revalidatePath(`/tracks/${previousTrackId}`)
+  redirectWith('success', '受賞・ノミネートを更新しました。')
+}
+
+export async function deleteAwardEntry(formData: FormData) {
+  const id = String(formData.get('id') ?? '')
+  const artistId = String(formData.get('artist_id') ?? '')
+  const trackId = String(formData.get('track_id') ?? '')
+
+  if (!id) {
+    redirectWith('error', '不正なリクエストです。')
+  }
+
+  const supabase = createAdminClient()
+  const { error } = await supabase.from('award_entry').delete().eq('id', id)
+
+  if (error) {
+    redirectWith('error', `削除に失敗しました: ${error.message}`)
+  }
+
+  revalidatePath('/admin/data/awards')
+  revalidatePath('/chronology/awards')
+  if (artistId) revalidatePath(`/artists/${artistId}`)
+  if (trackId) revalidatePath(`/tracks/${trackId}`)
+  redirectWith('success', '受賞・ノミネートを削除しました。')
+}

@@ -127,10 +127,15 @@ export default async function AwardsAdminPage({
             const track = Array.isArray(row.track) ? row.track[0] : row.track
             const target = artist?.name ?? album?.title ?? track?.title
             return (
-              <li key={row.id}>
-                {row.year} {award?.name}
-                {row.category ? `(${row.category})` : ''} — {target}
-                <span className="text-white/30"> {row.result === 'winner' ? '受賞' : 'ノミネート'}</span>
+              <li key={row.id} className="flex items-center justify-between gap-2">
+                <span>
+                  {row.year} {award?.name}
+                  {row.category ? `(${row.category})` : ''} — {target}
+                  <span className="text-white/30"> {row.result === 'winner' ? '受賞' : 'ノミネート'}</span>
+                </span>
+                <Link href={`/admin/data/awards/${row.id}/edit`} className="shrink-0 text-xs text-white/40 hover:text-white/70">
+                  編集 →
+                </Link>
               </li>
             )
           })}

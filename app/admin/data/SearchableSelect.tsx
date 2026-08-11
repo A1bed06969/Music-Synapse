@@ -9,6 +9,7 @@ export default function SearchableSelect({
   name,
   placeholder,
   multiple = false,
+  defaultSelected = [],
 }: {
   searchAction: (query: string) => Promise<Item[]>
   name: string
@@ -16,11 +17,13 @@ export default function SearchableSelect({
   /** trueの場合、同じ曲がシングル/EP版とアルバム収録版など複数のtrack行に
    * 分かれているケースで、まとめて複数選択できるようにする。 */
   multiple?: boolean
+  /** 編集画面で、既存データの選択状態を初期表示するために使う。 */
+  defaultSelected?: Item[]
 }) {
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<Item[]>([])
   const [isPending, startTransition] = useTransition()
-  const [selected, setSelected] = useState<Item[]>([])
+  const [selected, setSelected] = useState<Item[]>(defaultSelected)
   const [open, setOpen] = useState(false)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const requestIdRef = useRef(0)

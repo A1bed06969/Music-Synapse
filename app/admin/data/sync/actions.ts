@@ -66,3 +66,53 @@ export async function createSyncEntry(formData: FormData) {
   }
   redirectWith('success', `起用楽曲を登録しました(${trackIds.length}件)。`)
 }
+
+export async function updateSyncEntry(formData: FormData) {
+  const id = String(formData.get('id') ?? '')
+  const syncWorkId = String(formData.get('sync_work_id') ?? '')
+  const trackId = String(formData.get('track_id') ?? '')
+  const usageDetail = String(formData.get('usage_detail') ?? '').trim()
+  const previousTrackId = String(formData.get('previous_track_id') ?? '')
+
+  if (!id || !syncWorkId || !trackId) {
+    redirectWith('error', '作品とトラックを選択してください。')
+  }
+
+  const supabase = createAdminClient()
+  const { error } = await supabase
+    .from('sync_entry')
+    .update({ sync_work_id: syncWorkId, track_id: trackId, usage_detail: usageDetail || null })
+    .eq('id', id)
+
+  if (error) {
+    redirectWith('error', `更新に失敗しました: ${error.message}`)
+  }
+
+  revalidatePath('/admin/data/sync')
+  revalidatePath(`/media/sync/${syncWorkId}`)
+  revalidatePath(`/tracks/${trackId}`)
+  if (previousTrackId && previousTrackId !== trackId) revalidatePath(`/tracks/${previousTrackId}`)
+  redirectWith('success', '起用楽曲を更新しました。')
+}
+
+export async function deleteSyncEntry(formData: FormData) {
+  const id = String(formData.get('id') ?? '')
+  const trackId = String(formData.get('track_id') ?? '')
+  const syncWorkId = String(formData.get('sync_work_id') ?? '')
+
+  if (!id) {
+    redirectWith('error', '不正なリクエストです。')
+  }
+
+  const supabase = createAdminClient()
+  const { error } = await supabase.from('sync_entry').delete().eq('id', id)
+
+  if (error) {
+    redirectWith('error', `削除に失敗しました: ${error.message}`)
+  }
+
+  revalidatePath('/admin/data/sync')
+  if (syncWorkId) revalidatePath(`/media/sync/${syncWorkId}`)
+  if (trackId) revalidatePath(`/tracks/${trackId}`)
+  redirectWith('success', '起用楽曲を削除しました。')
+}

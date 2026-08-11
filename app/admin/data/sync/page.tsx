@@ -95,9 +95,14 @@ export default async function SyncAdminPage({
             const work = Array.isArray(row.sync_work) ? row.sync_work[0] : row.sync_work
             const track = Array.isArray(row.track) ? row.track[0] : row.track
             return (
-              <li key={row.id}>
-                {work?.title} — {track?.title}
-                {row.usage_detail ? `(${row.usage_detail})` : ''}
+              <li key={row.id} className="flex items-center justify-between gap-2">
+                <span>
+                  {work?.title} — {track?.title}
+                  {row.usage_detail ? `(${row.usage_detail})` : ''}
+                </span>
+                <Link href={`/admin/data/sync/${row.id}/edit`} className="shrink-0 text-xs text-white/40 hover:text-white/70">
+                  編集 →
+                </Link>
               </li>
             )
           })}
