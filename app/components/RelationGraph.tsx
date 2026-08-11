@@ -1,21 +1,6 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { useEffect, useRef, useState } from 'react'
-import {
-  forceCenter,
-  forceCollide,
-  forceLink,
-  forceManyBody,
-  forceX,
-  forceY,
-  forceSimulation,
-  type Simulation,
-  type SimulationLinkDatum,
-  type SimulationNodeDatum,
-} from 'd3-force'
-import { polygonHull } from 'd3-polygon'
-import { line, curveCatmullRomClosed } from 'd3-shape'
 
 export type RelationNode = { id: string; name: string; category?: string | null; type?: 'artist' | 'person' }
 export type RelationEdge = {
@@ -25,13 +10,7 @@ export type RelationEdge = {
   label?: string | null
 }
 
-type SimNode = RelationNode & SimulationNodeDatum
-type SimLink = SimulationLinkDatum<SimNode> & { style: 'solid' | 'dotted'; label?: string | null }
-
-const WIDTH = 800
-const HEIGHT = 560
-const CLUSTER_RADIUS = Math.min(WIDTH, HEIGHT) * 0.32
-const BLOB_PAD = 44
+const UNCATEGORIZED = 'その他'
 
 // 隣接するカテゴリー同士でも見分けやすいよう、彩度・明度を散らした配色
 const CATEGORY_PALETTE = [
@@ -53,37 +32,238 @@ function colorForCategory(category: string) {
   return CATEGORY_PALETTE[hash % CATEGORY_PALETTE.length]
 }
 
-function clusterAnchors(categories: string[]) {
-  const anchors = new Map<string, { x: number; y: number }>()
-  categories.forEach((category, i) => {
-    const angle = (i / categories.length) * Math.PI * 2 - Math.PI / 2
-    anchors.set(category, {
-      x: WIDTH / 2 + CLUSTER_RADIUS * Math.cos(angle),
-      y: HEIGHT / 2 + CLUSTER_RADIUS * Math.sin(angle),
-    })
-  })
-  return anchors
+/** source→targetへの直角(エルボー)接続パス。中間で1回だけ折れ曲がる。 */
+function elbowPath(sx: number, sy: number, tx: number, ty: number): string {
+  if (sy === ty) return `M ${sx},${sy} H ${tx}`
+  const midX = sx + (tx - sx) / 2
+  return `M ${sx},${sy} H ${midX} V ${ty} H ${tx}`
 }
 
-const blobLine = line<[number, number]>()
-  .curve(curveCatmullRomClosed.alpha(0.9))
-  .x((d) => d[0])
-  .y((d) => d[1])
+const ROW_HEIGHT = 40
+const GROUP_GAP = 22
+const NODE_R_ROOT = 9
+const NODE_R = 6
 
-function blobPath(nodes: SimNode[]) {
-  // ノード周囲に円状の点を足してからハル(外殻)を取ることで、
-  // 1〜2件しかないカテゴリーでも自然な余白付きの塊として描ける
-  const points: [number, number][] = []
+function groupByCategory(nodes: RelationNode[]) {
+  const groups = new Map<string, RelationNode[]>()
   for (const node of nodes) {
-    if (node.x == null || node.y == null) continue
-    for (let i = 0; i < 8; i++) {
-      const angle = (i / 8) * Math.PI * 2
-      points.push([node.x + Math.cos(angle) * BLOB_PAD, node.y + Math.sin(angle) * BLOB_PAD])
-    }
+    const key = node.category ?? UNCATEGORIZED
+    const list = groups.get(key) ?? []
+    list.push(node)
+    groups.set(key, list)
   }
-  const hull = polygonHull(points)
-  if (!hull) return null
-  return blobLine(hull)
+  return Array.from(groups.entries())
+}
+
+/** 中心アーティスト1人から右へ枝が伸びる木構造レイアウト。 */
+function EgoTree({
+  nodes,
+  edges,
+  centerId,
+}: {
+  nodes: RelationNode[]
+  edges: RelationEdge[]
+  centerId: string
+}) {
+  const router = useRouter()
+  const center = nodes.find((n) => n.id === centerId)
+  const children = nodes.filter((n) => n.id !== centerId)
+  const groups = groupByCategory(children)
+
+  const rootX = 88
+  const childX = 460
+  const width = 640
+
+  let y = 20
+  const positioned: { node: RelationNode; y: number }[] = []
+  const groupHeaders: { label: string; y: number }[] = []
+  for (const [category, groupNodes] of groups) {
+    groupHeaders.push({ label: category, y })
+    y += 18
+    for (const node of groupNodes) {
+      positioned.push({ node, y: y + ROW_HEIGHT / 2 - 9 })
+      y += ROW_HEIGHT
+    }
+    y += GROUP_GAP
+  }
+  const height = Math.max(y, 120)
+  const rootY = height / 2
+
+  function go(node: RelationNode) {
+    router.push(`${node.type === 'person' ? '/people' : '/artists'}/${node.id}`)
+  }
+
+  if (!center) return null
+
+  return (
+    <svg viewBox={`0 0 ${width} ${height}`} className="w-full select-none" style={{ maxHeight: 640 }}>
+      <g>
+        {positioned.map(({ node, y: ny }) => {
+          const color = node.category ? colorForCategory(node.category) : 'rgba(255,255,255,0.4)'
+          return (
+            <path
+              key={`edge-${node.id}`}
+              d={elbowPath(rootX + NODE_R_ROOT, rootY, childX - NODE_R, ny + 9)}
+              fill="none"
+              stroke={color}
+              strokeOpacity={0.45}
+              strokeWidth={1.5}
+            />
+          )
+        })}
+      </g>
+
+      <g>
+        {groupHeaders.map((h) => (
+          <text
+            key={h.label}
+            x={childX}
+            y={h.y + 4}
+            textAnchor="middle"
+            fill={colorForCategory(h.label)}
+            fontSize={11}
+            fontWeight={700}
+          >
+            {h.label}
+          </text>
+        ))}
+      </g>
+
+      <g onClick={() => go(center)} className="cursor-pointer">
+        <circle cx={rootX} cy={rootY} r={NODE_R_ROOT} fill="#fff" />
+        <text x={rootX} y={rootY + 24} textAnchor="middle" fill="#fff" fontSize={13} fontWeight={700}>
+          {center.name}
+        </text>
+      </g>
+
+      <g>
+        {positioned.map(({ node, y: ny }) => {
+          const color = node.category ? colorForCategory(node.category) : 'rgba(255,255,255,0.6)'
+          const edge = edges.find(
+            (e) => (e.source === node.id || e.target === node.id) && (e.source === centerId || e.target === centerId)
+          )
+          return (
+            <g key={node.id} onClick={() => go(node)} className="cursor-pointer">
+              <circle
+                cx={childX}
+                cy={ny + 9}
+                r={NODE_R}
+                fill="rgba(255,255,255,0.14)"
+                stroke={color}
+                strokeWidth={1.5}
+                strokeDasharray={node.type === 'person' ? '2 2' : undefined}
+              />
+              <text x={childX + 14} y={ny + 13} fill="rgba(255,255,255,0.85)" fontSize={12}>
+                {node.name}
+              </text>
+              {edge?.label && (
+                <text x={childX + 14} y={ny + 27} fill="rgba(255,255,255,0.35)" fontSize={10}>
+                  {edge.label}
+                </text>
+              )}
+            </g>
+          )
+        })}
+      </g>
+    </svg>
+  )
+}
+
+/** 中心の無い全体ハブ用: ジャンルごとに列を固定し、列内に縦並び。 */
+function CategoryColumns({ nodes, edges }: { nodes: RelationNode[]; edges: RelationEdge[] }) {
+  const router = useRouter()
+  const groups = groupByCategory(nodes)
+
+  const colWidth = 168
+  const colPadX = 84
+  const width = Math.max(groups.length * colWidth + colPadX, 480)
+
+  const posById = new Map<string, { x: number; y: number; category: string }>()
+  const groupInfo: { label: string; x: number; count: number }[] = []
+  groups.forEach(([category, groupNodes], i) => {
+    const x = colPadX + i * colWidth
+    groupInfo.push({ label: category, x, count: groupNodes.length })
+    groupNodes.forEach((node, j) => {
+      posById.set(node.id, { x, y: 46 + j * ROW_HEIGHT, category })
+    })
+  })
+  const maxRows = Math.max(...groups.map(([, g]) => g.length), 1)
+  const height = Math.max(46 + maxRows * ROW_HEIGHT + 20, 200)
+
+  function go(node: RelationNode) {
+    router.push(`${node.type === 'person' ? '/people' : '/artists'}/${node.id}`)
+  }
+
+  return (
+    <svg viewBox={`0 0 ${width} ${height}`} className="w-full select-none" style={{ maxHeight: 640 }}>
+      <g>
+        {groupInfo.map((g) => (
+          <rect
+            key={g.label}
+            x={g.x - 60}
+            y={20}
+            width={120}
+            height={g.count * ROW_HEIGHT + 20}
+            rx={10}
+            fill={colorForCategory(g.label)}
+            fillOpacity={0.06}
+            stroke={colorForCategory(g.label)}
+            strokeOpacity={0.25}
+          />
+        ))}
+      </g>
+      <g>
+        {groupInfo.map((g) => (
+          <text key={g.label} x={g.x} y={14} textAnchor="middle" fill={colorForCategory(g.label)} fontSize={11} fontWeight={700}>
+            {g.label}
+          </text>
+        ))}
+      </g>
+      <g>
+        {edges.map((e, i) => {
+          const s = posById.get(e.source)
+          const t = posById.get(e.target)
+          if (!s || !t) return null
+          if (s.x === t.x && s.y === t.y) return null
+          return (
+            <path
+              key={i}
+              d={elbowPath(s.x, s.y + 9, t.x, t.y + 9)}
+              fill="none"
+              stroke="rgba(255,255,255,0.25)"
+              strokeWidth={1.25}
+              strokeDasharray={e.style === 'dotted' ? '4 4' : undefined}
+            >
+              {e.label && <title>{e.label}</title>}
+            </path>
+          )
+        })}
+      </g>
+      <g>
+        {nodes.map((node) => {
+          const pos = posById.get(node.id)
+          if (!pos) return null
+          const color = node.category ? colorForCategory(node.category) : 'rgba(255,255,255,0.6)'
+          return (
+            <g key={node.id} onClick={() => go(node)} className="cursor-pointer">
+              <circle
+                cx={pos.x}
+                cy={pos.y + 9}
+                r={NODE_R}
+                fill="rgba(255,255,255,0.14)"
+                stroke={color}
+                strokeWidth={1.5}
+                strokeDasharray={node.type === 'person' ? '2 2' : undefined}
+              />
+              <text x={pos.x} y={pos.y + 27} textAnchor="middle" fill="rgba(255,255,255,0.85)" fontSize={11}>
+                {node.name}
+              </text>
+            </g>
+          )
+        })}
+      </g>
+    </svg>
+  )
 }
 
 export default function RelationGraph({
@@ -95,106 +275,7 @@ export default function RelationGraph({
   edges: RelationEdge[]
   centerId?: string
 }) {
-  const router = useRouter()
-  const [simNodes, setSimNodes] = useState<SimNode[]>([])
-  const [simLinks, setSimLinks] = useState<SimLink[]>([])
-  const simulationRef = useRef<Simulation<SimNode, SimLink> | null>(null)
-  const draggingRef = useRef<{ node: SimNode; moved: boolean } | null>(null)
-  const svgRef = useRef<SVGSVGElement | null>(null)
-
-  const categories = Array.from(
-    new Set(nodes.map((n) => n.category).filter((c): c is string => Boolean(c)))
-  )
-
-  useEffect(() => {
-    const nodesCopy: SimNode[] = nodes.map((n) => ({ ...n }))
-    const linksCopy: SimLink[] = edges.map((e) => ({ ...e }))
-
-    const centerNode = centerId ? nodesCopy.find((n) => n.id === centerId) : undefined
-    if (centerNode) {
-      centerNode.fx = WIDTH / 2
-      centerNode.fy = HEIGHT / 2
-    }
-
-    const anchors = clusterAnchors(categories)
-
-    const simulation = forceSimulation<SimNode>(nodesCopy)
-      .force(
-        'link',
-        forceLink<SimNode, SimLink>(linksCopy)
-          .id((d) => d.id)
-          .distance(110)
-      )
-      .force('charge', forceManyBody().strength(-260))
-      .force('center', forceCenter(WIDTH / 2, HEIGHT / 2))
-      .force('collide', forceCollide(38))
-      .force(
-        'x',
-        forceX<SimNode>((d) => (d.category ? (anchors.get(d.category)?.x ?? WIDTH / 2) : WIDTH / 2)).strength(
-          (d) => (d.category ? 0.15 : 0.02)
-        )
-      )
-      .force(
-        'y',
-        forceY<SimNode>((d) => (d.category ? (anchors.get(d.category)?.y ?? HEIGHT / 2) : HEIGHT / 2)).strength(
-          (d) => (d.category ? 0.15 : 0.02)
-        )
-      )
-      .on('tick', () => {
-        setSimNodes([...nodesCopy])
-      })
-
-    simulationRef.current = simulation
-    setSimLinks(linksCopy)
-
-    return () => {
-      simulation.stop()
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nodes, edges, centerId])
-
-  function handlePointerDown(e: React.PointerEvent, node: SimNode) {
-    if (node.id === centerId) return
-    e.stopPropagation()
-    draggingRef.current = { node, moved: false }
-    simulationRef.current?.alphaTarget(0.3).restart()
-
-    function toSvgPoint(clientX: number, clientY: number) {
-      const svg = svgRef.current
-      if (!svg) return null
-      const rect = svg.getBoundingClientRect()
-      return {
-        x: ((clientX - rect.left) / rect.width) * WIDTH,
-        y: ((clientY - rect.top) / rect.height) * HEIGHT,
-      }
-    }
-
-    function handleMove(ev: PointerEvent) {
-      const point = toSvgPoint(ev.clientX, ev.clientY)
-      if (!point || !draggingRef.current) return
-      draggingRef.current.node.fx = point.x
-      draggingRef.current.node.fy = point.y
-      draggingRef.current.moved = true
-    }
-
-    function handleUp() {
-      window.removeEventListener('pointermove', handleMove)
-      window.removeEventListener('pointerup', handleUp)
-      simulationRef.current?.alphaTarget(0)
-      const current = draggingRef.current
-      draggingRef.current = null
-      if (!current) return
-      current.node.fx = null
-      current.node.fy = null
-      if (!current.moved) {
-        const path = current.node.type === 'person' ? '/people' : '/artists'
-        router.push(`${path}/${current.node.id}`)
-      }
-    }
-
-    window.addEventListener('pointermove', handleMove)
-    window.addEventListener('pointerup', handleUp)
-  }
+  const categories = Array.from(new Set(nodes.map((n) => n.category ?? UNCATEGORIZED)))
 
   if (nodes.length === 0) {
     return <p className="py-16 text-center text-sm text-white/40">まだ相関データがありません。</p>
@@ -202,89 +283,11 @@ export default function RelationGraph({
 
   return (
     <div>
-      <svg
-        ref={svgRef}
-        viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
-        className="w-full touch-none select-none"
-        style={{ maxHeight: HEIGHT }}
-      >
-        <g>
-          {categories.map((category) => {
-            const nodesInCategory = simNodes.filter((n) => n.category === category)
-            const path = blobPath(nodesInCategory)
-            if (!path) return null
-            const color = colorForCategory(category)
-            const centroidX =
-              nodesInCategory.reduce((sum, n) => sum + (n.x ?? 0), 0) / nodesInCategory.length
-            const centroidY =
-              Math.min(...nodesInCategory.map((n) => n.y ?? HEIGHT)) - BLOB_PAD - 10
-
-            return (
-              <g key={category}>
-                <path d={path} fill={color} fillOpacity={0.12} stroke={color} strokeOpacity={0.4} strokeWidth={1.5} />
-                <text x={centroidX} y={centroidY} textAnchor="middle" fill={color} fontSize={12} fontWeight={700}>
-                  {category}
-                </text>
-              </g>
-            )
-          })}
-        </g>
-
-        <g>
-          {simLinks.map((link, i) => {
-            const source = typeof link.source === 'object' ? link.source : undefined
-            const target = typeof link.target === 'object' ? link.target : undefined
-            if (!source || !target || source.x == null || target.x == null || target.y == null || source.y == null) {
-              return null
-            }
-            return (
-              <line
-                key={i}
-                x1={source.x}
-                y1={source.y}
-                x2={target.x}
-                y2={target.y}
-                stroke="rgba(255,255,255,0.25)"
-                strokeWidth={1.5}
-                strokeDasharray={link.style === 'dotted' ? '4 4' : undefined}
-              >
-                {link.label && <title>{link.label}</title>}
-              </line>
-            )
-          })}
-        </g>
-        <g>
-          {simNodes.map((node) => {
-            if (node.x == null || node.y == null) return null
-            const isCenter = node.id === centerId
-            return (
-              <g
-                key={node.id}
-                transform={`translate(${node.x}, ${node.y})`}
-                onPointerDown={(e) => handlePointerDown(e, node)}
-                className={isCenter ? 'cursor-default' : 'cursor-pointer'}
-              >
-                <circle
-                  r={isCenter ? 26 : 18}
-                  fill={isCenter ? '#fff' : 'rgba(255,255,255,0.14)'}
-                  stroke="rgba(255,255,255,0.4)"
-                  strokeWidth={1}
-                  strokeDasharray={node.type === 'person' ? '3 3' : undefined}
-                />
-                <text
-                  y={isCenter ? 42 : 32}
-                  textAnchor="middle"
-                  fill={isCenter ? '#fff' : 'rgba(255,255,255,0.7)'}
-                  fontSize={isCenter ? 13 : 11}
-                  fontWeight={isCenter ? 700 : 400}
-                >
-                  {node.name}
-                </text>
-              </g>
-            )
-          })}
-        </g>
-      </svg>
+      {centerId ? (
+        <EgoTree nodes={nodes} edges={edges} centerId={centerId} />
+      ) : (
+        <CategoryColumns nodes={nodes} edges={edges} />
+      )}
 
       {categories.length > 0 && (
         <div className="flex flex-wrap gap-x-4 gap-y-1.5 border-t border-white/10 px-2 py-3 text-xs text-white/60">
