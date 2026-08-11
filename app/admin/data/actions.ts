@@ -23,12 +23,19 @@ export async function searchTracks(query: string): Promise<PickerItem[]> {
   const supabase = await createClient()
   const { data } = await supabase
     .from('track')
-    .select('id, title, artist:artist_id(name)')
+    .select('id, title, artist:artist_id(name), album:album_id(title)')
     .ilike('title', `%${trimmed}%`)
     .limit(20)
   return (data ?? []).map((t) => {
     const artist = Array.isArray(t.artist) ? t.artist[0] : t.artist
-    return { id: t.id, label: `${t.title}${artist?.name ? ` — ${artist.name}` : ''}` }
+    const album = Array.isArray(t.album) ? t.album[0] : t.album
+    // 同名曲がシングル/EP版とアルバム収録版で別トラック行として存在することがあり
+    // (例:「はしりがき」)、アーティスト名だけでは候補を区別できない。
+    // どちらの版かを見分けられるよう収録アルバム名も表示する。
+    return {
+      id: t.id,
+      label: `${t.title}${artist?.name ? ` — ${artist.name}` : ''}${album?.title ? `(${album.title})` : ''}`,
+    }
   })
 }
 
