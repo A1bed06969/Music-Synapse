@@ -35,9 +35,14 @@ export default async function UnreleasedArtistsPage({
 
   return (
     <div className="mx-auto max-w-2xl px-6 py-12">
-      <Link href="/admin/data" className="text-xs text-white/40 hover:text-white/70">
-        ← 管理画面に戻る
-      </Link>
+      <div className="flex items-center justify-between">
+        <Link href="/admin/data" className="text-xs text-white/40 hover:text-white/70">
+          ← 管理画面に戻る
+        </Link>
+        <Link href="/artists/unreleased" className="text-xs text-white/40 hover:text-white/70">
+          公開ページを見る →
+        </Link>
+      </div>
 
       <h1 className="mt-4 text-2xl font-bold">サブスク未解禁アーティストの検出</h1>
       <p className="mt-2 text-sm text-white/50">
