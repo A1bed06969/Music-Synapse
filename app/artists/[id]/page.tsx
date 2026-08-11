@@ -25,7 +25,14 @@ export default async function ArtistDetailPage({
   const supabase = await createClient()
 
   const [
-    [{ data: artist, error }, { data: albums }, { data: musicEvents }, { data: eventAppearances }, { data: externalLinks }],
+    [
+      { data: artist, error },
+      { data: albums },
+      { data: musicEvents },
+      { data: eventAppearances },
+      { data: externalLinks },
+      { data: awardEntries },
+    ],
     relationGraph,
   ] = await Promise.all([
     Promise.all([
@@ -45,6 +52,11 @@ export default async function ArtistDetailPage({
         .select('id, stage, venue, is_headliner, event_edition:event_edition_id(year, venue, event:event_id(name))')
         .eq('artist_id', id),
       supabase.from('artist_external_link').select('id, link_type, url').eq('artist_id', id).order('link_type', { ascending: true }).order('url', { ascending: true }),
+      supabase
+        .from('award_entry')
+        .select('id, year, category, result, award:award_id(name)')
+        .eq('artist_id', id)
+        .order('year', { ascending: false }),
     ]),
     (async () => {
       const { data: nameRow } = await supabase.from('artist').select('name').eq('id', id).single()
@@ -212,6 +224,32 @@ export default async function ArtistDetailPage({
             </Link>
           ))}
         </div>
+      )}
+
+      {awardEntries && awardEntries.length > 0 && (
+        <>
+          <SectionDivider label="Awards" />
+          <ul className="mt-4 space-y-2 text-sm">
+            {awardEntries.map((row) => {
+              const award = Array.isArray(row.award) ? row.award[0] : row.award
+              return (
+                <li key={row.id} className="flex items-center justify-between gap-3">
+                  <span>
+                    {row.year} {award?.name}
+                    {row.category && <span className="text-white/40"> ・ {row.category}</span>}
+                  </span>
+                  <span
+                    className={`shrink-0 rounded-full border px-2.5 py-0.5 text-xs ${
+                      row.result === 'winner' ? 'border-amber-400/40 text-amber-300' : 'border-white/15 text-white/50'
+                    }`}
+                  >
+                    {row.result === 'winner' ? '🏆 受賞' : 'ノミネート'}
+                  </span>
+                </li>
+              )
+            })}
+          </ul>
+        </>
       )}
 
       {mvVideoId && (

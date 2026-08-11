@@ -21,11 +21,17 @@ export default async function AlbumDetailPage({
     notFound()
   }
 
-  const { data: tracks } = await supabase
-    .from('track')
-    .select('id, track_no, title, duration_seconds')
-    .eq('album_id', id)
-    .order('track_no', { ascending: true })
+  const [{ data: tracks }, { data: discGuideSelections }] = await Promise.all([
+    supabase
+      .from('track')
+      .select('id, track_no, title, duration_seconds')
+      .eq('album_id', id)
+      .order('track_no', { ascending: true }),
+    supabase
+      .from('disc_guide_selection')
+      .select('id, note, disc_guide:disc_guide_id(id, title, publisher, published_year)')
+      .eq('album_id', id),
+  ])
 
   const artist = Array.isArray(album.artist) ? album.artist[0] : album.artist
   const label = Array.isArray(album.label) ? album.label[0] : album.label
@@ -134,6 +140,28 @@ export default async function AlbumDetailPage({
           </ol>
         )}
       </section>
+
+      {discGuideSelections && discGuideSelections.length > 0 && (
+        <section className="mt-10">
+          <h2 className="text-lg font-semibold">掲載ディスクガイド</h2>
+          <ul className="mt-4 space-y-1 text-sm text-white/60">
+            {discGuideSelections.map((row) => {
+              const guide = Array.isArray(row.disc_guide) ? row.disc_guide[0] : row.disc_guide
+              if (!guide) return null
+              const meta = [guide.publisher, guide.published_year ? `${guide.published_year}年` : null]
+                .filter(Boolean)
+                .join(' / ')
+              return (
+                <li key={row.id}>
+                  {guide.title}
+                  {meta && <span className="text-white/40"> ({meta})</span>}
+                  {row.note && <span className="text-white/40"> ・ {row.note}</span>}
+                </li>
+              )
+            })}
+          </ul>
+        </section>
+      )}
     </div>
   )
 }

@@ -10,6 +10,7 @@ const SECTION_LINKS = [
   { href: '/admin/data/sync', label: 'タイアップ・シンクロアーカイブ', description: 'CM/アニメ/映画等での楽曲起用' },
   { href: '/admin/data/events', label: 'イベント', description: 'フェス・開催回・出演情報・単独公演' },
   { href: '/admin/data/awards', label: 'アワード', description: '受賞・ノミネート履歴' },
+  { href: '/admin/data/discguides', label: 'ディスクガイド', description: '書籍情報・アルバムの掲載データ' },
 ]
 
 const TOOL_LINKS = [
