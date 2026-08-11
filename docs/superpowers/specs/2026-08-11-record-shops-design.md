@@ -21,21 +21,29 @@
 
 ## アーキテクチャ
 
+**発見事項**: 実装前にDBスキーマを確認したところ、`record_shop`ではなく`recordshop`という空テーブル(0行)が既に存在していた(プロジェクト初期に他の未着手機能とまとめて先行スキャフォールドされたものと推測される)。新規テーブルは作らず、この既存テーブルを拡張して使う。
+
 ```
 app/admin/data/shops/page.tsx (新規, Server Component)
   └─ 登録フォーム(店名・住所・URL・営業時間)
-  └─ 既存登録済み店舗一覧(record_shop全件、参考表示)
+  └─ 既存登録済み店舗一覧(recordshop全件、参考表示)
   └─ ?address=... が付いている場合、ShopCandidatesで候補表示
 
 app/admin/data/shops/actions.ts (新規)
   └─ export async function importRecordShop(formData: FormData)
-     name/address/url/hours/latitude/longitudeを受け取り、record_shopにinsert
+     name/address/url/hours/candidateIndexを受け取り、recordshopにinsert
 
 app/admin/data/shops/SubmitButton.tsx (新規, 'use client')
   └─ 既存venues/SubmitButton.tsxと同様のpending状態ボタン
 
+utils/nominatim.ts (既存, 変更)
+  └─ geocodeVenue()にaddressdetails=1を追加し、NominatimResultに
+     country/prefectureOrState/city(構造化住所、任意)を追加
+     (venuesページの既存呼び出し元は追加フィールドを無視するだけで
+     互換性は保たれる)
+
 app/map/page.tsx (既存, 変更)
-  └─ record_shop全件を取得し、shopMarkers: MapMarker[]に変換(色は緑系 #5ad66f)
+  └─ recordshop全件を取得し、shopMarkers: MapMarker[]に変換(色は緑系 #5ad66f)
   └─ markers = [...artistMarkers, ...venueMarkers, ...shopMarkers]
   └─ 凡例文言に「レコードショップ(緑)」を追記
 ```
@@ -46,23 +54,16 @@ venuesページとの違いは、venuesは既存の`music_event`/`event_edition`
 
 ## データモデル
 
-新規テーブル`record_shop`:
+既存テーブル`recordshop`(現状の列: `id`, `name`, `country`, `prefecture_or_state`, `city`, `address`, `latitude`, `longitude`, `official_site_url`, `created_at`)に、以下の2列を追加するマイグレーションを1本実行する:
 
 ```sql
-create table record_shop (
-  id          text primary key default generate_ms_id('SHP'),
-  name        text not null,
-  address     text not null,
-  url         text,
-  hours       text,
-  latitude    numeric not null,
-  longitude   numeric not null,
-  source      text not null default 'manual',
-  created_at  timestamptz not null default now()
-);
+alter table recordshop add column hours text;
+alter table recordshop add column source text not null default 'nominatim';
 ```
 
-`source`列は将来Overpass一括収集を追加する際に`'manual'`と`'overpass'`等を区別するために設ける(`venue_location`の`source`列と同じ位置づけ)。
+`source`列は将来Overpass一括収集を追加する際に値を区別するために設ける(`venue_location.source`と同じ位置づけ。座標取得手段を表すため、値は`venue_location`に合わせて`'manual'`ではなく`'nominatim'`とする)。
+
+`country`/`prefecture_or_state`/`city`は、ユーザーが入力した住所テキストをNominatimでジオコーディングした際のレスポンス(`addressdetails=1`)から自動的に埋める。ユーザーは住所を1つのフリーテキストとして入力するだけでよい(3列への手動分解は不要)。Nominatimは国によって都道府県相当の階層を`state`または`province`のどちらかで返すため、`address.state ?? address.province ?? null`のフォールバックで拾う。市区町村は`address.city ?? address.town ?? address.suburb ?? null`のフォールバックで拾う(日本の政令指定都市の区は`suburb`に入ることがある — 実際に「大阪市北区」を検索した際`city: "大阪市"`, `suburb: "北区"`という結果を確認済み)。
 
 ## エラーハンドリング
 
