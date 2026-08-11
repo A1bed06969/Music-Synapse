@@ -36,7 +36,7 @@ export default async function RelationsPage() {
     <div className="mx-auto max-w-4xl px-6 py-12">
       <h1 className="text-2xl font-bold">総合音楽相関図</h1>
       <p className="mt-2 text-sm text-white/50">
-        全アーティストを横断したつながりのネットワーク。実線は在籍/制作/コラボ、点線はジャンル・シーンや影響関係を表します。同じジャンルのアーティストは色分けされたエリアにまとまって配置されます。ノードをクリックするとアーティストページへ移動します。
+        全アーティストを横断したつながりのネットワーク。実線は在籍/制作/コラボ、点線はジャンル・シーンや影響関係を表します。「ジャンル」表示ではジャンルごとに区切って配置、「リレーション」表示では実際に繋がりのあるアーティスト同士をまとめて配置します(ノードの色は常にジャンルを表します)。ノードをクリックするとアーティストページへ移動します。
       </p>
 
       <div className="mt-8 rounded-lg border border-white/10 bg-white/[0.02]">

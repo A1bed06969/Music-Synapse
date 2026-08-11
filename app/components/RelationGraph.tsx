@@ -1,6 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
+import { useState } from 'react'
 
 export type RelationNode = { id: string; name: string; category?: string | null; type?: 'artist' | 'person' }
 export type RelationEdge = {
@@ -66,6 +67,49 @@ function groupByCategory(nodes: RelationNode[]) {
     groups.set(key, list)
   }
   return Array.from(groups.entries())
+}
+
+const NO_RELATION = 'つながりなし'
+
+/** 線で繋がっているノード同士を1グループ(接続成分)にまとめる。ジャンルを
+ * 無視して「実際に線があるかどうか」だけで分けるので、リレーションモードで
+ * 同じ塊のノードが同じ列に収まり、線を素直に引ける。線が1本も無いノードは
+ * 最後に「つながりなし」としてまとめる。 */
+function groupByConnection(nodes: RelationNode[], edges: RelationEdge[]) {
+  const adjacency = new Map<string, string[]>()
+  for (const n of nodes) adjacency.set(n.id, [])
+  for (const e of edges) {
+    if (!adjacency.has(e.source) || !adjacency.has(e.target) || e.source === e.target) continue
+    adjacency.get(e.source)!.push(e.target)
+    adjacency.get(e.target)!.push(e.source)
+  }
+
+  const byId = new Map(nodes.map((n) => [n.id, n]))
+  const visited = new Set<string>()
+  const clusters: RelationNode[][] = []
+  for (const n of nodes) {
+    if (visited.has(n.id)) continue
+    visited.add(n.id)
+    const stack = [n.id]
+    const members: RelationNode[] = []
+    while (stack.length > 0) {
+      const id = stack.pop()!
+      members.push(byId.get(id)!)
+      for (const neighborId of adjacency.get(id) ?? []) {
+        if (visited.has(neighborId)) continue
+        visited.add(neighborId)
+        stack.push(neighborId)
+      }
+    }
+    clusters.push(members)
+  }
+
+  const connected = clusters.filter((c) => c.length > 1).sort((a, b) => b.length - a.length)
+  const isolated = clusters.filter((c) => c.length === 1).flat()
+
+  const groups: [string, RelationNode[]][] = connected.map((members, i) => [`グループ${i + 1}`, members])
+  if (isolated.length > 0) groups.push([NO_RELATION, isolated])
+  return groups
 }
 
 /** 中心アーティスト1人から右へ枝が伸びる木構造レイアウト。 */
@@ -182,10 +226,18 @@ function EgoTree({
   )
 }
 
-/** 中心の無い全体ハブ用: ジャンルごとに列を固定し、列内に縦並び。 */
-function CategoryColumns({ nodes, edges }: { nodes: RelationNode[]; edges: RelationEdge[] }) {
+/** 中心の無い全体ハブ用: グループ(ジャンル、または接続成分)ごとに列を
+ * 固定し、列内に縦並び。列をまたぐ線は上部の専用レーンを経由する。 */
+function ColumnLayout({
+  nodes,
+  edges,
+  groups,
+}: {
+  nodes: RelationNode[]
+  edges: RelationEdge[]
+  groups: [string, RelationNode[]][]
+}) {
   const router = useRouter()
-  const groups = groupByCategory(nodes)
 
   const colWidth = 168
   const colPadX = 84
@@ -321,6 +373,8 @@ function CategoryColumns({ nodes, edges }: { nodes: RelationNode[]; edges: Relat
   )
 }
 
+type HubMode = 'genre' | 'relation'
+
 export default function RelationGraph({
   nodes,
   edges,
@@ -330,18 +384,43 @@ export default function RelationGraph({
   edges: RelationEdge[]
   centerId?: string
 }) {
+  const [hubMode, setHubMode] = useState<HubMode>('genre')
   const categories = Array.from(new Set(nodes.map((n) => n.category ?? UNCATEGORIZED)))
 
   if (nodes.length === 0) {
     return <p className="py-16 text-center text-sm text-white/40">まだ相関データがありません。</p>
   }
 
+  const hubGroups = hubMode === 'genre' ? groupByCategory(nodes) : groupByConnection(nodes, edges)
+
   return (
     <div>
+      {!centerId && (
+        <div className="flex gap-1 border-b border-white/10 p-2">
+          {(
+            [
+              ['genre', 'ジャンル'],
+              ['relation', 'リレーション'],
+            ] as const
+          ).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setHubMode(value)}
+              className={`rounded px-3 py-1 text-xs ${
+                hubMode === value ? 'bg-white text-black' : 'text-white/60 hover:text-white'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+
       {centerId ? (
         <EgoTree nodes={nodes} edges={edges} centerId={centerId} />
       ) : (
-        <CategoryColumns nodes={nodes} edges={edges} />
+        <ColumnLayout nodes={nodes} edges={edges} groups={hubGroups} />
       )}
 
       {categories.length > 0 && (
