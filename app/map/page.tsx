@@ -167,13 +167,38 @@ export default async function MapPage() {
     }
   })
 
-  const markers: MapMarker[] = [...artistMarkers, ...venueMarkers, ...shopMarkers]
+  const { data: livehouses } = await supabase
+    .from('livehouse')
+    .select('id, name, address, url, hours, latitude, longitude')
+    .not('latitude', 'is', null)
+    .not('longitude', 'is', null)
+
+  const livehouseMarkers: MapMarker[] = (livehouses ?? []).map((l) => {
+    const detailsHtml = [
+      l.address ? `<div style="font-size:12px;color:#aaa;">${escapeHtml(l.address)}</div>` : '',
+      l.hours ? `<div style="margin-top:2px;font-size:12px;">${escapeHtml(l.hours)}</div>` : '',
+      l.url
+        ? `<div style="margin-top:4px;font-size:12px;"><a href="${escapeHtml(l.url)}">公式サイト</a></div>`
+        : '',
+    ].join('')
+    return {
+      id: `livehouse-${l.id}`,
+      latitude: Number(l.latitude),
+      longitude: Number(l.longitude),
+      color: '#c77dff',
+      popupHtml: `<div style="min-width:160px;"><div style="font-weight:bold;"><a href="/livehouses/${escapeHtml(
+        l.id
+      )}" style="color:inherit;">${escapeHtml(l.name)}</a></div>${detailsHtml}</div>`,
+    }
+  })
+
+  const markers: MapMarker[] = [...artistMarkers, ...venueMarkers, ...shopMarkers, ...livehouseMarkers]
 
   return (
     <div className="mx-auto max-w-5xl px-6 py-12">
       <h1 className="text-2xl font-bold">マップ</h1>
       <p className="mt-2 text-sm text-white/50">
-        アーティストの出身地・結成地(赤)、イベント会場(青)、レコードショップ(緑)を地図で表示します。
+        アーティストの出身地・結成地(赤)、イベント会場(青)、レコードショップ(緑)、ライブハウス(紫)を地図で表示します。
       </p>
       <div className="mt-8">
         <MapClientWrapper markers={markers} />

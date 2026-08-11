@@ -193,6 +193,9 @@ export default async function AdminDataPage({
           <Link href="/admin/data/shops" className="text-xs text-white/40 hover:text-white/70">
             レコードショップ登録
           </Link>
+          <Link href="/admin/data/livehouses" className="text-xs text-white/40 hover:text-white/70">
+            ライブハウス登録
+          </Link>
           <Link href="/admin/data/venues" className="text-xs text-white/40 hover:text-white/70">
             会場の座標登録
           </Link>
