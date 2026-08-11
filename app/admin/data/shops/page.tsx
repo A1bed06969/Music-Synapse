@@ -56,7 +56,9 @@ export default async function ShopsPage({
           <ul className="mt-3 space-y-1 text-sm text-white/60">
             {shops.map((s) => (
               <li key={s.id}>
-                {s.name}
+                <Link href={`/shops/${s.id}`} className="hover:text-white">
+                  {s.name}
+                </Link>
                 <span className="text-white/30">
                   {' '}
                   ({[s.prefecture_or_state, s.city].filter(Boolean).join(' ') || s.address || '住所不明'})

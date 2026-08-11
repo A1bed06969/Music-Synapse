@@ -161,7 +161,9 @@ export default async function MapPage() {
       latitude: Number(s.latitude),
       longitude: Number(s.longitude),
       color: '#5ad66f',
-      popupHtml: `<div style="min-width:160px;"><div style="font-weight:bold;">${escapeHtml(s.name)}</div>${detailsHtml}</div>`,
+      popupHtml: `<div style="min-width:160px;"><div style="font-weight:bold;"><a href="/shops/${escapeHtml(
+        s.id
+      )}" style="color:inherit;">${escapeHtml(s.name)}</a></div>${detailsHtml}</div>`,
     }
   })
 
