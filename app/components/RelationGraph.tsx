@@ -39,6 +39,19 @@ function elbowPath(sx: number, sy: number, tx: number, ty: number): string {
   return `M ${sx},${sy} H ${midX} V ${ty} H ${tx}`
 }
 
+/** 同じ列内のノード同士を繋ぐ経路。列の外側に迂回することで、
+ * 経路上に他の無関係なノードが乗って誤解を招くことを避ける。 */
+function sameColumnBumpPath(x: number, sy: number, ty: number, bumpOffset: number): string {
+  const bx = x + bumpOffset
+  return `M ${x},${sy} H ${bx} V ${ty} H ${x}`
+}
+
+/** 列をまたぐノード同士を繋ぐ経路。ノードが並ぶ帯の外(上部の専用レーン)を
+ * 経由することで、途中の列のノードの上を線が通過して誤解を招くことを避ける。 */
+function highwayPath(sx: number, sy: number, tx: number, ty: number, laneY: number): string {
+  return `M ${sx},${sy} V ${laneY} H ${tx} V ${ty}`
+}
+
 const ROW_HEIGHT = 40
 const GROUP_GAP = 22
 const NODE_R_ROOT = 9
@@ -178,17 +191,36 @@ function CategoryColumns({ nodes, edges }: { nodes: RelationNode[]; edges: Relat
   const colPadX = 84
   const width = Math.max(groups.length * colWidth + colPadX, 480)
 
-  const posById = new Map<string, { x: number; y: number; category: string }>()
+  // まずxとカテゴリだけ確定させる(yは後で決める。列をまたぐ線の本数が
+  // 分かってから、上部の迂回レーン分だけノード行を下にずらす必要があるため)
+  const columnXById = new Map<string, number>()
   const groupInfo: { label: string; x: number; count: number }[] = []
   groups.forEach(([category, groupNodes], i) => {
     const x = colPadX + i * colWidth
     groupInfo.push({ label: category, x, count: groupNodes.length })
+    groupNodes.forEach((node) => columnXById.set(node.id, x))
+  })
+
+  const validEdges = edges.filter(
+    (e) => columnXById.has(e.source) && columnXById.has(e.target) && e.source !== e.target
+  )
+  const crossColumnEdges = validEdges.filter((e) => columnXById.get(e.source) !== columnXById.get(e.target))
+
+  const HEADER_Y = 14
+  const LANE_GAP = 5
+  const highwayTop = HEADER_Y + 14
+  const highwayHeight = Math.max(crossColumnEdges.length * LANE_GAP, 0)
+  const rowsTop = highwayTop + highwayHeight + 16
+
+  const posById = new Map<string, { x: number; y: number; category: string }>()
+  groups.forEach(([category, groupNodes], i) => {
+    const x = colPadX + i * colWidth
     groupNodes.forEach((node, j) => {
-      posById.set(node.id, { x, y: 46 + j * ROW_HEIGHT, category })
+      posById.set(node.id, { x, y: rowsTop + j * ROW_HEIGHT, category })
     })
   })
   const maxRows = Math.max(...groups.map(([, g]) => g.length), 1)
-  const height = Math.max(46 + maxRows * ROW_HEIGHT + 20, 200)
+  const height = Math.max(rowsTop + maxRows * ROW_HEIGHT + 20, 200)
 
   function go(node: RelationNode) {
     router.push(`${node.type === 'person' ? '/people' : '/artists'}/${node.id}`)
@@ -201,7 +233,7 @@ function CategoryColumns({ nodes, edges }: { nodes: RelationNode[]; edges: Relat
           <rect
             key={g.label}
             x={g.x - 60}
-            y={20}
+            y={rowsTop - 26}
             width={120}
             height={g.count * ROW_HEIGHT + 20}
             rx={10}
@@ -214,21 +246,44 @@ function CategoryColumns({ nodes, edges }: { nodes: RelationNode[]; edges: Relat
       </g>
       <g>
         {groupInfo.map((g) => (
-          <text key={g.label} x={g.x} y={14} textAnchor="middle" fill={colorForCategory(g.label)} fontSize={11} fontWeight={700}>
+          <text key={g.label} x={g.x} y={HEADER_Y} textAnchor="middle" fill={colorForCategory(g.label)} fontSize={11} fontWeight={700}>
             {g.label}
           </text>
         ))}
       </g>
       <g>
-        {edges.map((e, i) => {
+        {validEdges.map((e, i) => {
           const s = posById.get(e.source)
           const t = posById.get(e.target)
           if (!s || !t) return null
-          if (s.x === t.x && s.y === t.y) return null
+          if (s.x !== t.x) return null // 列またぎは下の専用レーンで描画
+          // 経路が同じ列の他の無関係なノードの真上を通らないよう、列の外側へ迂回する
           return (
             <path
               key={i}
-              d={elbowPath(s.x, s.y + 9, t.x, t.y + 9)}
+              d={sameColumnBumpPath(s.x, s.y + 9, t.y + 9, 22)}
+              fill="none"
+              stroke="rgba(255,255,255,0.25)"
+              strokeWidth={1.25}
+              strokeDasharray={e.style === 'dotted' ? '4 4' : undefined}
+            >
+              {e.label && <title>{e.label}</title>}
+            </path>
+          )
+        })}
+      </g>
+      <g>
+        {crossColumnEdges.map((e, laneIndex) => {
+          const s = posById.get(e.source)
+          const t = posById.get(e.target)
+          if (!s || !t) return null
+          // 列をまたぐ経路は、途中の列のノードの上を通らないよう、
+          // 全ノードより上の専用レーンを経由させる(線ごとに高さをずらす)
+          const laneY = highwayTop + laneIndex * LANE_GAP
+          return (
+            <path
+              key={`cross-${laneIndex}`}
+              d={highwayPath(s.x, s.y + 9, t.x, t.y + 9, laneY)}
               fill="none"
               stroke="rgba(255,255,255,0.25)"
               strokeWidth={1.25}
