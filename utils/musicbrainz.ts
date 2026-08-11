@@ -219,12 +219,64 @@ const RELEASE_ROLE_TYPE_MAP: Record<string, MusicBrainzReleaseCredit['role']> = 
   'design/illustration': 'artwork',
 }
 
-// Producer/mix/mastering/composer/lyricist/arranger credits are attached to
-// each recording (track) in MusicBrainz, not to the release itself —
-// release-level relations only cover whole-release credits (e.g. cover
-// artwork). Fetching just the release therefore misses nearly all real
-// credits; both sources are needed.
-export async function fetchReleaseCredits(releaseMbid: string): Promise<MusicBrainzReleaseCredit[]> {
+export type MusicBrainzInstrumentPick = {
+  recordingTitle: string
+  instrumentName: string
+}
+
+export type MusicBrainzReleaseCreditsResult = {
+  credits: MusicBrainzReleaseCredit[]
+  instruments: MusicBrainzInstrumentPick[]
+}
+
+// MusicBrainzの録音(レコーディング)単位の"instrument"タイプ関係(例:
+// "drums (drum set)", "bass guitar")は英語の統制語彙で、既存の`instrument`
+// テーブルの慣習(例:「ピアノ」)に合わせて和訳する。未収録語は原文のまま返す
+// (データを落とすより、英語表記のまま見せる方がまし)。
+const INSTRUMENT_NAME_JA: Record<string, string> = {
+  'drums (drum set)': 'ドラム',
+  drums: 'ドラム',
+  'bass guitar': 'ベース',
+  'electric guitar': 'エレキギター',
+  'acoustic guitar': 'アコースティックギター',
+  guitar: 'ギター',
+  synthesizer: 'シンセサイザー',
+  piano: 'ピアノ',
+  'electric piano': 'エレクトリックピアノ',
+  keyboard: 'キーボード',
+  organ: 'オルガン',
+  tambourine: 'タンバリン',
+  percussion: 'パーカッション',
+  saxophone: 'サックス',
+  trumpet: 'トランペット',
+  trombone: 'トロンボーン',
+  violin: 'バイオリン',
+  cello: 'チェロ',
+  flute: 'フルート',
+  clarinet: 'クラリネット',
+  harmonica: 'ハーモニカ',
+  banjo: 'バンジョー',
+  ukulele: 'ウクレレ',
+  strings: 'ストリングス',
+  brass: 'ブラス',
+  horn: 'ホルン',
+  'double bass': 'ウッドベース',
+  'drum machine': 'ドラムマシン',
+}
+
+function translateInstrumentName(rawName: string): string {
+  return INSTRUMENT_NAME_JA[rawName.toLowerCase().trim()] ?? rawName
+}
+
+// Producer/mix/mastering/composer/lyricist/arranger credits, and instrument
+// performance data, are attached to each recording (track) in MusicBrainz,
+// not to the release itself — release-level relations only cover
+// whole-release credits (e.g. cover artwork). Fetching just the release
+// therefore misses nearly all real data; both sources are needed. Both
+// outputs are derived from the same two fetches (no extra API calls).
+export async function fetchReleaseCreditsAndInstruments(
+  releaseMbid: string
+): Promise<MusicBrainzReleaseCreditsResult> {
   const sourceUrl = `https://musicbrainz.org/release/${releaseMbid}`
 
   const releaseData = await fetchMusicBrainz(
@@ -236,17 +288,17 @@ export async function fetchReleaseCredits(releaseMbid: string): Promise<MusicBra
     'recording credits'
   )
 
-  const seen = new Set<string>()
+  const seenCredits = new Set<string>()
   const credits: MusicBrainzReleaseCredit[] = []
 
-  function addRelations(relations: any[] | undefined) {
+  function addCreditRelations(relations: any[] | undefined) {
     for (const rel of relations ?? []) {
       const role = RELEASE_ROLE_TYPE_MAP[rel.type]
       if (!role) continue
       if (!rel.artist?.id || !rel.artist?.name) continue
       const key = `${rel.artist.id}:${role}`
-      if (seen.has(key)) continue
-      seen.add(key)
+      if (seenCredits.has(key)) continue
+      seenCredits.add(key)
       credits.push({
         personName: rel.artist.name,
         personMbid: rel.artist.id,
@@ -256,10 +308,25 @@ export async function fetchReleaseCredits(releaseMbid: string): Promise<MusicBra
     }
   }
 
-  addRelations(releaseData.relations)
+  addCreditRelations(releaseData.relations)
+
+  const seenInstruments = new Set<string>()
+  const instruments: MusicBrainzInstrumentPick[] = []
+
   for (const recording of recordingData.recordings ?? []) {
-    addRelations(recording.relations)
+    addCreditRelations(recording.relations)
+
+    for (const rel of recording.relations ?? []) {
+      if (rel.type !== 'instrument') continue
+      for (const attr of rel.attributes ?? []) {
+        const instrumentName = translateInstrumentName(attr)
+        const key = `${recording.title}:${instrumentName}`
+        if (seenInstruments.has(key)) continue
+        seenInstruments.add(key)
+        instruments.push({ recordingTitle: recording.title, instrumentName })
+      }
+    }
   }
 
-  return credits
+  return { credits, instruments }
 }

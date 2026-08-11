@@ -1,7 +1,12 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/utils/Supabase/server'
-import { searchRelease, fetchReleaseCredits, type MusicBrainzReleaseCredit } from '@/utils/musicbrainz'
+import {
+  searchRelease,
+  fetchReleaseCreditsAndInstruments,
+  type MusicBrainzReleaseCredit,
+  type MusicBrainzInstrumentPick,
+} from '@/utils/musicbrainz'
 import { CREDIT_ROLE_LABEL } from '@/utils/format'
 import { importAlbumCredits } from './actions'
 import SubmitButton from './SubmitButton'
@@ -106,25 +111,35 @@ async function CreditsPreview({
   releaseMbid: string
 }) {
   let credits: MusicBrainzReleaseCredit[]
+  let instruments: MusicBrainzInstrumentPick[]
   try {
-    credits = await fetchReleaseCredits(releaseMbid)
+    const result = await fetchReleaseCreditsAndInstruments(releaseMbid)
+    credits = result.credits
+    instruments = result.instruments
   } catch (err) {
     console.error('MusicBrainzクレジット取得に失敗しました:', err)
     return <p className="mt-8 text-sm text-white/40">MusicBrainzからの取得に失敗しました。</p>
   }
 
-  if (credits.length === 0) {
-    return <p className="mt-8 text-sm text-white/40">対応する役割のクレジットが見つかりませんでした。</p>
+  if (credits.length === 0 && instruments.length === 0) {
+    return <p className="mt-8 text-sm text-white/40">対応するクレジット・楽器情報が見つかりませんでした。</p>
   }
 
   const supabase = await createClient()
   const personMbids = Array.from(new Set(credits.map((c) => c.personMbid)))
-  const { data: matchedArtists } = await supabase
-    .from('artist')
-    .select('id, name, musicbrainz_id')
-    .in('musicbrainz_id', personMbids)
+  const [{ data: matchedArtists }, { data: albumTracks }] = await Promise.all([
+    supabase.from('artist').select('id, name, musicbrainz_id').in('musicbrainz_id', personMbids),
+    supabase.from('track').select('id, title').eq('album_id', albumId),
+  ])
 
   const artistByMbid = new Map((matchedArtists ?? []).map((a) => [a.musicbrainz_id as string, a]))
+
+  const normalizeTitle = (title: string) => title.trim().toLowerCase()
+  const trackIdByTitle = new Map((albumTracks ?? []).map((t) => [normalizeTitle(t.title), t.id]))
+  const instrumentPicks = instruments.map((pick) => ({
+    ...pick,
+    trackId: trackIdByTitle.get(normalizeTitle(pick.recordingTitle)) ?? null,
+  }))
 
   return (
     <div className="mt-8">
@@ -159,6 +174,34 @@ async function CreditsPreview({
             </div>
           )
         })}
+
+        {instrumentPicks.length > 0 && (
+          <div className="border-t border-white/10 pt-3">
+            <h2 className="text-xs font-medium uppercase tracking-wide text-white/40">使用楽器(トラック別)</h2>
+            <input type="hidden" name="instrument_count" value={instrumentPicks.length} />
+            <div className="mt-2 space-y-2">
+              {instrumentPicks.map((pick, i) => (
+                <div key={i} className="flex items-center gap-3 text-sm">
+                  <input type="hidden" name={`instrument_${i}_track_id`} value={pick.trackId ?? ''} />
+                  <input type="hidden" name={`instrument_${i}_instrument_name`} value={pick.instrumentName} />
+                  <label className={`flex items-center gap-2 ${pick.trackId ? '' : 'opacity-40'}`}>
+                    <input
+                      type="checkbox"
+                      name={`instrument_${i}_include`}
+                      value="1"
+                      defaultChecked={Boolean(pick.trackId)}
+                      disabled={!pick.trackId}
+                    />
+                    <span className="font-medium">🎸 {pick.instrumentName}</span>
+                    <span className="text-xs text-white/40">— {pick.recordingTitle}</span>
+                    {!pick.trackId && <span className="text-xs text-white/30">(該当トラック無し)</span>}
+                  </label>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         <SubmitButton />
       </form>
     </div>

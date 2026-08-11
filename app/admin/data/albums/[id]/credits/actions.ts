@@ -13,8 +13,9 @@ export async function importAlbumCredits(formData: FormData) {
   const artistId = String(formData.get('artist_id') ?? '')
   const albumId = String(formData.get('album_id') ?? '')
   const creditCount = Number(formData.get('credit_count') ?? '0')
+  const instrumentCount = Number(formData.get('instrument_count') ?? '0')
 
-  if (!artistId || !albumId || !creditCount) {
+  if (!artistId || !albumId || (!creditCount && !instrumentCount)) {
     redirect('/admin/data')
   }
 
@@ -122,16 +123,61 @@ export async function importAlbumCredits(formData: FormData) {
     }
   }
 
+  let instrumentsWritten = 0
+
+  for (let i = 0; i < instrumentCount; i++) {
+    if (formData.get(`instrument_${i}_include`) !== '1') continue
+
+    const trackId = String(formData.get(`instrument_${i}_track_id`) ?? '')
+    const instrumentName = String(formData.get(`instrument_${i}_instrument_name`) ?? '')
+    if (!trackId || !instrumentName) continue
+
+    const { data: existingInstrument } = await supabase
+      .from('instrument')
+      .select('id')
+      .ilike('name', instrumentName)
+      .maybeSingle()
+
+    let instrumentId = existingInstrument?.id as string | undefined
+    if (!instrumentId) {
+      const { data: createdInstrument, error: createError } = await supabase
+        .from('instrument')
+        .insert({ name: instrumentName })
+        .select('id')
+        .single()
+      if (createError) {
+        console.error(`楽器「${instrumentName}」の作成に失敗しました:`, createError)
+        failureCount += 1
+        continue
+      }
+      instrumentId = createdInstrument.id
+    }
+
+    const { data: tiData, error: tiError } = await supabase
+      .from('track_instrument')
+      .upsert({ track_id: trackId, instrument_id: instrumentId }, { onConflict: 'track_id,instrument_id', ignoreDuplicates: true })
+      .select()
+    if (tiError) {
+      console.error(`楽器「${instrumentName}」の紐付けに失敗しました:`, tiError)
+      failureCount += 1
+      continue
+    }
+    if (tiData && tiData.length > 0) {
+      instrumentsWritten += 1
+    }
+  }
+
   revalidatePath(`/artists/${artistId}`)
   revalidatePath(`/artists/${artistId}/relations`)
   revalidatePath('/relations')
 
-  let message = `アーティスト関係${relationsWritten}件・クレジット${creditsWritten}件を取り込みました`
+  let message = `アーティスト関係${relationsWritten}件・クレジット${creditsWritten}件・使用楽器${instrumentsWritten}件を取り込みました`
   if (failureCount > 0) {
     message += `、失敗${failureCount}件`
   }
 
-  const severity = relationsWritten === 0 && creditsWritten === 0 && failureCount > 0 ? 'error' : 'success'
+  const severity =
+    relationsWritten === 0 && creditsWritten === 0 && instrumentsWritten === 0 && failureCount > 0 ? 'error' : 'success'
 
   redirectWith(albumId, severity, message)
 }
