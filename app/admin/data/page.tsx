@@ -199,6 +199,9 @@ export default async function AdminDataPage({
           <Link href="/admin/data/artists/geo" className="text-xs text-white/40 hover:text-white/70">
             アーティスト座標を一括更新
           </Link>
+          <Link href="/admin/data/artists/images" className="text-xs text-white/40 hover:text-white/70">
+            アーティスト画像を一括更新
+          </Link>
           <Link href="/admin/data/artists/unreleased" className="text-xs text-white/40 hover:text-white/70">
             未解禁アーティスト検出
           </Link>

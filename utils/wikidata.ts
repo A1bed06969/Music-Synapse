@@ -59,3 +59,34 @@ export async function fetchOriginCoordinates(qid: string): Promise<WikidataOrigi
     placeLabel: binding.placeLabel?.value ?? '',
   }
 }
+
+/**
+ * WikidataのP18(image)プロパティからWikimedia Commonsのファイル名を取得し、
+ * Special:FilePath経由の直リンクURLに変換する(Commonsの標準的な直リンク方式。
+ * リダイレクトを介して実ファイルを返すため、<img src>にそのまま使える)。
+ */
+export async function fetchImageUrl(qid: string): Promise<string | null> {
+  if (!/^Q\d+$/.test(qid)) return null
+  await sleep(300)
+  const query = `SELECT ?image WHERE { wd:${qid} wdt:P18 ?image . } LIMIT 1`
+  const url = `${WIKIDATA_SPARQL_ENDPOINT}?query=${encodeURIComponent(query)}&format=json`
+  const res = await fetch(url, { headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' } })
+  if (!res.ok) {
+    throw new Error(`Wikidata API error (SPARQL): ${res.status}`)
+  }
+  const data = await res.json()
+  const binding = data.results?.bindings?.[0]
+  const imageUrl: string | undefined = binding?.image?.value
+  if (!imageUrl) return null
+
+  // imageUrlは commons.wikimedia.org/wiki/Special:FilePath/<ファイル名> の形式で
+  // 返るが、httpスキームなのでhttpsに寄せる(実データで確認済み: サイト全体が
+  // httpsのため、混在コンテンツを避ける)。
+  try {
+    const parsed = new URL(imageUrl)
+    parsed.protocol = 'https:'
+    return parsed.toString()
+  } catch {
+    return null
+  }
+}
