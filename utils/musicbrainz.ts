@@ -219,22 +219,47 @@ const RELEASE_ROLE_TYPE_MAP: Record<string, MusicBrainzReleaseCredit['role']> = 
   'design/illustration': 'artwork',
 }
 
+// Producer/mix/mastering/composer/lyricist/arranger credits are attached to
+// each recording (track) in MusicBrainz, not to the release itself —
+// release-level relations only cover whole-release credits (e.g. cover
+// artwork). Fetching just the release therefore misses nearly all real
+// credits; both sources are needed.
 export async function fetchReleaseCredits(releaseMbid: string): Promise<MusicBrainzReleaseCredit[]> {
-  const url = `${MUSICBRAINZ_BASE}/release/${releaseMbid}?inc=artist-rels&fmt=json`
-  const data = await fetchMusicBrainz(url, 'release credits')
   const sourceUrl = `https://musicbrainz.org/release/${releaseMbid}`
 
+  const releaseData = await fetchMusicBrainz(
+    `${MUSICBRAINZ_BASE}/release/${releaseMbid}?inc=artist-rels&fmt=json`,
+    'release credits'
+  )
+  const recordingData = await fetchMusicBrainz(
+    `${MUSICBRAINZ_BASE}/recording?release=${releaseMbid}&inc=artist-rels&fmt=json&limit=100`,
+    'recording credits'
+  )
+
+  const seen = new Set<string>()
   const credits: MusicBrainzReleaseCredit[] = []
-  for (const rel of data.relations ?? []) {
-    const role = RELEASE_ROLE_TYPE_MAP[rel.type]
-    if (!role) continue
-    if (!rel.artist?.id || !rel.artist?.name) continue
-    credits.push({
-      personName: rel.artist.name,
-      personMbid: rel.artist.id,
-      role,
-      sourceUrl,
-    })
+
+  function addRelations(relations: any[] | undefined) {
+    for (const rel of relations ?? []) {
+      const role = RELEASE_ROLE_TYPE_MAP[rel.type]
+      if (!role) continue
+      if (!rel.artist?.id || !rel.artist?.name) continue
+      const key = `${rel.artist.id}:${role}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      credits.push({
+        personName: rel.artist.name,
+        personMbid: rel.artist.id,
+        role,
+        sourceUrl,
+      })
+    }
   }
+
+  addRelations(releaseData.relations)
+  for (const recording of recordingData.recordings ?? []) {
+    addRelations(recording.relations)
+  }
+
   return credits
 }
