@@ -62,7 +62,7 @@ export default async function MapPage() {
           a.image_url
             ? `<img src="${escapeHtml(a.image_url)}" alt="" style="width:48px;height:48px;object-fit:cover;border-radius:50%;" />`
             : ''
-        }<div style="margin-top:4px;font-weight:bold;"><a href="/artists/${a.id}" style="color:inherit;">${escapeHtml(
+        }<div style="margin-top:4px;font-weight:bold;"><a href="/artists/${escapeHtml(a.id)}" style="color:inherit;">${escapeHtml(
           a.name
         )}</a></div>${albumsHtml}</div>`,
       }
