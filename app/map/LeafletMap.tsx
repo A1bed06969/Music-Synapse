@@ -12,6 +12,37 @@ export type MapMarker = {
   popupHtml: string
 }
 
+// 座標が完全に一致するマーカーはピンが重なって隠れてしまうため、
+// 同じ座標をグループ化し、円状に少しずつずらして全て見えるようにする
+function spreadOverlapping(markers: MapMarker[]): MapMarker[] {
+  const groups = new Map<string, MapMarker[]>()
+  for (const marker of markers) {
+    const key = `${marker.latitude.toFixed(5)},${marker.longitude.toFixed(5)}`
+    const group = groups.get(key)
+    if (group) group.push(marker)
+    else groups.set(key, [marker])
+  }
+
+  const result: MapMarker[] = []
+  for (const group of groups.values()) {
+    if (group.length === 1) {
+      result.push(group[0])
+      continue
+    }
+    const radiusDegrees = 0.006
+    group.forEach((marker, i) => {
+      const angle = (2 * Math.PI * i) / group.length
+      const latRad = (marker.latitude * Math.PI) / 180
+      result.push({
+        ...marker,
+        latitude: marker.latitude + radiusDegrees * Math.sin(angle),
+        longitude: marker.longitude + (radiusDegrees * Math.cos(angle)) / Math.max(Math.cos(latRad), 0.1),
+      })
+    })
+  }
+  return result
+}
+
 export default function LeafletMap({ markers }: { markers: MapMarker[] }) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<L.Map | null>(null)
@@ -38,8 +69,9 @@ export default function LeafletMap({ markers }: { markers: MapMarker[] }) {
     if (!map) return
 
     const layerGroup = L.featureGroup().addTo(map)
+    const spreadMarkers = spreadOverlapping(markers)
 
-    for (const marker of markers) {
+    for (const marker of spreadMarkers) {
       const icon = L.divIcon({
         className: '',
         html: `<span style="display:block;width:14px;height:14px;border-radius:50%;background:${marker.color};border:2px solid #fff;box-shadow:0 0 2px rgba(0,0,0,0.6);"></span>`,
