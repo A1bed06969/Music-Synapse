@@ -23,21 +23,26 @@ export default async function MapPage() {
 
   const artistIds = (artists ?? []).map((a) => a.id)
 
-  const { data: albums } = artistIds.length
-    ? await supabase
-        .from('album')
-        .select('id, artist_id, title, jacket_url, release_date')
-        .in('artist_id', artistIds)
-        .order('release_date', { ascending: false, nullsFirst: false })
-    : { data: [] as { id: string; artist_id: string; title: string; jacket_url: string | null }[] }
-
   const albumsByArtist = new Map<string, { id: string; title: string; jacketUrl: string | null }[]>()
-  for (const album of albums ?? []) {
-    const list = albumsByArtist.get(album.artist_id) ?? []
-    if (list.length < 3) {
-      list.push({ id: album.id, title: album.title, jacketUrl: album.jacket_url })
-      albumsByArtist.set(album.artist_id, list)
-    }
+
+  if (artistIds.length > 0) {
+    const albumResults = await Promise.all(
+      artistIds.map((id) =>
+        supabase
+          .from('album')
+          .select('id, title, jacket_url, release_date')
+          .eq('artist_id', id)
+          .order('release_date', { ascending: false, nullsFirst: false })
+          .limit(3)
+      )
+    )
+    artistIds.forEach((id, i) => {
+      const rows = albumResults[i].data ?? []
+      albumsByArtist.set(
+        id,
+        rows.map((album) => ({ id: album.id, title: album.title, jacketUrl: album.jacket_url }))
+      )
+    })
   }
 
   const artistMarkers: MapMarker[] = (artists ?? [])
@@ -81,21 +86,23 @@ export default async function MapPage() {
   type VenueEventLink = { label: string; href: string }
 
   function eventsForVenue(normalizedName: string): VenueEventLink[] {
-    const links: VenueEventLink[] = []
+    const linksByHref = new Map<string, VenueEventLink>()
 
     for (const row of musicEvents ?? []) {
-      if (row.venue && normalizeVenueName(row.venue) === normalizedName) {
-        links.push({ label: row.name, href: `/artists/${row.artist_id}` })
-      }
+      if (!row.venue || normalizeVenueName(row.venue) !== normalizedName) continue
+      if (!row.artist_id) continue
+      const link = { label: row.name, href: `/artists/${row.artist_id}` }
+      linksByHref.set(link.href, link)
     }
 
     for (const row of eventEditions ?? []) {
       if (row.venue && normalizeVenueName(row.venue) === normalizedName) {
         const event = Array.isArray(row.event) ? row.event[0] : row.event
-        links.push({
+        const link = {
           label: `${event?.name ?? '?'}(${row.year})`,
           href: `/events/${row.event_id}?year=${row.year}`,
-        })
+        }
+        linksByHref.set(link.href, link)
       }
     }
 
@@ -104,13 +111,14 @@ export default async function MapPage() {
       const edition = Array.isArray(row.event_edition) ? row.event_edition[0] : row.event_edition
       if (!edition) continue
       const event = Array.isArray(edition.event) ? edition.event[0] : edition.event
-      links.push({
+      const link = {
         label: `${event?.name ?? '?'}(${edition.year})`,
         href: `/events/${edition.event_id}?year=${edition.year}`,
-      })
+      }
+      linksByHref.set(link.href, link)
     }
 
-    return links
+    return Array.from(linksByHref.values())
   }
 
   const venueMarkers: MapMarker[] = (venueLocations ?? []).map((v) => {
