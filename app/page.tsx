@@ -34,8 +34,8 @@ async function getLatestAlbums() {
 }
 
 const STAT_ITEMS: { key: 'artist' | 'album' | 'track' | 'event' | 'discGuide'; label: string; href?: string }[] = [
-  { key: 'artist', label: 'アーティスト' },
-  { key: 'album', label: 'アルバム' },
+  { key: 'artist', label: 'アーティスト', href: '/artists' },
+  { key: 'album', label: 'アルバム', href: '/albums' },
   { key: 'track', label: 'トラック' },
   { key: 'event', label: 'イベント', href: '/events' },
   { key: 'discGuide', label: 'ディスクガイド' },
