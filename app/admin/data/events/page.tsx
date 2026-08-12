@@ -54,9 +54,14 @@ export default async function EventsAdminPage({
 
   return (
     <div className="mx-auto max-w-[1600px] px-6 py-12">
-      <Link href="/admin/data" className="text-xs text-white/40 hover:text-white/70">
-        ← 管理画面に戻る
-      </Link>
+      <div className="flex items-center justify-between">
+        <Link href="/admin/data" className="text-xs text-white/40 hover:text-white/70">
+          ← 管理画面に戻る
+        </Link>
+        <Link href="/admin/data/events/festival-pilot" className="text-xs text-white/40 hover:text-white/70">
+          世界のフェス出演者収集(パイロット) →
+        </Link>
+      </div>
 
       <h1 className="mt-4 text-2xl font-bold">イベント</h1>
 
