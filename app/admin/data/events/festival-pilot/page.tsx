@@ -128,6 +128,7 @@ export default async function FestivalPilotPage({
                       <input type="hidden" name="artist_id" value={p.matchedArtistId} />
                       <input type="hidden" name="artist_name" value={p.matchedArtistName} />
                       <input type="hidden" name="stage" value={p.stage ?? ''} />
+                      <input type="hidden" name="performance_date" value={p.performanceDate ?? ''} />
                       <SubmitButton />
                     </form>
                   )}

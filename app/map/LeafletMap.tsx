@@ -43,7 +43,13 @@ function spreadOverlapping(markers: MapMarker[]): MapMarker[] {
   return result
 }
 
-export default function LeafletMap({ markers }: { markers: MapMarker[] }) {
+export default function LeafletMap({
+  markers,
+  heightClassName = 'h-[600px]',
+}: {
+  markers: MapMarker[]
+  heightClassName?: string
+}) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<L.Map | null>(null)
 
@@ -90,5 +96,5 @@ export default function LeafletMap({ markers }: { markers: MapMarker[] }) {
     }
   }, [markers])
 
-  return <div ref={containerRef} className="h-[600px] w-full rounded-lg" />
+  return <div ref={containerRef} className={`w-full rounded-lg ${heightClassName}`} />
 }

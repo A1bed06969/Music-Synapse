@@ -16,6 +16,9 @@ export type FestivalPick = {
   /** 'YYYY-MM-DD' 形式。取得できない場合はnull */
   startDate: string | null
   endDate: string | null
+  /** dayの曜日ラベルをstartDate〜endDateの実日付に解決したもの('YYYY-MM-DD')。
+   * 出演日ごとのグルーピング表示に使う。解決できない場合はnull */
+  performanceDate: string | null
 }
 
 async function fetchHtml(url: string): Promise<string> {
@@ -45,6 +48,21 @@ function parseFestivalDates(label: string): { startDate: string | null; endDate:
   }
 }
 
+const WEEKDAY_NAMES = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY']
+
+/** startDate〜endDateの各日を曜日名(例: "FRIDAY")から実日付へ引けるMapを作る */
+function buildWeekdayDateMap(startDate: string, endDate: string): Map<string, string> {
+  const map = new Map<string, string>()
+  const cursor = new Date(`${startDate}T00:00:00Z`)
+  const end = new Date(`${endDate}T00:00:00Z`)
+  while (cursor.getTime() <= end.getTime()) {
+    const weekday = WEEKDAY_NAMES[cursor.getUTCDay()]
+    map.set(weekday, cursor.toISOString().slice(0, 10))
+    cursor.setUTCDate(cursor.getUTCDate() + 1)
+  }
+  return map
+}
+
 /** ラインナップ一覧ページから、公開済みの開催年のうち最新のものを見つける */
 async function findLatestEditionYear(): Promise<number> {
   const html = await fetchHtml(`${BASE_URL}/line-up/`)
@@ -64,6 +82,7 @@ export async function fetchGlastonburyLineup(): Promise<FestivalPick[]> {
 
   let startDate: string | null = null
   let endDate: string | null = null
+  let weekdayDateMap: Map<string, string> = new Map()
   let currentStage: string | null = null
   let currentDay: string | null = null
   const picks: FestivalPick[] = []
@@ -71,6 +90,7 @@ export async function fetchGlastonburyLineup(): Promise<FestivalPick[]> {
   for (const m of html.matchAll(LANDMARK_RE)) {
     if (m[1] !== undefined) {
       ;({ startDate, endDate } = parseFestivalDates(m[1].trim()))
+      weekdayDateMap = startDate && endDate ? buildWeekdayDateMap(startDate, endDate) : new Map()
     } else if (m[2] !== undefined) {
       currentStage = m[2].trim()
       currentDay = null
@@ -87,6 +107,7 @@ export async function fetchGlastonburyLineup(): Promise<FestivalPick[]> {
         artistName,
         startDate,
         endDate,
+        performanceDate: currentDay ? (weekdayDateMap.get(currentDay) ?? null) : null,
       })
     }
   }
