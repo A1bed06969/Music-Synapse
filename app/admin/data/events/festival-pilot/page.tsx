@@ -115,7 +115,12 @@ export default async function FestivalPilotPage({
                 <li key={i} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-white/15 px-4 py-3">
                   <div>
                     <span className="font-medium">{p.matchedArtistName}</span>
-                    {p.day && <span className="ml-2 text-xs text-white/30">({p.day})</span>}
+                    {p.day && (
+                      <span className="ml-2 text-xs text-white/30">
+                        ({p.day}
+                        {p.startAt && ` ${p.startAt.slice(11, 16)}-${p.endAt?.slice(11, 16) ?? ''}`})
+                      </span>
+                    )}
                   </div>
                   {p.alreadyRegistered ? (
                     <span className="shrink-0 text-xs text-white/30">登録済み</span>
@@ -129,6 +134,8 @@ export default async function FestivalPilotPage({
                       <input type="hidden" name="artist_name" value={p.matchedArtistName} />
                       <input type="hidden" name="stage" value={p.stage ?? ''} />
                       <input type="hidden" name="performance_date" value={p.performanceDate ?? ''} />
+                      <input type="hidden" name="start_at" value={p.startAt ?? ''} />
+                      <input type="hidden" name="end_at" value={p.endAt ?? ''} />
                       <SubmitButton />
                     </form>
                   )}

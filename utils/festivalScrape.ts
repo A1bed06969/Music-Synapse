@@ -19,6 +19,10 @@ export type FestivalPick = {
   /** dayの曜日ラベルをstartDate〜endDateの実日付に解決したもの('YYYY-MM-DD')。
    * 出演日ごとのグルーピング表示に使う。解決できない場合はnull */
   performanceDate: string | null
+  /** performanceDate + 開演/終演時刻を組み合わせたISO日時(UK夏時間 +01:00)。
+   * 時刻が取得できない行(TBA等)はnull */
+  startAt: string | null
+  endAt: string | null
 }
 
 async function fetchHtml(url: string): Promise<string> {
@@ -48,6 +52,25 @@ function parseFestivalDates(label: string): { startDate: string | null; endDate:
   }
 }
 
+/** "22:15&nbsp;-&nbsp;23:45" のような表記を開始・終了時刻('HH:MM')に変換する */
+function parseTimeRange(text: string): { startTime: string | null; endTime: string | null } {
+  const cleaned = text.replace(/&nbsp;/g, ' ').trim()
+  const match = cleaned.match(/(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})/)
+  if (!match) return { startTime: null, endTime: null }
+  const [, sh, sm, eh, em] = match
+  return { startTime: `${sh.padStart(2, '0')}:${sm}`, endTime: `${eh.padStart(2, '0')}:${em}` }
+}
+
+/** 日付('YYYY-MM-DD')と時刻('HH:MM')を組み合わせる。他の管理画面の日時入力
+ * (例: createEventAppearanceの+09:00固定)と同様、このアプリは開催地の
+ * タイムゾーンを保持しない前提のため、実際のUTC変換はせず「現地時刻の
+ * 数字をそのまま」+00:00として保存する(読み出し時にそのまま同じ時刻文字列
+ * が復元されることを優先する) */
+function combineDateTime(date: string | null, time: string | null): string | null {
+  if (!date || !time) return null
+  return `${date}T${time}:00+00:00`
+}
+
 const WEEKDAY_NAMES = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY']
 
 /** startDate〜endDateの各日を曜日名(例: "FRIDAY")から実日付へ引けるMapを作る */
@@ -74,7 +97,7 @@ async function findLatestEditionYear(): Promise<number> {
 }
 
 const LANDMARK_RE =
-  /<h2 class="festival-dates">([^<]+)<\/h2>|<h3[^>]*class="stage-name"><button[^>]*>([^<]+)<span|<h4 class="stage-day">([^<]+)<\/h4>|<a class="artist-link"[^>]*>([^<]+)<\/a>/g
+  /<h2 class="festival-dates">([^<]+)<\/h2>|<h3[^>]*class="stage-name"><button[^>]*>([^<]+)<span|<h4 class="stage-day">([^<]+)<\/h4>|<a class="artist-link"[^>]*>([^<]+)<\/a><\/td><td class="timings">([^<]+)<\/td>/g
 
 export async function fetchGlastonburyLineup(): Promise<FestivalPick[]> {
   const editionYear = await findLatestEditionYear()
@@ -99,6 +122,8 @@ export async function fetchGlastonburyLineup(): Promise<FestivalPick[]> {
     } else if (m[4] !== undefined) {
       const artistName = m[4].trim()
       if (!artistName || artistName === 'TBA') continue
+      const performanceDate = currentDay ? (weekdayDateMap.get(currentDay) ?? null) : null
+      const { startTime, endTime } = parseTimeRange(m[5])
       picks.push({
         festivalName: 'Glastonbury Festival',
         editionYear,
@@ -107,7 +132,9 @@ export async function fetchGlastonburyLineup(): Promise<FestivalPick[]> {
         artistName,
         startDate,
         endDate,
-        performanceDate: currentDay ? (weekdayDateMap.get(currentDay) ?? null) : null,
+        performanceDate,
+        startAt: combineDateTime(performanceDate, startTime),
+        endAt: combineDateTime(performanceDate, endTime),
       })
     }
   }

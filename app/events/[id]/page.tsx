@@ -24,8 +24,13 @@ type Appearance = {
   venue: string | null
   isHeadliner: boolean
   performanceDate: string | null
+  timeLabel: string | null
   artistId: string
   artistName: string
+}
+
+function toHHMM(isoStr: string): string {
+  return isoStr.slice(11, 16)
 }
 
 export default async function EventDetailPage({
@@ -65,7 +70,7 @@ export default async function EventDetailPage({
   if (selectedEdition) {
     const { data: appearanceRows } = await supabase
       .from('event_appearance')
-      .select('id, stage, venue, is_headliner, start_time, artist:artist_id(id, name)')
+      .select('id, stage, venue, is_headliner, start_time, end_time, artist:artist_id(id, name)')
       .eq('event_edition_id', selectedEdition.id)
       .order('is_headliner', { ascending: false })
       .order('start_time', { ascending: true, nullsFirst: false })
@@ -73,12 +78,15 @@ export default async function EventDetailPage({
 
     appearances = (appearanceRows ?? []).map((row) => {
       const artist = Array.isArray(row.artist) ? row.artist[0] : row.artist
+      // 開催回登録時の仮時刻(正午固定)は「時刻不明」と同じ扱いにする
+      const hasRealTime = row.start_time && row.end_time
       return {
         id: row.id,
         stage: row.stage,
         venue: row.venue ?? selectedEdition.venue ?? null,
         isHeadliner: row.is_headliner,
         performanceDate: row.start_time ? row.start_time.slice(0, 10) : null,
+        timeLabel: hasRealTime ? `${toHHMM(row.start_time!)}-${toHHMM(row.end_time!)}` : null,
         artistId: artist?.id ?? '',
         artistName: artist?.name ?? '?',
       }
@@ -223,6 +231,7 @@ export default async function EventDetailPage({
                               <Link
                                 key={a.id}
                                 href={`/artists/${a.artistId}`}
+                                title={a.timeLabel ?? undefined}
                                 className={`rounded-full border px-3 py-1.5 text-sm transition hover:border-white/40 hover:bg-white/[0.08] ${
                                   a.isHeadliner
                                     ? 'border-white/40 bg-white/[0.06] font-semibold'
@@ -230,6 +239,7 @@ export default async function EventDetailPage({
                                 }`}
                               >
                                 {a.artistName}
+                                {a.timeLabel && <span className="ml-1 text-xs text-white/40">{a.timeLabel}</span>}
                                 {a.isHeadliner && ' ★'}
                               </Link>
                             ))}

@@ -17,6 +17,8 @@ export async function registerFestivalAppearance(formData: FormData) {
   const artistName = String(formData.get('artist_name') ?? '').trim()
   const stage = String(formData.get('stage') ?? '').trim()
   const performanceDate = String(formData.get('performance_date') ?? '').trim()
+  const startAt = String(formData.get('start_at') ?? '').trim()
+  const endAt = String(formData.get('end_at') ?? '').trim()
 
   if (!festivalName || !editionYearRaw || !artistId) {
     redirectWith('error', '不正なリクエストです。')
@@ -83,9 +85,10 @@ export async function registerFestivalAppearance(formData: FormData) {
     event_edition_id: editionId,
     artist_id: artistId,
     stage: stage || null,
-    // 出演時刻は取得元に無いため、出演日を日付グルーピング表示に使えるよう
-    // 正午の仮時刻で保持する(実際の開演時刻ではない)
-    start_time: performanceDate ? `${performanceDate}T12:00:00+00:00` : null,
+    // 開演/終演時刻が取得できればそのまま使い、取得できない場合のみ
+    // 出演日を日付グルーピング表示に使えるよう正午の仮時刻で保持する
+    start_time: startAt || (performanceDate ? `${performanceDate}T12:00:00+00:00` : null),
+    end_time: endAt || null,
     is_headliner: false,
   })
 
