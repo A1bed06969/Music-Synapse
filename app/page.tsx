@@ -28,7 +28,7 @@ async function getLatestAlbums() {
     .from('album')
     .select('id, title, jacket_url, release_date, streaming_status, artist:artist_id(id, name)')
     .order('release_date', { ascending: false, nullsFirst: false })
-    .limit(8)
+    .limit(12)
 
   return data ?? []
 }
@@ -100,7 +100,7 @@ export default async function Home() {
         {latestAlbums.length === 0 ? (
           <p className="mt-6 text-sm text-white/40">まだアルバムが登録されていません。</p>
         ) : (
-          <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
+          <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4 md:grid-cols-6">
             {latestAlbums.map((album) => {
               const artist = Array.isArray(album.artist) ? album.artist[0] : album.artist
               const status = album.streaming_status ? STREAMING_STATUS_LABEL[album.streaming_status] : null
