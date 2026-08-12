@@ -4,6 +4,7 @@ const NAV_LINKS = [
   { href: '/', label: 'ホーム' },
   { href: '/search', label: '検索' },
   { href: '/relations', label: '相関図' },
+  { href: '/events', label: 'フェス&イベント' },
   { href: '/map', label: 'マップ' },
   { href: '/media', label: 'メディア' },
   { href: '/admin/import', label: 'iTunes登録' },
