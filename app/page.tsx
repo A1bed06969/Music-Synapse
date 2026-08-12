@@ -5,12 +5,14 @@ import { formatDate, STREAMING_STATUS_LABEL } from '@/utils/format'
 async function getStats() {
   const supabase = await createClient()
 
-  const [artist, album, track, event, discGuide] = await Promise.all([
+  const [artist, album, track, event, discGuide, recordShop, livehouse] = await Promise.all([
     supabase.from('artist').select('*', { count: 'exact', head: true }),
     supabase.from('album').select('*', { count: 'exact', head: true }),
     supabase.from('track').select('*', { count: 'exact', head: true }),
     supabase.from('event').select('*', { count: 'exact', head: true }),
     supabase.from('disc_guide').select('*', { count: 'exact', head: true }),
+    supabase.from('recordshop').select('*', { count: 'exact', head: true }),
+    supabase.from('livehouse').select('*', { count: 'exact', head: true }),
   ])
 
   return {
@@ -19,6 +21,8 @@ async function getStats() {
     track: track.count ?? 0,
     event: event.count ?? 0,
     discGuide: discGuide.count ?? 0,
+    recordShop: recordShop.count ?? 0,
+    livehouse: livehouse.count ?? 0,
   }
 }
 
@@ -33,12 +37,18 @@ async function getLatestAlbums() {
   return data ?? []
 }
 
-const STAT_ITEMS: { key: 'artist' | 'album' | 'track' | 'event' | 'discGuide'; label: string; href?: string }[] = [
+const STAT_ITEMS: {
+  key: 'artist' | 'album' | 'track' | 'event' | 'discGuide' | 'recordShop' | 'livehouse'
+  label: string
+  href?: string
+}[] = [
   { key: 'artist', label: 'アーティスト', href: '/artists' },
   { key: 'album', label: 'アルバム', href: '/albums' },
   { key: 'track', label: 'トラック', href: '/tracks' },
   { key: 'event', label: 'イベント', href: '/events' },
   { key: 'discGuide', label: 'ディスクガイド' },
+  { key: 'recordShop', label: 'レコードショップ', href: '/map' },
+  { key: 'livehouse', label: 'ライブハウス', href: '/map' },
 ]
 
 export default async function Home() {
@@ -68,7 +78,7 @@ export default async function Home() {
         </form>
       </section>
 
-      <section className="mt-12 grid grid-cols-2 gap-3 sm:grid-cols-5">
+      <section className="mt-12 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
         {STAT_ITEMS.map((item) => {
           const tileClass = 'rounded-lg border border-white/10 bg-white/[0.03] px-4 py-5 text-center'
           const tileContent = (
