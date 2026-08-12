@@ -2,10 +2,11 @@
 
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
+import { after } from 'next/server'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/utils/Supabase/admin'
-import { searchArtist, type ItunesArtistSearchResult } from '@/utils/itunes'
-import { importArtistsFromItunes } from '@/app/admin/import/actions'
+import { searchArtist, fetchArtistWithAlbums, type ItunesArtistSearchResult } from '@/utils/itunes'
+import { upsertArtistFromItunes, syncAlbumsAndTracksForArtist } from '@/app/admin/import/actions'
 
 function redirectWith(result: 'success' | 'error', message: string): never {
   redirect(`/admin/data/events/festival-pilot?${result}=${encodeURIComponent(message)}`)
@@ -154,24 +155,29 @@ export type ImportAndRegisterInput = {
 export type ImportAndRegisterResult = { success: boolean; message: string }
 
 /** 選ばれたApple Musicアーティストをカタログへ取込み(既存の一括登録処理を再利用)、
- * そのままフェスの出演情報としても登録する */
+ * そのままフェスの出演情報としても登録する。
+ *
+ * アルバム数が多いアーティストだとアルバム・トラックの取込に数十秒〜1分以上
+ * かかることがあり、Vercelのサーバー関数の実行時間上限を超えて処理が
+ * 中断される恐れがある。そのため「アーティスト本体の登録 + 出演情報登録」
+ * だけを先に完了させてすぐ結果を返し、アルバム・トラックの取込は
+ * after()でレスポンス後にバックグラウンド実行する(失敗しても出演情報の
+ * 登録自体には影響しない) */
 export async function importAndRegisterFestivalArtist(
   input: ImportAndRegisterInput
 ): Promise<ImportAndRegisterResult> {
   const supabase = createAdminClient()
 
-  const [importResult] = await importArtistsFromItunes([String(input.appleMusicArtistId)])
-  if (!importResult.success) {
-    return { success: false, message: `Apple Music取込に失敗しました: ${importResult.message}` }
+  const { artist: itunesArtist, albums: itunesAlbums } = await fetchArtistWithAlbums(
+    String(input.appleMusicArtistId)
+  )
+  if (!itunesArtist) {
+    return { success: false, message: '指定のアーティストがApple Musicに見つかりませんでした。' }
   }
 
-  const { data: artistRow } = await supabase
-    .from('artist')
-    .select('id')
-    .eq('apple_music_artist_id', String(input.appleMusicArtistId))
-    .maybeSingle()
-  if (!artistRow) {
-    return { success: false, message: '取込には成功しましたが、登録済みアーティストの特定に失敗しました。' }
+  const { artistId, errorMessage: artistError } = await upsertArtistFromItunes(supabase, itunesArtist)
+  if (!artistId) {
+    return { success: false, message: `アーティストの登録に失敗しました: ${artistError}` }
   }
 
   const { editionId, errorMessage } = await findOrCreateFestivalEdition(supabase, {
@@ -188,30 +194,38 @@ export async function importAndRegisterFestivalArtist(
     .from('event_appearance')
     .select('id')
     .eq('event_edition_id', editionId)
-    .eq('artist_id', artistRow.id)
+    .eq('artist_id', artistId)
     .maybeSingle()
-  if (existingAppearance) {
-    revalidatePath('/admin/data/events/festival-pilot')
-    return { success: true, message: `「${importResult.artistName}」を取込みました(出演情報は既に登録済みでした)。` }
+
+  if (!existingAppearance) {
+    const { error: appearanceError } = await supabase.from('event_appearance').insert({
+      event_edition_id: editionId,
+      artist_id: artistId,
+      stage: input.stage || null,
+      start_time: input.startAt || (input.performanceDate ? `${input.performanceDate}T12:00:00+00:00` : null),
+      end_time: input.endAt || null,
+      is_headliner: false,
+    })
+    if (appearanceError) {
+      return { success: false, message: `出演情報の登録に失敗しました: ${appearanceError.message}` }
+    }
   }
 
-  const { error: appearanceError } = await supabase.from('event_appearance').insert({
-    event_edition_id: editionId,
-    artist_id: artistRow.id,
-    stage: input.stage || null,
-    start_time: input.startAt || (input.performanceDate ? `${input.performanceDate}T12:00:00+00:00` : null),
-    end_time: input.endAt || null,
-    is_headliner: false,
+  // ここまでで出演登録は完了。アルバム・トラックの取込はレスポンス後に続行する
+  after(async () => {
+    try {
+      await syncAlbumsAndTracksForArtist(supabase, artistId, itunesAlbums)
+      revalidatePath(`/artists/${artistId}`)
+    } catch (err) {
+      console.error(`アルバム・トラック取込に失敗しました(${itunesArtist.artistName}):`, err)
+    }
   })
-  if (appearanceError) {
-    return { success: false, message: `出演情報の登録に失敗しました: ${appearanceError.message}` }
-  }
 
   revalidatePath('/admin/data/events/festival-pilot')
   revalidatePath('/admin/data/events')
-  revalidatePath(`/artists/${artistRow.id}`)
+  revalidatePath(`/artists/${artistId}`)
   return {
     success: true,
-    message: `「${importResult.artistName}」を取込・登録しました(アルバム${importResult.albumCount}件・トラック${importResult.trackCount}件)。`,
+    message: `「${itunesArtist.artistName}」を登録しました(アルバム${itunesAlbums.length}件は裏で取込中です)。`,
   }
 }

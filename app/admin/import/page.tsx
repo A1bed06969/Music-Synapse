@@ -5,6 +5,8 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { importArtistsFromItunes } from './actions'
 
+export const maxDuration = 60
+
 type ImportResult = {
   success: boolean
   message: string

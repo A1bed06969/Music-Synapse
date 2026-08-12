@@ -1,12 +1,15 @@
 // app/admin/import/actions.ts
 'use server'
 
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/utils/Supabase/admin'
 import {
   extractArtistIdFromUrl,
   fetchArtistWithAlbums,
   fetchTracksForAlbum,
   millisToSeconds,
+  type ItunesArtist,
+  type ItunesAlbum,
 } from '@/utils/itunes'
 
 type ImportResult = {
@@ -26,36 +29,19 @@ export async function importArtistsFromItunes(artistUrls: string[]): Promise<Imp
   return results
 }
 
-async function importOneArtist(artistUrl: string): Promise<ImportResult> {
-  const itunesArtistId = extractArtistIdFromUrl(artistUrl)
-  if (!itunesArtistId) {
-    return {
-      success: false,
-      sourceUrl: artistUrl,
-      message: 'URLからアーティストIDを取得できませんでした。Apple MusicのアーティストページURLを確認してください。',
-    }
-  }
-
-  const supabase = createAdminClient()
-
-  // ① アーティスト情報 + アルバム一覧を取得
-  const { artist: itunesArtist, albums: itunesAlbums } = await fetchArtistWithAlbums(itunesArtistId)
-
-  if (!itunesArtist) {
-    return { success: false, sourceUrl: artistUrl, message: '指定のIDに該当するアーティストが見つかりませんでした。' }
-  }
-
-  // ② アーティストをupsert(apple_music_artist_idで既存判定)
+/** アーティスト本体だけをupsertする(apple_music_artist_idで既存判定)。
+ * アルバム・トラックの取込は含まないため高速(呼び出し側で別途 syncAlbumsAndTracksForArtist を呼ぶこと) */
+export async function upsertArtistFromItunes(
+  supabase: SupabaseClient,
+  itunesArtist: ItunesArtist
+): Promise<{ artistId: string | null; errorMessage: string | null }> {
   const { data: existingArtist } = await supabase
     .from('artist')
     .select('id, official_site_url')
     .eq('apple_music_artist_id', String(itunesArtist.artistId))
     .maybeSingle()
 
-  let artistId: string
-
   if (existingArtist) {
-    artistId = existingArtist.id
     await supabase
       .from('artist')
       .update({
@@ -64,30 +50,35 @@ async function importOneArtist(artistUrl: string): Promise<ImportResult> {
         official_site_url: existingArtist.official_site_url ?? (itunesArtist.artistLinkUrl ?? null),
         last_synced_at: new Date().toISOString(),
       })
-      .eq('id', artistId)
-  } else {
-    const { data: inserted, error: insertError } = await supabase
-      .from('artist')
-      .insert({
-        name: itunesArtist.artistName,
-        apple_music_artist_id: String(itunesArtist.artistId),
-        official_site_url: itunesArtist.artistLinkUrl ?? null,
-        last_synced_at: new Date().toISOString(),
-      })
-      .select('id')
-      .single()
-
-    if (insertError || !inserted) {
-      return {
-        success: false,
-        sourceUrl: artistUrl,
-        message: `アーティストの登録に失敗しました: ${insertError?.message}`,
-      }
-    }
-    artistId = inserted.id
+      .eq('id', existingArtist.id)
+    return { artistId: existingArtist.id, errorMessage: null }
   }
 
-  // ③ アルバムを1件ずつupsertし、収録トラックも取得して登録
+  const { data: inserted, error: insertError } = await supabase
+    .from('artist')
+    .insert({
+      name: itunesArtist.artistName,
+      apple_music_artist_id: String(itunesArtist.artistId),
+      official_site_url: itunesArtist.artistLinkUrl ?? null,
+      last_synced_at: new Date().toISOString(),
+    })
+    .select('id')
+    .single()
+
+  if (insertError || !inserted) {
+    return { artistId: null, errorMessage: insertError?.message ?? 'unknown error' }
+  }
+  return { artistId: inserted.id, errorMessage: null }
+}
+
+/** 指定アーティストのアルバムを1件ずつupsertし、収録トラックも取得して登録する。
+ * iTunes APIのレート制限対策で1アルバムごとに間隔を空けるため、アルバム数が
+ * 多いアーティストは数十秒〜かかることがある(呼び出し側で長時間処理として扱うこと) */
+export async function syncAlbumsAndTracksForArtist(
+  supabase: SupabaseClient,
+  artistId: string,
+  itunesAlbums: ItunesAlbum[]
+): Promise<number> {
   let totalTrackCount = 0
 
   for (const itunesAlbum of itunesAlbums) {
@@ -163,6 +154,33 @@ async function importOneArtist(artistUrl: string): Promise<ImportResult> {
       totalTrackCount++
     }
   }
+
+  return totalTrackCount
+}
+
+async function importOneArtist(artistUrl: string): Promise<ImportResult> {
+  const itunesArtistId = extractArtistIdFromUrl(artistUrl)
+  if (!itunesArtistId) {
+    return {
+      success: false,
+      sourceUrl: artistUrl,
+      message: 'URLからアーティストIDを取得できませんでした。Apple MusicのアーティストページURLを確認してください。',
+    }
+  }
+
+  const supabase = createAdminClient()
+
+  const { artist: itunesArtist, albums: itunesAlbums } = await fetchArtistWithAlbums(itunesArtistId)
+  if (!itunesArtist) {
+    return { success: false, sourceUrl: artistUrl, message: '指定のIDに該当するアーティストが見つかりませんでした。' }
+  }
+
+  const { artistId, errorMessage } = await upsertArtistFromItunes(supabase, itunesArtist)
+  if (!artistId) {
+    return { success: false, sourceUrl: artistUrl, message: `アーティストの登録に失敗しました: ${errorMessage}` }
+  }
+
+  const totalTrackCount = await syncAlbumsAndTracksForArtist(supabase, artistId, itunesAlbums)
 
   return {
     success: true,
