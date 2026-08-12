@@ -205,8 +205,13 @@ export async function searchRelease(title: string, artistName: string): Promise<
 export type MusicBrainzReleaseCredit = {
   personName: string
   personMbid: string
-  role: 'producer' | 'mix' | 'mastering' | 'composer' | 'lyricist' | 'arranger' | 'artwork'
+  role: 'producer' | 'mix' | 'mastering' | 'composer' | 'lyricist' | 'arranger' | 'artwork' | 'musician'
   sourceUrl: string
+  /** このクレジットが特定のトラックに紐づく場合の録音タイトル。
+   * リリース全体に対するクレジット(アートワーク等)の場合はnull */
+  trackTitle: string | null
+  /** role==='musician'の場合のみ、演奏楽器名(表示用) */
+  instrumentName?: string
 }
 
 const RELEASE_ROLE_TYPE_MAP: Record<string, MusicBrainzReleaseCredit['role']> = {
@@ -219,14 +224,8 @@ const RELEASE_ROLE_TYPE_MAP: Record<string, MusicBrainzReleaseCredit['role']> = 
   'design/illustration': 'artwork',
 }
 
-export type MusicBrainzInstrumentPick = {
-  recordingTitle: string
-  instrumentName: string
-}
-
 export type MusicBrainzReleaseCreditsResult = {
   credits: MusicBrainzReleaseCredit[]
-  instruments: MusicBrainzInstrumentPick[]
 }
 
 // MusicBrainzの録音(レコーディング)単位の"instrument"タイプ関係(例:
@@ -272,8 +271,13 @@ function translateInstrumentName(rawName: string): string {
 // performance data, are attached to each recording (track) in MusicBrainz,
 // not to the release itself — release-level relations only cover
 // whole-release credits (e.g. cover artwork). Fetching just the release
-// therefore misses nearly all real data; both sources are needed. Both
-// outputs are derived from the same two fetches (no extra API calls).
+// therefore misses nearly all real data; both sources are needed.
+//
+// 作詞・作曲は実際にはrecording(録音)ではなくWork(楽曲そのもの)エンティティに
+// 付くのが基本(実データで確認済み: 同じ曲の別バージョン/別リリースでも
+// Work側のクレジットは共通)。そのためrecordingのwork-relsからWorkのMBIDを辿り、
+// Workごとに追加でartist-relsを取得する(Work単位でまとめて1回のfetch、
+// レート制限は既存のfetchMusicBrainzが1req/secで担保)。
 export async function fetchReleaseCreditsAndInstruments(
   releaseMbid: string
 ): Promise<MusicBrainzReleaseCreditsResult> {
@@ -284,49 +288,71 @@ export async function fetchReleaseCreditsAndInstruments(
     'release credits'
   )
   const recordingData = await fetchMusicBrainz(
-    `${MUSICBRAINZ_BASE}/recording?release=${releaseMbid}&inc=artist-rels&fmt=json&limit=100`,
+    `${MUSICBRAINZ_BASE}/recording?release=${releaseMbid}&inc=artist-rels+work-rels&fmt=json&limit=100`,
     'recording credits'
   )
 
   const seenCredits = new Set<string>()
   const credits: MusicBrainzReleaseCredit[] = []
 
-  function addCreditRelations(relations: any[] | undefined) {
+  function addCredit(
+    personMbid: string,
+    personName: string,
+    role: MusicBrainzReleaseCredit['role'],
+    trackTitle: string | null,
+    instrumentName?: string
+  ) {
+    const key = `${personMbid}:${role}:${trackTitle ?? ''}:${instrumentName ?? ''}`
+    if (seenCredits.has(key)) return
+    seenCredits.add(key)
+    credits.push({ personName, personMbid, role, sourceUrl, trackTitle, instrumentName })
+  }
+
+  function addArtistRelations(relations: any[] | undefined, trackTitle: string | null) {
     for (const rel of relations ?? []) {
       const role = RELEASE_ROLE_TYPE_MAP[rel.type]
       if (!role) continue
       if (!rel.artist?.id || !rel.artist?.name) continue
-      const key = `${rel.artist.id}:${role}`
-      if (seenCredits.has(key)) continue
-      seenCredits.add(key)
-      credits.push({
-        personName: rel.artist.name,
-        personMbid: rel.artist.id,
-        role,
-        sourceUrl,
-      })
+      addCredit(rel.artist.id, rel.artist.name, role, trackTitle)
     }
   }
 
-  addCreditRelations(releaseData.relations)
+  // ① リリース全体のクレジット(アートワーク等) — 特定トラックに紐づかない
+  addArtistRelations(releaseData.relations, null)
 
-  const seenInstruments = new Set<string>()
-  const instruments: MusicBrainzInstrumentPick[] = []
+  // ② 録音ごとのクレジット・演奏楽器(演奏者名つき)・関連Workを収集
+  const trackTitlesByWorkMbid = new Map<string, string[]>()
 
   for (const recording of recordingData.recordings ?? []) {
-    addCreditRelations(recording.relations)
+    addArtistRelations(recording.relations, recording.title)
 
     for (const rel of recording.relations ?? []) {
-      if (rel.type !== 'instrument') continue
-      for (const attr of rel.attributes ?? []) {
-        const instrumentName = translateInstrumentName(attr)
-        const key = `${recording.title}:${instrumentName}`
-        if (seenInstruments.has(key)) continue
-        seenInstruments.add(key)
-        instruments.push({ recordingTitle: recording.title, instrumentName })
+      if (rel.type === 'instrument' && rel.artist?.id && rel.artist?.name) {
+        for (const attr of rel.attributes ?? []) {
+          addCredit(rel.artist.id, rel.artist.name, 'musician', recording.title, translateInstrumentName(attr))
+        }
+      }
+      if (rel.type === 'performance' && rel.work?.id) {
+        const list = trackTitlesByWorkMbid.get(rel.work.id) ?? []
+        list.push(recording.title)
+        trackTitlesByWorkMbid.set(rel.work.id, list)
       }
     }
   }
 
-  return { credits, instruments }
+  // ③ Workごとに作詞・作曲・編曲クレジットを取得し、紐づく各トラックへ反映
+  for (const [workMbid, trackTitles] of trackTitlesByWorkMbid) {
+    let workData: any
+    try {
+      workData = await fetchMusicBrainz(`${MUSICBRAINZ_BASE}/work/${workMbid}?inc=artist-rels&fmt=json`, 'work credits')
+    } catch (err) {
+      console.error(`Work情報の取得に失敗しました(${workMbid}):`, err)
+      continue // この曲のWork情報が取れなくても他の曲の処理は続ける
+    }
+    for (const trackTitle of trackTitles) {
+      addArtistRelations(workData.relations, trackTitle)
+    }
+  }
+
+  return { credits }
 }

@@ -82,4 +82,5 @@ export const CREDIT_ROLE_LABEL: Record<string, string> = {
   lyricist: '作詞',
   arranger: '編曲',
   artwork: 'アートワーク',
+  musician: 'ミュージシャン',
 }

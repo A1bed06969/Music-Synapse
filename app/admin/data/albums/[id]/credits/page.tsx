@@ -1,15 +1,14 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/utils/Supabase/server'
-import {
-  searchRelease,
-  fetchReleaseCreditsAndInstruments,
-  type MusicBrainzReleaseCredit,
-  type MusicBrainzInstrumentPick,
-} from '@/utils/musicbrainz'
+import { searchRelease, fetchReleaseCreditsAndInstruments, type MusicBrainzReleaseCredit } from '@/utils/musicbrainz'
 import { CREDIT_ROLE_LABEL } from '@/utils/format'
 import { importAlbumCredits } from './actions'
 import SubmitButton from './SubmitButton'
+
+// Work単位の追加取得(曲数分)とクレジット取込(行数分の逐次書き込み)は
+// 収録曲・クレジットが多いアルバムだと1分近くかかることがある
+export const maxDuration = 60
 
 export default async function AlbumCreditsPage({
   params,
@@ -111,18 +110,16 @@ async function CreditsPreview({
   releaseMbid: string
 }) {
   let credits: MusicBrainzReleaseCredit[]
-  let instruments: MusicBrainzInstrumentPick[]
   try {
     const result = await fetchReleaseCreditsAndInstruments(releaseMbid)
     credits = result.credits
-    instruments = result.instruments
   } catch (err) {
     console.error('MusicBrainzクレジット取得に失敗しました:', err)
     return <p className="mt-8 text-sm text-white/40">MusicBrainzからの取得に失敗しました。</p>
   }
 
-  if (credits.length === 0 && instruments.length === 0) {
-    return <p className="mt-8 text-sm text-white/40">対応するクレジット・楽器情報が見つかりませんでした。</p>
+  if (credits.length === 0) {
+    return <p className="mt-8 text-sm text-white/40">対応するクレジット情報が見つかりませんでした。</p>
   }
 
   const supabase = await createClient()
@@ -136,10 +133,49 @@ async function CreditsPreview({
 
   const normalizeTitle = (title: string) => title.trim().toLowerCase()
   const trackIdByTitle = new Map((albumTracks ?? []).map((t) => [normalizeTitle(t.title), t.id]))
-  const instrumentPicks = instruments.map((pick) => ({
-    ...pick,
-    trackId: trackIdByTitle.get(normalizeTitle(pick.recordingTitle)) ?? null,
+  const picks = credits.map((credit) => ({
+    ...credit,
+    trackId: credit.trackTitle ? (trackIdByTitle.get(normalizeTitle(credit.trackTitle)) ?? null) : null,
   }))
+
+  // アルバム全体のクレジット(トラック非依存)を先に、そのあとトラックごとにまとめて表示する
+  const albumWide = picks.filter((p) => !p.trackTitle)
+  const byTrack = new Map<string, typeof picks>()
+  for (const p of picks) {
+    if (!p.trackTitle) continue
+    const list = byTrack.get(p.trackTitle) ?? []
+    list.push(p)
+    byTrack.set(p.trackTitle, list)
+  }
+
+  let index = 0
+
+  function renderRow(pick: (typeof picks)[number]) {
+    const i = index++
+    const matched = artistByMbid.get(pick.personMbid)
+    const needsTrack = Boolean(pick.trackTitle)
+    const canInclude = !needsTrack || Boolean(pick.trackId)
+    return (
+      <div key={i} className="flex items-center gap-3 text-sm">
+        <input type="hidden" name={`credit_${i}_person_name`} value={pick.personName} />
+        <input type="hidden" name={`credit_${i}_person_mbid`} value={pick.personMbid} />
+        <input type="hidden" name={`credit_${i}_role`} value={pick.role} />
+        <input type="hidden" name={`credit_${i}_source_url`} value={pick.sourceUrl} />
+        <input type="hidden" name={`credit_${i}_track_id`} value={pick.trackId ?? ''} />
+        <input type="hidden" name={`credit_${i}_instrument_name`} value={pick.instrumentName ?? ''} />
+        <label className={`flex items-center gap-2 ${canInclude ? '' : 'opacity-40'}`}>
+          <input type="checkbox" name={`credit_${i}_include`} value="1" defaultChecked={canInclude} disabled={!canInclude} />
+          <span className="font-medium">{pick.personName}</span>
+          <span className="text-xs text-white/40">
+            ({CREDIT_ROLE_LABEL[pick.role] ?? pick.role}
+            {pick.instrumentName ? `: ${pick.instrumentName}` : ''})
+          </span>
+          {matched && <span className="text-xs text-emerald-400">→ 既存アーティスト「{matched.name}」として登録</span>}
+          {needsTrack && !pick.trackId && <span className="text-xs text-white/30">(該当トラック無し)</span>}
+        </label>
+      </div>
+    )
+  }
 
   return (
     <div className="mt-8">
@@ -151,56 +187,24 @@ async function CreditsPreview({
         ← リリース候補一覧に戻る
       </Link>
 
-      <form action={importAlbumCredits} className="mt-4 space-y-3">
+      <form action={importAlbumCredits} className="mt-4 space-y-4">
         <input type="hidden" name="artist_id" value={artistId} />
         <input type="hidden" name="album_id" value={albumId} />
-        <input type="hidden" name="credit_count" value={credits.length} />
-        {credits.map((credit, i) => {
-          const matched = artistByMbid.get(credit.personMbid)
-          return (
-            <div key={i} className="flex items-center gap-3 text-sm">
-              <input type="hidden" name={`credit_${i}_person_name`} value={credit.personName} />
-              <input type="hidden" name={`credit_${i}_person_mbid`} value={credit.personMbid} />
-              <input type="hidden" name={`credit_${i}_role`} value={credit.role} />
-              <input type="hidden" name={`credit_${i}_source_url`} value={credit.sourceUrl} />
-              <label className="flex items-center gap-2">
-                <input type="checkbox" name={`credit_${i}_include`} value="1" defaultChecked />
-                <span className="font-medium">{credit.personName}</span>
-                <span className="text-xs text-white/40">({CREDIT_ROLE_LABEL[credit.role] ?? credit.role})</span>
-                {matched && (
-                  <span className="text-xs text-emerald-400">→ 既存アーティスト「{matched.name}」として登録</span>
-                )}
-              </label>
-            </div>
-          )
-        })}
+        <input type="hidden" name="credit_count" value={picks.length} />
 
-        {instrumentPicks.length > 0 && (
-          <div className="border-t border-white/10 pt-3">
-            <h2 className="text-xs font-medium uppercase tracking-wide text-white/40">使用楽器(トラック別)</h2>
-            <input type="hidden" name="instrument_count" value={instrumentPicks.length} />
-            <div className="mt-2 space-y-2">
-              {instrumentPicks.map((pick, i) => (
-                <div key={i} className="flex items-center gap-3 text-sm">
-                  <input type="hidden" name={`instrument_${i}_track_id`} value={pick.trackId ?? ''} />
-                  <input type="hidden" name={`instrument_${i}_instrument_name`} value={pick.instrumentName} />
-                  <label className={`flex items-center gap-2 ${pick.trackId ? '' : 'opacity-40'}`}>
-                    <input
-                      type="checkbox"
-                      name={`instrument_${i}_include`}
-                      value="1"
-                      defaultChecked={Boolean(pick.trackId)}
-                      disabled={!pick.trackId}
-                    />
-                    <span className="font-medium">🎸 {pick.instrumentName}</span>
-                    <span className="text-xs text-white/40">— {pick.recordingTitle}</span>
-                    {!pick.trackId && <span className="text-xs text-white/30">(該当トラック無し)</span>}
-                  </label>
-                </div>
-              ))}
-            </div>
+        {albumWide.length > 0 && (
+          <div className="space-y-2">
+            <h2 className="text-xs font-medium uppercase tracking-wide text-white/40">アルバム全体</h2>
+            {albumWide.map(renderRow)}
           </div>
         )}
+
+        {Array.from(byTrack.entries()).map(([trackTitle, trackPicks]) => (
+          <div key={trackTitle} className="space-y-2 border-t border-white/10 pt-3">
+            <h2 className="text-xs font-medium uppercase tracking-wide text-white/40">{trackTitle}</h2>
+            {trackPicks.map(renderRow)}
+          </div>
+        ))}
 
         <SubmitButton />
       </form>

@@ -13,9 +13,8 @@ export async function importAlbumCredits(formData: FormData) {
   const artistId = String(formData.get('artist_id') ?? '')
   const albumId = String(formData.get('album_id') ?? '')
   const creditCount = Number(formData.get('credit_count') ?? '0')
-  const instrumentCount = Number(formData.get('instrument_count') ?? '0')
 
-  if (!artistId || !albumId || (!creditCount && !instrumentCount)) {
+  if (!artistId || !albumId || !creditCount) {
     redirect('/admin/data')
   }
 
@@ -29,6 +28,7 @@ export async function importAlbumCredits(formData: FormData) {
 
   let relationsWritten = 0
   let creditsWritten = 0
+  let instrumentsWritten = 0
   let failureCount = 0
 
   for (let i = 0; i < creditCount; i++) {
@@ -38,8 +38,51 @@ export async function importAlbumCredits(formData: FormData) {
     const personMbid = String(formData.get(`credit_${i}_person_mbid`) ?? '')
     const role = String(formData.get(`credit_${i}_role`) ?? '')
     const sourceUrl = String(formData.get(`credit_${i}_source_url`) ?? '')
+    const trackId = String(formData.get(`credit_${i}_track_id`) ?? '') || null
+    const instrumentName = String(formData.get(`credit_${i}_instrument_name`) ?? '') || null
     if (!personName || !personMbid || !role) continue
     if (!(role in CREDIT_ROLE_LABEL)) continue
+
+    // ミュージシャンロールは、カタログとの人物一致状況に関わらず
+    // 「このトラックでこの楽器が使われた」というトラック単位の記録を別途残す
+    if (role === 'musician' && trackId && instrumentName) {
+      const { data: existingInstrument } = await supabase
+        .from('instrument')
+        .select('id')
+        .ilike('name', instrumentName)
+        .maybeSingle()
+
+      let instrumentId = existingInstrument?.id as string | undefined
+      if (!instrumentId) {
+        const { data: createdInstrument, error: createError } = await supabase
+          .from('instrument')
+          .insert({ name: instrumentName })
+          .select('id')
+          .single()
+        if (createError) {
+          console.error(`楽器「${instrumentName}」の作成に失敗しました:`, createError)
+          failureCount += 1
+        } else {
+          instrumentId = createdInstrument.id
+        }
+      }
+
+      if (instrumentId) {
+        const { data: tiData, error: tiError } = await supabase
+          .from('track_instrument')
+          .upsert(
+            { track_id: trackId, instrument_id: instrumentId },
+            { onConflict: 'track_id,instrument_id', ignoreDuplicates: true }
+          )
+          .select()
+        if (tiError) {
+          console.error(`楽器「${instrumentName}」の紐付けに失敗しました:`, tiError)
+          failureCount += 1
+        } else if (tiData && tiData.length > 0) {
+          instrumentsWritten += 1
+        }
+      }
+    }
 
     const { data: matchedArtist } = await supabase
       .from('artist')
@@ -105,12 +148,13 @@ export async function importAlbumCredits(formData: FormData) {
         {
           artist_id: artistId,
           album_id: albumId,
+          track_id: trackId,
           credit_person_id: creditPersonId,
           role,
           source: 'musicbrainz',
           source_url: sourceUrl || null,
         },
-        { onConflict: 'artist_id,album_id,credit_person_id,role,source', ignoreDuplicates: true }
+        { onConflict: 'artist_id,album_id,track_id,credit_person_id,role,source', ignoreDuplicates: true }
       )
       .select()
     if (creditError) {
@@ -120,50 +164,6 @@ export async function importAlbumCredits(formData: FormData) {
     }
     if (creditData && creditData.length > 0) {
       creditsWritten += 1
-    }
-  }
-
-  let instrumentsWritten = 0
-
-  for (let i = 0; i < instrumentCount; i++) {
-    if (formData.get(`instrument_${i}_include`) !== '1') continue
-
-    const trackId = String(formData.get(`instrument_${i}_track_id`) ?? '')
-    const instrumentName = String(formData.get(`instrument_${i}_instrument_name`) ?? '')
-    if (!trackId || !instrumentName) continue
-
-    const { data: existingInstrument } = await supabase
-      .from('instrument')
-      .select('id')
-      .ilike('name', instrumentName)
-      .maybeSingle()
-
-    let instrumentId = existingInstrument?.id as string | undefined
-    if (!instrumentId) {
-      const { data: createdInstrument, error: createError } = await supabase
-        .from('instrument')
-        .insert({ name: instrumentName })
-        .select('id')
-        .single()
-      if (createError) {
-        console.error(`楽器「${instrumentName}」の作成に失敗しました:`, createError)
-        failureCount += 1
-        continue
-      }
-      instrumentId = createdInstrument.id
-    }
-
-    const { data: tiData, error: tiError } = await supabase
-      .from('track_instrument')
-      .upsert({ track_id: trackId, instrument_id: instrumentId }, { onConflict: 'track_id,instrument_id', ignoreDuplicates: true })
-      .select()
-    if (tiError) {
-      console.error(`楽器「${instrumentName}」の紐付けに失敗しました:`, tiError)
-      failureCount += 1
-      continue
-    }
-    if (tiData && tiData.length > 0) {
-      instrumentsWritten += 1
     }
   }
 
