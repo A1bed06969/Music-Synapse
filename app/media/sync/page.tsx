@@ -35,7 +35,7 @@ export default async function SyncArchivePage({
   }
 
   return (
-    <div className="mx-auto max-w-3xl px-6 py-12">
+    <div className="mx-auto max-w-[1600px] px-6 py-12">
       <h1 className="text-2xl font-bold">タイアップ・シンクロアーカイブ</h1>
       <p className="mt-2 text-sm text-white/50">TV / CM / アニメ / ゲーム / 映画で使われた楽曲のアーカイブ。</p>
 

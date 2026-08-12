@@ -24,7 +24,7 @@ export default async function InstrumentTracksPage({ params }: { params: Promise
     .sort((a, b) => a.title.localeCompare(b.title, 'ja'))
 
   return (
-    <div className="mx-auto max-w-2xl px-6 py-12">
+    <div className="mx-auto max-w-[1600px] px-6 py-12">
       <Link href="/tracks" className="text-xs text-white/40 hover:text-white/70">
         ← トラック一覧に戻る
       </Link>

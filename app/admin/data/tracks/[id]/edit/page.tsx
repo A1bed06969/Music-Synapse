@@ -29,7 +29,7 @@ export default async function TrackEditPage({
   const artist = Array.isArray(track.artist) ? track.artist[0] : track.artist
 
   return (
-    <div className="mx-auto max-w-3xl px-6 py-12">
+    <div className="mx-auto max-w-[1600px] px-6 py-12">
       <Link href={`/tracks/${id}`} className="text-xs text-white/40 hover:text-white/70">
         ← トラックに戻る
       </Link>

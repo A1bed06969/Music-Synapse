@@ -22,7 +22,7 @@ export default async function EventsPage({
   const { data: events } = await query
 
   return (
-    <div className="mx-auto max-w-3xl px-6 py-12">
+    <div className="mx-auto max-w-[1600px] px-6 py-12">
       <h1 className="text-2xl font-bold">イベント</h1>
       <p className="mt-2 text-sm text-white/50">フェス・単発イベントの開催情報。</p>
 

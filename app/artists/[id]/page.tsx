@@ -86,7 +86,7 @@ export default async function ArtistDetailPage({
     .sort((a, b) => b.year - a.year)
 
   return (
-    <div className="mx-auto max-w-3xl px-6 py-12">
+    <div className="mx-auto max-w-[1600px] px-6 py-12">
       <Link href="/search" className="text-xs text-white/40 hover:text-white/70">
         ← 検索に戻る
       </Link>

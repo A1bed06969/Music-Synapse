@@ -15,7 +15,7 @@ export default async function MediaFeaturesPage() {
     .order('id', { ascending: false })
 
   return (
-    <div className="mx-auto max-w-3xl px-6 py-12">
+    <div className="mx-auto max-w-[1600px] px-6 py-12">
       <h1 className="text-2xl font-bold">キュレーションコンテンツ</h1>
       <p className="mt-2 text-sm text-white/50">音楽誌・メディア独自の企画コンテンツをアーカイブしています。</p>
 

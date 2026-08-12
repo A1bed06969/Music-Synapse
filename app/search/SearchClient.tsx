@@ -52,7 +52,7 @@ export default function SearchClient() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl px-6 py-12">
+    <div className="mx-auto max-w-[1600px] px-6 py-12">
       <h1 className="text-2xl font-bold">検索</h1>
 
       <form onSubmit={handleSubmit} className="mt-6 flex gap-2">

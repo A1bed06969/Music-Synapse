@@ -58,7 +58,7 @@ export default function AlbumBrowseClient({
   }, [albums, query, statusFilter, sortMode])
 
   return (
-    <div className="mx-auto max-w-5xl px-6 py-12">
+    <div className="mx-auto max-w-[1600px] px-6 py-12">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h1 className="text-2xl font-bold">アルバム</h1>
         <div className="flex gap-1 rounded-md border border-white/15 p-0.5 text-xs">

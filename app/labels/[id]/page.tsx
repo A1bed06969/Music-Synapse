@@ -67,7 +67,7 @@ export default async function LabelDetailPage({
   const formerRoster = (roster ?? []).filter((r) => r.end_date)
 
   return (
-    <div className="mx-auto max-w-3xl px-6 py-12">
+    <div className="mx-auto max-w-[1600px] px-6 py-12">
       <h1 className="text-2xl font-bold">{label.name}</h1>
       <div className="mt-1 flex flex-wrap gap-x-3 text-sm text-white/50">
         {label.name_kana && <span>{label.name_kana}</span>}

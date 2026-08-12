@@ -35,7 +35,7 @@ export default async function AdminDataPage({
   const artistOptions = artists ?? []
 
   return (
-    <div className="mx-auto max-w-3xl px-6 py-12">
+    <div className="mx-auto max-w-[1600px] px-6 py-12">
       <h1 className="text-2xl font-bold">手動データ登録</h1>
       <p className="mt-2 text-sm text-white/50">
         ジャンル・相関図・レーベルなど、自動同期できない編集データをここから登録します。

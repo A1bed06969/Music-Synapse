@@ -37,7 +37,7 @@ export default function TrackBrowseClient({ groups }: { groups: ArtistGroup[] })
   const totalTracks = useMemo(() => filtered.reduce((sum, g) => sum + g.tracks.length, 0), [filtered])
 
   return (
-    <div className="mx-auto max-w-3xl px-6 py-12">
+    <div className="mx-auto max-w-[1600px] px-6 py-12">
       <h1 className="text-2xl font-bold">トラック</h1>
       <p className="mt-2 text-xs text-white/40">
         アーティストごとに、ランキング掲載・オンエア実績のある曲(🏆/📻)を先頭にして並べています。

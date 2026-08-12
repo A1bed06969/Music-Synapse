@@ -33,7 +33,7 @@ export default async function EditSyncEntryPage({ params }: { params: Promise<{ 
     : null
 
   return (
-    <div className="mx-auto max-w-2xl px-6 py-12">
+    <div className="mx-auto max-w-[1600px] px-6 py-12">
       <Link href="/admin/data/sync" className="text-xs text-white/40 hover:text-white/70">
         ← タイアップ一覧に戻る
       </Link>

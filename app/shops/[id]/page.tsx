@@ -19,7 +19,7 @@ export default async function ShopDetailPage({ params }: { params: Promise<{ id:
   const locationLine = [shop.country, shop.prefecture_or_state, shop.city].filter(Boolean).join(' / ')
 
   return (
-    <div className="mx-auto max-w-2xl px-6 py-12">
+    <div className="mx-auto max-w-[1600px] px-6 py-12">
       <Link href="/map" className="text-xs text-white/40 hover:text-white/70">
         ← 地図に戻る
       </Link>

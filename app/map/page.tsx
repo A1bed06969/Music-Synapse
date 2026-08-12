@@ -195,7 +195,7 @@ export default async function MapPage() {
   const markers: MapMarker[] = [...artistMarkers, ...venueMarkers, ...shopMarkers, ...livehouseMarkers]
 
   return (
-    <div className="mx-auto max-w-5xl px-6 py-12">
+    <div className="mx-auto max-w-[1600px] px-6 py-12">
       <h1 className="text-2xl font-bold">マップ</h1>
       <p className="mt-2 text-sm text-white/50">
         アーティストの出身地・結成地(赤)、イベント会場(青)、レコードショップ(緑)、ライブハウス(紫)を地図で表示します。

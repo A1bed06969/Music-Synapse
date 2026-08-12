@@ -25,7 +25,7 @@ export default async function MediaHubPage({
   if (area) mediaList = mediaList.filter((m) => m.area === area)
 
   return (
-    <div className="mx-auto max-w-4xl px-6 py-12">
+    <div className="mx-auto max-w-[1600px] px-6 py-12">
       <h1 className="text-2xl font-bold">メディア&パワープレイ</h1>
       <p className="mt-2 text-sm text-white/50">全国のメディア・番組からパワープレイ・企画・タイアップ実績を発見できます。</p>
 

@@ -26,7 +26,7 @@ export default function ArtistBrowseClient({ artists }: { artists: Artist[] }) {
   }, [artists, query])
 
   return (
-    <div className="mx-auto max-w-5xl px-6 py-12">
+    <div className="mx-auto max-w-[1600px] px-6 py-12">
       <h1 className="text-2xl font-bold">アーティスト</h1>
 
       <input

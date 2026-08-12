@@ -41,7 +41,7 @@ export default async function AwardsPage() {
   const groups = Array.from(byAward.values())
 
   return (
-    <div className="mx-auto max-w-2xl px-6 py-12">
+    <div className="mx-auto max-w-[1600px] px-6 py-12">
       <h1 className="text-2xl font-bold">アワード・コンテスト</h1>
       <p className="mt-2 text-sm text-white/50">受賞・ノミネート履歴のアーカイブです。</p>
 

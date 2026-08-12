@@ -21,7 +21,7 @@ export default async function ArtistRelationsPage({
   const { nodes, edges } = await buildArtistRelationGraph(supabase, artist.id, artist.name)
 
   return (
-    <div className="mx-auto max-w-4xl px-6 py-12">
+    <div className="mx-auto max-w-[1600px] px-6 py-12">
       <Link href={`/artists/${artist.id}`} className="text-xs text-white/40 hover:text-white/70">
         ← {artist.name}
       </Link>

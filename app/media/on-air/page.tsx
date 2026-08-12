@@ -177,7 +177,7 @@ export default async function OnAirPage({
   }))
 
   return (
-    <div className="mx-auto max-w-3xl px-6 py-12">
+    <div className="mx-auto max-w-[1600px] px-6 py-12">
       <h1 className="text-2xl font-bold">パワープレイ&ヘビロテ</h1>
       <p className="mt-2 text-sm text-white/50">全国ラジオ局の週間・月間プッシュ楽曲データ。</p>
 

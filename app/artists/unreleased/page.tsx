@@ -15,7 +15,7 @@ export default async function UnreleasedArtistsListPage() {
   ])
 
   return (
-    <div className="mx-auto max-w-3xl px-6 py-12">
+    <div className="mx-auto max-w-[1600px] px-6 py-12">
       <h1 className="text-2xl font-bold">サブスク未解禁アーティスト</h1>
       <p className="mt-2 text-sm text-white/50">
         現時点で主要なサブスクリプションサービスでの配信が確認できていないアーティスト・アルバムです。

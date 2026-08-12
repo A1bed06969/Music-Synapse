@@ -34,7 +34,7 @@ export default async function VenuesPage({
   const isKnownUnresolvedVenue = venue !== undefined && unresolvedVenueSet.has(venue)
 
   return (
-    <div className="mx-auto max-w-2xl px-6 py-12">
+    <div className="mx-auto max-w-[1600px] px-6 py-12">
       <Link href="/admin/data" className="text-xs text-white/40 hover:text-white/70">
         ← 管理画面に戻る
       </Link>
