@@ -3,6 +3,7 @@ import { createClient } from '@/utils/Supabase/server'
 import { fetchGlastonburyLineup, type FestivalPick } from '@/utils/festivalScrape'
 import { registerFestivalAppearance } from './actions'
 import SubmitButton from './SubmitButton'
+import UnmatchedArtistTag from './UnmatchedArtistTag'
 
 export const maxDuration = 60
 
@@ -84,7 +85,8 @@ export default async function FestivalPilotPage({
       <h1 className="mt-4 text-2xl font-bold">世界のフェス出演者収集(パイロット: Glastonbury)</h1>
       <p className="mt-2 text-sm text-white/50">
         Glastonbury Festivalの公式ラインナップページから最新開催回の出演者を取得します。
-        カタログの既存アーティストと一致した場合のみ登録できます(新規アーティストは自動登録しません)。
+        カタログに既にいるアーティストはそのまま登録できます。薄く表示されている未一致のアーティストは、
+        クリックするとApple Musicを検索して候補を表示します。人物が合っていれば「この人で登録」でカタログへの取込と出演登録を同時に行います(自動では確定しません)。
       </p>
 
       {success && (
@@ -154,15 +156,23 @@ export default async function FestivalPilotPage({
                 )}
 
                 {unmatchedRows.length > 0 && (
-                  <div className="mt-3 flex flex-wrap gap-1.5">
+                  <div className="mt-3 flex flex-wrap items-start gap-1.5">
                     {unmatchedRows.map((p, i) => (
-                      <span
+                      <UnmatchedArtistTag
                         key={i}
-                        title={p.day ?? undefined}
-                        className="rounded-full border border-white/5 px-2 py-0.5 text-xs text-white/25"
-                      >
-                        {p.artistName}
-                      </span>
+                        pick={{
+                          artistName: p.artistName,
+                          festivalName: p.festivalName,
+                          editionYear: p.editionYear,
+                          startDate: p.startDate,
+                          endDate: p.endDate,
+                          stage: p.stage,
+                          performanceDate: p.performanceDate,
+                          startAt: p.startAt,
+                          endAt: p.endAt,
+                          day: p.day,
+                        }}
+                      />
                     ))}
                   </div>
                 )}
