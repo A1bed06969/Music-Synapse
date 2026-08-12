@@ -55,21 +55,25 @@ function sameColumnBumpMidpoint(x: number, sy: number, ty: number, bumpOffset: n
   return { x: x + bumpOffset, y: (sy + ty) / 2 }
 }
 
-/** 列をまたぐノード同士を繋ぐ経路。ノードが並ぶ帯の外(上部の専用レーン)を
- * 経由することで、途中の列のノードの上を線が通過して誤解を招くことを避ける。 */
-function highwayPath(sx: number, sy: number, tx: number, ty: number, laneY: number): string {
-  return `M ${sx},${sy} V ${laneY} H ${tx} V ${ty}`
+/** 列をまたぐノード同士を繋ぐ経路。まず列と列の間の余白(ガター)へ横に
+ * 逃がしてから上部の専用レーンへ上り下りする。これにより、同じ列の他の
+ * ノードの真上を線が通過して誤解を招くことを避ける。 */
+function highwayPath(sx: number, sy: number, tx: number, ty: number, laneY: number, gutterOffset: number): string {
+  const gsx = sx + gutterOffset
+  const gtx = tx + gutterOffset
+  return `M ${sx},${sy} H ${gsx} V ${laneY} H ${gtx} V ${ty} H ${tx}`
 }
-function highwayMidpoint(sx: number, tx: number, laneY: number) {
-  return { x: (sx + tx) / 2, y: laneY }
+function highwayMidpoint(sx: number, tx: number, laneY: number, gutterOffset: number) {
+  return { x: (sx + gutterOffset + tx + gutterOffset) / 2, y: laneY }
 }
 
-const ROW_HEIGHT = 40
-const GROUP_GAP = 22
-const NODE_R_ROOT = 13
-const NODE_R = 10
-const GRID_SUBCOL_THRESHOLD = 6
-const GRID_SUBCOL_OFFSET = 30
+// 1アーティストあたり概ね200×200pxの表示領域を確保する
+const NODE_R = 55
+const NODE_R_ROOT = 65
+const ROW_HEIGHT = 210
+const LABEL_GAP = 26
+const NAME_FONT_SIZE = 15
+const HEADER_FONT_SIZE = 16
 
 function initial(name: string) {
   return name.trim().charAt(0).toUpperCase() || '?'
@@ -108,7 +112,7 @@ function Avatar({
             clipPath={`url(#${clipId})`}
             preserveAspectRatio="xMidYMid slice"
           />
-          <circle cx={cx} cy={cy} r={r} fill="none" stroke={strokeColor} strokeWidth={1.5} />
+          <circle cx={cx} cy={cy} r={r} fill="none" stroke={strokeColor} strokeWidth={2.5} />
         </>
       ) : (
         <>
@@ -118,10 +122,10 @@ function Avatar({
             r={r}
             fill="rgba(255,255,255,0.12)"
             stroke={strokeColor}
-            strokeWidth={1.5}
-            strokeDasharray={node.type === 'person' ? '2 2' : undefined}
+            strokeWidth={2.5}
+            strokeDasharray={node.type === 'person' ? '5 4' : undefined}
           />
-          <text x={cx} y={cy + r * 0.35} textAnchor="middle" fontSize={r} fill="rgba(255,255,255,0.6)" fontWeight={700}>
+          <text x={cx} y={cy + r * 0.32} textAnchor="middle" fontSize={r * 0.9} fill="rgba(255,255,255,0.6)" fontWeight={700}>
             {initial(node.name)}
           </text>
         </>
@@ -132,11 +136,11 @@ function Avatar({
 
 /** 線の上に乗せる小さな関係ラベル。背景を敷いて可読性を確保する。 */
 function EdgeLabel({ x, y, text, active }: { x: number; y: number; text: string; active: boolean }) {
-  const width = Math.min(Math.max(text.length * 5.4 + 8, 20), 120)
+  const width = Math.min(Math.max(text.length * 7.2 + 12, 26), 220)
   return (
     <g opacity={active ? 0.95 : 0.3} pointerEvents="none">
-      <rect x={x - width / 2} y={y - 7} width={width} height={14} rx={4} fill="#0b0b0e" fillOpacity={0.85} />
-      <text x={x} y={y + 3.5} textAnchor="middle" fontSize={9} fill="rgba(255,255,255,0.75)">
+      <rect x={x - width / 2} y={y - 11} width={width} height={22} rx={5} fill="#0b0b0e" fillOpacity={0.88} />
+      <text x={x} y={y + 5} textAnchor="middle" fontSize={13} fill="rgba(255,255,255,0.8)">
         {text}
       </text>
     </g>
@@ -147,10 +151,10 @@ function EdgeLabel({ x, y, text, active }: { x: number; y: number; text: string;
 function ArrowDefs() {
   return (
     <defs>
-      <marker id="rg-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <marker id="rg-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
         <path d="M0,0 L10,5 L0,10 Z" fill="rgba(255,255,255,0.4)" />
       </marker>
-      <marker id="rg-arrow-active" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <marker id="rg-arrow-active" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="10" markerHeight="10" orient="auto-start-reverse">
         <path d="M0,0 L10,5 L0,10 Z" fill="rgba(255,255,255,0.95)" />
       </marker>
     </defs>
@@ -226,23 +230,22 @@ function EgoTree({
   const children = nodes.filter((n) => n.id !== centerId)
   const groups = groupByCategory(children)
 
-  const rootX = 88
-  const childX = 460
-  const width = 640
+  const rootX = 150
+  const childX = 760
+  const width = 1180
 
-  let y = 20
-  const positioned: { node: RelationNode; y: number }[] = []
+  let y = 50
+  const positioned: { node: RelationNode; cy: number }[] = []
   const groupHeaders: { label: string; y: number }[] = []
   for (const [category, groupNodes] of groups) {
-    groupHeaders.push({ label: category, y })
-    y += 18
+    groupHeaders.push({ label: category, y: y + 6 })
+    y += 40
     for (const node of groupNodes) {
-      positioned.push({ node, y: y + ROW_HEIGHT / 2 - 9 })
+      positioned.push({ node, cy: y + NODE_R })
       y += ROW_HEIGHT
     }
-    y += GROUP_GAP
   }
-  const height = Math.max(y, 120)
+  const height = Math.max(y, NODE_R_ROOT * 2 + 100)
   const rootY = height / 2
 
   function go(node: RelationNode) {
@@ -252,86 +255,85 @@ function EgoTree({
   if (!center) return null
 
   return (
-    <div className="overflow-auto" style={{ maxHeight: 640 }}>
-    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="select-none">
-      <ArrowDefs />
-      <g>
-        {positioned.map(({ node, y: ny }) => {
-          const color = node.category ? colorForCategory(node.category) : 'rgba(255,255,255,0.4)'
-          const edge = edges.find(
-            (e) => (e.source === node.id || e.target === node.id) && (e.source === centerId || e.target === centerId)
-          )
-          return (
-            <path
-              key={`edge-${node.id}`}
-              d={elbowPath(rootX + NODE_R_ROOT, rootY, childX - NODE_R, ny + 9)}
-              fill="none"
-              stroke={color}
-              strokeOpacity={0.45}
-              strokeWidth={1.5}
-              markerEnd={edge?.style === 'solid' ? 'url(#rg-arrow)' : undefined}
-            />
-          )
-        })}
-      </g>
+    <div className="overflow-auto" style={{ maxHeight: 720 }}>
+      <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="select-none">
+        <ArrowDefs />
+        <g>
+          {positioned.map(({ node, cy }) => {
+            const color = node.category ? colorForCategory(node.category) : 'rgba(255,255,255,0.4)'
+            const edge = edges.find(
+              (e) => (e.source === node.id || e.target === node.id) && (e.source === centerId || e.target === centerId)
+            )
+            return (
+              <path
+                key={`edge-${node.id}`}
+                d={elbowPath(rootX + NODE_R_ROOT, rootY, childX - NODE_R, cy)}
+                fill="none"
+                stroke={color}
+                strokeOpacity={0.45}
+                strokeWidth={2}
+                markerEnd={edge?.style === 'solid' ? 'url(#rg-arrow)' : undefined}
+              />
+            )
+          })}
+        </g>
 
-      <g>
-        {groupHeaders.map((h) => (
-          <text
-            key={h.label}
-            x={childX}
-            y={h.y + 4}
-            textAnchor="middle"
-            fill={colorForCategory(h.label)}
-            fontSize={11}
-            fontWeight={700}
-          >
-            {h.label}
+        <g>
+          {groupHeaders.map((h) => (
+            <text
+              key={h.label}
+              x={childX}
+              y={h.y + 4}
+              textAnchor="middle"
+              fill={colorForCategory(h.label)}
+              fontSize={HEADER_FONT_SIZE}
+              fontWeight={700}
+            >
+              {h.label}
+            </text>
+          ))}
+        </g>
+
+        <g onClick={() => go(center)} className="cursor-pointer">
+          <Avatar node={center} cx={rootX} cy={rootY} r={NODE_R_ROOT} strokeColor="#fff" />
+          <text x={rootX} y={rootY + NODE_R_ROOT + 24} textAnchor="middle" fill="#fff" fontSize={17} fontWeight={700}>
+            {center.name}
           </text>
-        ))}
-      </g>
+        </g>
 
-      <g onClick={() => go(center)} className="cursor-pointer">
-        <Avatar node={center} cx={rootX} cy={rootY} r={NODE_R_ROOT} strokeColor="#fff" />
-        <text x={rootX} y={rootY + NODE_R_ROOT + 15} textAnchor="middle" fill="#fff" fontSize={13} fontWeight={700}>
-          {center.name}
-        </text>
-      </g>
-
-      <g>
-        {positioned.map(({ node, y: ny }) => {
-          const color = node.category ? colorForCategory(node.category) : 'rgba(255,255,255,0.6)'
-          const edge = edges.find(
-            (e) => (e.source === node.id || e.target === node.id) && (e.source === centerId || e.target === centerId)
-          )
-          return (
-            <g key={node.id} onClick={() => go(node)} className="cursor-pointer">
-              <Avatar node={node} cx={childX} cy={ny + 9} r={NODE_R} strokeColor={color} />
-              <text x={childX + NODE_R + 8} y={ny + 13} fill="rgba(255,255,255,0.85)" fontSize={12}>
-                {node.name}
-              </text>
-              {edge?.label && (
-                <text x={childX + NODE_R + 8} y={ny + 27} fill="rgba(255,255,255,0.35)" fontSize={10}>
-                  {edge.label}
+        <g>
+          {positioned.map(({ node, cy }) => {
+            const color = node.category ? colorForCategory(node.category) : 'rgba(255,255,255,0.6)'
+            const edge = edges.find(
+              (e) => (e.source === node.id || e.target === node.id) && (e.source === centerId || e.target === centerId)
+            )
+            return (
+              <g key={node.id} onClick={() => go(node)} className="cursor-pointer">
+                <Avatar node={node} cx={childX} cy={cy} r={NODE_R} strokeColor={color} />
+                <text x={childX + NODE_R + 14} y={cy - 2} fill="rgba(255,255,255,0.85)" fontSize={NAME_FONT_SIZE}>
+                  {node.name}
                 </text>
-              )}
-            </g>
-          )
-        })}
-      </g>
-    </svg>
+                {edge?.label && (
+                  <text x={childX + NODE_R + 14} y={cy + 18} fill="rgba(255,255,255,0.4)" fontSize={12}>
+                    {edge.label}
+                  </text>
+                )}
+              </g>
+            )
+          })}
+        </g>
+      </svg>
     </div>
   )
 }
 
-type NodePos = { x: number; displayX: number; y: number; category: string }
+type NodePos = { x: number; cy: number; category: string }
 
 /** 中心の無い全体ハブ用: グループ(ジャンル、または接続成分)ごとに列を
- * 固定し、列内に並ぶ。大きなグループはジグザグの2列に詰めて密度を上げる
- * (実際の線の起点・終点は常に列の中心線[スパイン]を使い、アバターだけを
- * 左右にずらして短い引き込み線で繋ぐ。これにより既存の経路計算はそのまま
- * 正しく動く)。ノードをクリックすると、そのノードと繋がっている相手だけ
- * が浮かび上がり、それ以外は薄くなる。 */
+ * 固定し、列内に縦一列で並べる。同じ列/違う列をまたぐ線は、それぞれ列の
+ * 外側や上部の専用レーンを経由させ、無関係なノードの真上を通らないように
+ * する。ノードをクリックすると、そのノードと繋がっている相手だけが浮かび
+ * 上がり、それ以外は薄くなる。 */
 function ColumnLayout({
   nodes,
   edges,
@@ -344,21 +346,20 @@ function ColumnLayout({
   const router = useRouter()
   const [focusedId, setFocusedId] = useState<string | null>(null)
 
-  const colWidth = 168
-  const colPadX = 84
+  const colWidth = 360
+  const colPadX = 180
   const width = Math.max(groups.length * colWidth + colPadX, 480)
-
-  function rowsForCount(count: number) {
-    return count > GRID_SUBCOL_THRESHOLD ? Math.ceil(count / 2) : count
-  }
+  const boxHalfWidth = 110
+  const bumpOffset = 90
+  const gutterOffset = 145
 
   // まずxとカテゴリだけ確定させる(yは後で決める。列をまたぐ線の本数が
   // 分かってから、上部の迂回レーン分だけノード行を下にずらす必要があるため)
   const columnXById = new Map<string, number>()
-  const groupInfo: { label: string; x: number; count: number; rows: number }[] = []
+  const groupInfo: { label: string; x: number; count: number }[] = []
   groups.forEach(([category, groupNodes], i) => {
     const x = colPadX + i * colWidth
-    groupInfo.push({ label: category, x, count: groupNodes.length, rows: rowsForCount(groupNodes.length) })
+    groupInfo.push({ label: category, x, count: groupNodes.length })
     groupNodes.forEach((node) => columnXById.set(node.id, x))
   })
 
@@ -367,25 +368,21 @@ function ColumnLayout({
   )
   const crossColumnEdges = validEdges.filter((e) => columnXById.get(e.source) !== columnXById.get(e.target))
 
-  const HEADER_Y = 14
-  const LANE_GAP = 5
-  const highwayTop = HEADER_Y + 14
+  const HEADER_Y = 24
+  const LANE_GAP = 10
+  const highwayTop = HEADER_Y + 30
   const highwayHeight = Math.max(crossColumnEdges.length * LANE_GAP, 0)
-  const rowsTop = highwayTop + highwayHeight + 16
+  const rowsTop = highwayTop + highwayHeight + NODE_R + 30
 
   const posById = new Map<string, NodePos>()
   groups.forEach(([category, groupNodes], i) => {
-    const spineX = colPadX + i * colWidth
-    const useGrid = groupNodes.length > GRID_SUBCOL_THRESHOLD
+    const x = colPadX + i * colWidth
     groupNodes.forEach((node, j) => {
-      const row = useGrid ? Math.floor(j / 2) : j
-      const col = useGrid ? j % 2 : 0
-      const displayX = useGrid ? spineX + (col === 0 ? -GRID_SUBCOL_OFFSET : GRID_SUBCOL_OFFSET) : spineX
-      posById.set(node.id, { x: spineX, displayX, y: rowsTop + row * ROW_HEIGHT, category })
+      posById.set(node.id, { x, cy: rowsTop + j * ROW_HEIGHT, category })
     })
   })
-  const maxRows = Math.max(...groupInfo.map((g) => g.rows), 1)
-  const height = Math.max(rowsTop + maxRows * ROW_HEIGHT + 20, 200)
+  const maxRows = Math.max(...groupInfo.map((g) => g.count), 1)
+  const height = Math.max(rowsTop + (maxRows - 1) * ROW_HEIGHT + NODE_R + 60, 260)
 
   const focusedNeighbors = useMemo(() => {
     const set = new Set<string>()
@@ -412,113 +409,109 @@ function ColumnLayout({
   }
 
   return (
-    <div className="overflow-auto" style={{ maxHeight: 640 }}>
-    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="select-none">
-      <ArrowDefs />
-      <rect x={0} y={0} width={width} height={height} fill="transparent" onClick={() => setFocusedId(null)} />
-      <g>
-        {groupInfo.map((g) => (
-          <rect
-            key={g.label}
-            x={g.x - 60}
-            y={rowsTop - 26}
-            width={120}
-            height={g.rows * ROW_HEIGHT + 20}
-            rx={10}
-            fill={colorForCategory(g.label)}
-            fillOpacity={0.06}
-            stroke={colorForCategory(g.label)}
-            strokeOpacity={0.25}
-          />
-        ))}
-      </g>
-      <g>
-        {groupInfo.map((g) => (
-          <text key={g.label} x={g.x} y={HEADER_Y} textAnchor="middle" fill={colorForCategory(g.label)} fontSize={11} fontWeight={700}>
-            {g.label}
-          </text>
-        ))}
-      </g>
-      <g>
-        {validEdges.map((e, i) => {
-          const s = posById.get(e.source)
-          const t = posById.get(e.target)
-          if (!s || !t) return null
-          if (s.x !== t.x) return null // 列またぎは下の専用レーンで描画
-          // 経路が同じ列の他の無関係なノードの真上を通らないよう、列の外側へ迂回する
-          const active = isEdgeActive(e)
-          const mid = sameColumnBumpMidpoint(s.x, s.y + 9, t.y + 9, 22)
-          return (
-            <g key={i} opacity={active ? 1 : 0.12}>
-              <path
-                d={sameColumnBumpPath(s.x, s.y + 9, t.y + 9, 22)}
-                fill="none"
-                stroke={active && focusedId ? '#fff' : 'rgba(255,255,255,0.25)'}
-                strokeWidth={active && focusedId ? 2 : 1.25}
-                strokeDasharray={e.style === 'dotted' ? '4 4' : undefined}
-                markerEnd={e.style === 'solid' ? `url(#${active && focusedId ? 'rg-arrow-active' : 'rg-arrow'})` : undefined}
-              />
-              {e.label && <EdgeLabel x={mid.x} y={mid.y} text={e.label} active={Boolean(active && focusedId)} />}
-            </g>
-          )
-        })}
-      </g>
-      <g>
-        {crossColumnEdges.map((e, laneIndex) => {
-          const s = posById.get(e.source)
-          const t = posById.get(e.target)
-          if (!s || !t) return null
-          // 列をまたぐ経路は、途中の列のノードの上を通らないよう、
-          // 全ノードより上の専用レーンを経由させる(線ごとに高さをずらす)
-          const laneY = highwayTop + laneIndex * LANE_GAP
-          const active = isEdgeActive(e)
-          const mid = highwayMidpoint(s.x, t.x, laneY)
-          return (
-            <g key={`cross-${laneIndex}`} opacity={active ? 1 : 0.1}>
-              <path
-                d={highwayPath(s.x, s.y + 9, t.x, t.y + 9, laneY)}
-                fill="none"
-                stroke={active && focusedId ? '#fff' : 'rgba(255,255,255,0.25)'}
-                strokeWidth={active && focusedId ? 2 : 1.25}
-                strokeDasharray={e.style === 'dotted' ? '4 4' : undefined}
-                markerEnd={e.style === 'solid' ? `url(#${active && focusedId ? 'rg-arrow-active' : 'rg-arrow'})` : undefined}
-              />
-              {e.label && <EdgeLabel x={mid.x} y={mid.y} text={e.label} active={Boolean(active && focusedId)} />}
-            </g>
-          )
-        })}
-      </g>
-      <g>
-        {nodes.map((node) => {
-          const pos = posById.get(node.id)
-          if (!pos) return null
-          const color = node.category ? colorForCategory(node.category) : 'rgba(255,255,255,0.6)'
-          const dimmed = isNodeDimmed(node.id)
-          const cy = pos.y + 9
-          return (
-            <g key={node.id} opacity={dimmed ? 0.15 : 1}>
-              {pos.displayX !== pos.x && (
-                <line x1={pos.x} y1={cy} x2={pos.displayX} y2={cy} stroke={color} strokeOpacity={0.35} strokeWidth={1} />
-              )}
-              <g onClick={() => toggleFocus(node.id)} className="cursor-pointer">
-                <Avatar node={node} cx={pos.displayX} cy={cy} r={NODE_R} strokeColor={color} />
+    <div className="overflow-auto" style={{ maxHeight: 720 }}>
+      <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="select-none">
+        <ArrowDefs />
+        <rect x={0} y={0} width={width} height={height} fill="transparent" onClick={() => setFocusedId(null)} />
+        <g>
+          {groupInfo.map((g) => (
+            <rect
+              key={g.label}
+              x={g.x - boxHalfWidth}
+              y={rowsTop - NODE_R - 40}
+              width={boxHalfWidth * 2}
+              height={(g.count - 1) * ROW_HEIGHT + NODE_R * 2 + 60}
+              rx={14}
+              fill={colorForCategory(g.label)}
+              fillOpacity={0.06}
+              stroke={colorForCategory(g.label)}
+              strokeOpacity={0.25}
+            />
+          ))}
+        </g>
+        <g>
+          {groupInfo.map((g) => (
+            <text key={g.label} x={g.x} y={HEADER_Y} textAnchor="middle" fill={colorForCategory(g.label)} fontSize={HEADER_FONT_SIZE} fontWeight={700}>
+              {g.label}
+            </text>
+          ))}
+        </g>
+        <g>
+          {validEdges.map((e, i) => {
+            const s = posById.get(e.source)
+            const t = posById.get(e.target)
+            if (!s || !t) return null
+            if (s.x !== t.x) return null // 列またぎは下の専用レーンで描画
+            // 経路が同じ列の他の無関係なノードの真上を通らないよう、列の外側へ迂回する
+            const active = isEdgeActive(e)
+            const mid = sameColumnBumpMidpoint(s.x, s.cy, t.cy, bumpOffset)
+            return (
+              <g key={i} opacity={active ? 1 : 0.12}>
+                <path
+                  d={sameColumnBumpPath(s.x, s.cy, t.cy, bumpOffset)}
+                  fill="none"
+                  stroke={active && focusedId ? '#fff' : 'rgba(255,255,255,0.25)'}
+                  strokeWidth={active && focusedId ? 2.5 : 1.75}
+                  strokeDasharray={e.style === 'dotted' ? '5 5' : undefined}
+                  markerEnd={e.style === 'solid' ? `url(#${active && focusedId ? 'rg-arrow-active' : 'rg-arrow'})` : undefined}
+                />
+                {e.label && <EdgeLabel x={mid.x} y={mid.y} text={e.label} active={Boolean(active && focusedId)} />}
               </g>
-              <text
-                x={pos.displayX}
-                y={pos.y + NODE_R + 17}
-                textAnchor="middle"
-                fill="rgba(255,255,255,0.85)"
-                fontSize={11}
-                onClick={() => go(node)}
-                className="cursor-pointer hover:underline"
-              >
-                {node.name}
-              </text>
-            </g>
-          )
-        })}
-      </g>
-    </svg>
+            )
+          })}
+        </g>
+        <g>
+          {crossColumnEdges.map((e, laneIndex) => {
+            const s = posById.get(e.source)
+            const t = posById.get(e.target)
+            if (!s || !t) return null
+            // 列をまたぐ経路は、途中の列のノードの上を通らないよう、
+            // 全ノードより上の専用レーンを経由させる(線ごとに高さをずらす)
+            const laneY = highwayTop + laneIndex * LANE_GAP
+            const active = isEdgeActive(e)
+            const mid = highwayMidpoint(s.x, t.x, laneY, gutterOffset)
+            return (
+              <g key={`cross-${laneIndex}`} opacity={active ? 1 : 0.1}>
+                <path
+                  d={highwayPath(s.x, s.cy, t.x, t.cy, laneY, gutterOffset)}
+                  fill="none"
+                  stroke={active && focusedId ? '#fff' : 'rgba(255,255,255,0.25)'}
+                  strokeWidth={active && focusedId ? 2.5 : 1.75}
+                  strokeDasharray={e.style === 'dotted' ? '5 5' : undefined}
+                  markerEnd={e.style === 'solid' ? `url(#${active && focusedId ? 'rg-arrow-active' : 'rg-arrow'})` : undefined}
+                />
+                {e.label && <EdgeLabel x={mid.x} y={mid.y} text={e.label} active={Boolean(active && focusedId)} />}
+              </g>
+            )
+          })}
+        </g>
+        <g>
+          {nodes.map((node) => {
+            const pos = posById.get(node.id)
+            if (!pos) return null
+            const color = node.category ? colorForCategory(node.category) : 'rgba(255,255,255,0.6)'
+            const dimmed = isNodeDimmed(node.id)
+            return (
+              <g key={node.id} opacity={dimmed ? 0.15 : 1}>
+                <g onClick={() => toggleFocus(node.id)} className="cursor-pointer">
+                  <Avatar node={node} cx={pos.x} cy={pos.cy} r={NODE_R} strokeColor={color} />
+                </g>
+                <text
+                  x={pos.x}
+                  y={pos.cy + NODE_R + LABEL_GAP}
+                  textAnchor="middle"
+                  fill="rgba(255,255,255,0.85)"
+                  fontSize={NAME_FONT_SIZE}
+                  onClick={() => go(node)}
+                  className="cursor-pointer hover:underline"
+                >
+                  {node.name}
+                </text>
+              </g>
+            )
+          })}
+        </g>
+      </svg>
     </div>
   )
 }
