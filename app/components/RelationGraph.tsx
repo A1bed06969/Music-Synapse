@@ -1,9 +1,15 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 
-export type RelationNode = { id: string; name: string; category?: string | null; type?: 'artist' | 'person' }
+export type RelationNode = {
+  id: string
+  name: string
+  category?: string | null
+  type?: 'artist' | 'person'
+  imageUrl?: string | null
+}
 export type RelationEdge = {
   source: string
   target: string
@@ -39,12 +45,14 @@ function elbowPath(sx: number, sy: number, tx: number, ty: number): string {
   const midX = sx + (tx - sx) / 2
   return `M ${sx},${sy} H ${midX} V ${ty} H ${tx}`
 }
-
 /** 同じ列内のノード同士を繋ぐ経路。列の外側に迂回することで、
  * 経路上に他の無関係なノードが乗って誤解を招くことを避ける。 */
 function sameColumnBumpPath(x: number, sy: number, ty: number, bumpOffset: number): string {
   const bx = x + bumpOffset
   return `M ${x},${sy} H ${bx} V ${ty} H ${x}`
+}
+function sameColumnBumpMidpoint(x: number, sy: number, ty: number, bumpOffset: number) {
+  return { x: x + bumpOffset, y: (sy + ty) / 2 }
 }
 
 /** 列をまたぐノード同士を繋ぐ経路。ノードが並ぶ帯の外(上部の専用レーン)を
@@ -52,11 +60,102 @@ function sameColumnBumpPath(x: number, sy: number, ty: number, bumpOffset: numbe
 function highwayPath(sx: number, sy: number, tx: number, ty: number, laneY: number): string {
   return `M ${sx},${sy} V ${laneY} H ${tx} V ${ty}`
 }
+function highwayMidpoint(sx: number, tx: number, laneY: number) {
+  return { x: (sx + tx) / 2, y: laneY }
+}
 
 const ROW_HEIGHT = 40
 const GROUP_GAP = 22
-const NODE_R_ROOT = 9
-const NODE_R = 6
+const NODE_R_ROOT = 13
+const NODE_R = 10
+const GRID_SUBCOL_THRESHOLD = 6
+const GRID_SUBCOL_OFFSET = 30
+
+function initial(name: string) {
+  return name.trim().charAt(0).toUpperCase() || '?'
+}
+
+/** 丸い顔写真アバター。画像が無い場合は頭文字の丸バッジで代用する。 */
+function Avatar({
+  node,
+  cx,
+  cy,
+  r,
+  strokeColor,
+  opacity = 1,
+}: {
+  node: RelationNode
+  cx: number
+  cy: number
+  r: number
+  strokeColor: string
+  opacity?: number
+}) {
+  const clipId = `avatar-clip-${node.id}`
+  return (
+    <g opacity={opacity}>
+      {node.imageUrl ? (
+        <>
+          <clipPath id={clipId}>
+            <circle cx={cx} cy={cy} r={r} />
+          </clipPath>
+          <image
+            href={node.imageUrl}
+            x={cx - r}
+            y={cy - r}
+            width={r * 2}
+            height={r * 2}
+            clipPath={`url(#${clipId})`}
+            preserveAspectRatio="xMidYMid slice"
+          />
+          <circle cx={cx} cy={cy} r={r} fill="none" stroke={strokeColor} strokeWidth={1.5} />
+        </>
+      ) : (
+        <>
+          <circle
+            cx={cx}
+            cy={cy}
+            r={r}
+            fill="rgba(255,255,255,0.12)"
+            stroke={strokeColor}
+            strokeWidth={1.5}
+            strokeDasharray={node.type === 'person' ? '2 2' : undefined}
+          />
+          <text x={cx} y={cy + r * 0.35} textAnchor="middle" fontSize={r} fill="rgba(255,255,255,0.6)" fontWeight={700}>
+            {initial(node.name)}
+          </text>
+        </>
+      )}
+    </g>
+  )
+}
+
+/** 線の上に乗せる小さな関係ラベル。背景を敷いて可読性を確保する。 */
+function EdgeLabel({ x, y, text, active }: { x: number; y: number; text: string; active: boolean }) {
+  const width = Math.min(Math.max(text.length * 5.4 + 8, 20), 120)
+  return (
+    <g opacity={active ? 0.95 : 0.3} pointerEvents="none">
+      <rect x={x - width / 2} y={y - 7} width={width} height={14} rx={4} fill="#0b0b0e" fillOpacity={0.85} />
+      <text x={x} y={y + 3.5} textAnchor="middle" fontSize={9} fill="rgba(255,255,255,0.75)">
+        {text}
+      </text>
+    </g>
+  )
+}
+
+/** 矢印マーカーの定義。実線(在籍/制作/コラボ)にのみ向きを表示する。 */
+function ArrowDefs() {
+  return (
+    <defs>
+      <marker id="rg-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 Z" fill="rgba(255,255,255,0.4)" />
+      </marker>
+      <marker id="rg-arrow-active" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 Z" fill="rgba(255,255,255,0.95)" />
+      </marker>
+    </defs>
+  )
+}
 
 function groupByCategory(nodes: RelationNode[]) {
   const groups = new Map<string, RelationNode[]>()
@@ -154,9 +253,13 @@ function EgoTree({
 
   return (
     <svg viewBox={`0 0 ${width} ${height}`} className="w-full select-none" style={{ maxHeight: 640 }}>
+      <ArrowDefs />
       <g>
         {positioned.map(({ node, y: ny }) => {
           const color = node.category ? colorForCategory(node.category) : 'rgba(255,255,255,0.4)'
+          const edge = edges.find(
+            (e) => (e.source === node.id || e.target === node.id) && (e.source === centerId || e.target === centerId)
+          )
           return (
             <path
               key={`edge-${node.id}`}
@@ -165,6 +268,7 @@ function EgoTree({
               stroke={color}
               strokeOpacity={0.45}
               strokeWidth={1.5}
+              markerEnd={edge?.style === 'solid' ? 'url(#rg-arrow)' : undefined}
             />
           )
         })}
@@ -187,8 +291,8 @@ function EgoTree({
       </g>
 
       <g onClick={() => go(center)} className="cursor-pointer">
-        <circle cx={rootX} cy={rootY} r={NODE_R_ROOT} fill="#fff" />
-        <text x={rootX} y={rootY + 24} textAnchor="middle" fill="#fff" fontSize={13} fontWeight={700}>
+        <Avatar node={center} cx={rootX} cy={rootY} r={NODE_R_ROOT} strokeColor="#fff" />
+        <text x={rootX} y={rootY + NODE_R_ROOT + 15} textAnchor="middle" fill="#fff" fontSize={13} fontWeight={700}>
           {center.name}
         </text>
       </g>
@@ -201,20 +305,12 @@ function EgoTree({
           )
           return (
             <g key={node.id} onClick={() => go(node)} className="cursor-pointer">
-              <circle
-                cx={childX}
-                cy={ny + 9}
-                r={NODE_R}
-                fill="rgba(255,255,255,0.14)"
-                stroke={color}
-                strokeWidth={1.5}
-                strokeDasharray={node.type === 'person' ? '2 2' : undefined}
-              />
-              <text x={childX + 14} y={ny + 13} fill="rgba(255,255,255,0.85)" fontSize={12}>
+              <Avatar node={node} cx={childX} cy={ny + 9} r={NODE_R} strokeColor={color} />
+              <text x={childX + NODE_R + 8} y={ny + 13} fill="rgba(255,255,255,0.85)" fontSize={12}>
                 {node.name}
               </text>
               {edge?.label && (
-                <text x={childX + 14} y={ny + 27} fill="rgba(255,255,255,0.35)" fontSize={10}>
+                <text x={childX + NODE_R + 8} y={ny + 27} fill="rgba(255,255,255,0.35)" fontSize={10}>
                   {edge.label}
                 </text>
               )}
@@ -226,8 +322,14 @@ function EgoTree({
   )
 }
 
+type NodePos = { x: number; displayX: number; y: number; category: string }
+
 /** 中心の無い全体ハブ用: グループ(ジャンル、または接続成分)ごとに列を
- * 固定し、列内に縦並び。列をまたぐ線は上部の専用レーンを経由する。 */
+ * 固定し、列内に並ぶ。大きなグループはジグザグの2列に詰めて密度を上げる
+ * (実際の線の起点・終点は常に列の中心線[スパイン]を使い、アバターだけを
+ * 左右にずらして短い引き込み線で繋ぐ。これにより既存の経路計算はそのまま
+ * 正しく動く)。ノードをクリックすると、そのノードと繋がっている相手だけ
+ * が浮かび上がり、それ以外は薄くなる。 */
 function ColumnLayout({
   nodes,
   edges,
@@ -238,18 +340,23 @@ function ColumnLayout({
   groups: [string, RelationNode[]][]
 }) {
   const router = useRouter()
+  const [focusedId, setFocusedId] = useState<string | null>(null)
 
   const colWidth = 168
   const colPadX = 84
   const width = Math.max(groups.length * colWidth + colPadX, 480)
 
+  function rowsForCount(count: number) {
+    return count > GRID_SUBCOL_THRESHOLD ? Math.ceil(count / 2) : count
+  }
+
   // まずxとカテゴリだけ確定させる(yは後で決める。列をまたぐ線の本数が
   // 分かってから、上部の迂回レーン分だけノード行を下にずらす必要があるため)
   const columnXById = new Map<string, number>()
-  const groupInfo: { label: string; x: number; count: number }[] = []
+  const groupInfo: { label: string; x: number; count: number; rows: number }[] = []
   groups.forEach(([category, groupNodes], i) => {
     const x = colPadX + i * colWidth
-    groupInfo.push({ label: category, x, count: groupNodes.length })
+    groupInfo.push({ label: category, x, count: groupNodes.length, rows: rowsForCount(groupNodes.length) })
     groupNodes.forEach((node) => columnXById.set(node.id, x))
   })
 
@@ -264,22 +371,48 @@ function ColumnLayout({
   const highwayHeight = Math.max(crossColumnEdges.length * LANE_GAP, 0)
   const rowsTop = highwayTop + highwayHeight + 16
 
-  const posById = new Map<string, { x: number; y: number; category: string }>()
+  const posById = new Map<string, NodePos>()
   groups.forEach(([category, groupNodes], i) => {
-    const x = colPadX + i * colWidth
+    const spineX = colPadX + i * colWidth
+    const useGrid = groupNodes.length > GRID_SUBCOL_THRESHOLD
     groupNodes.forEach((node, j) => {
-      posById.set(node.id, { x, y: rowsTop + j * ROW_HEIGHT, category })
+      const row = useGrid ? Math.floor(j / 2) : j
+      const col = useGrid ? j % 2 : 0
+      const displayX = useGrid ? spineX + (col === 0 ? -GRID_SUBCOL_OFFSET : GRID_SUBCOL_OFFSET) : spineX
+      posById.set(node.id, { x: spineX, displayX, y: rowsTop + row * ROW_HEIGHT, category })
     })
   })
-  const maxRows = Math.max(...groups.map(([, g]) => g.length), 1)
+  const maxRows = Math.max(...groupInfo.map((g) => g.rows), 1)
   const height = Math.max(rowsTop + maxRows * ROW_HEIGHT + 20, 200)
+
+  const focusedNeighbors = useMemo(() => {
+    const set = new Set<string>()
+    if (!focusedId) return set
+    for (const e of edges) {
+      if (e.source === focusedId) set.add(e.target)
+      if (e.target === focusedId) set.add(e.source)
+    }
+    return set
+  }, [focusedId, edges])
+
+  function isNodeDimmed(id: string) {
+    return focusedId !== null && id !== focusedId && !focusedNeighbors.has(id)
+  }
+  function isEdgeActive(e: RelationEdge) {
+    return focusedId === null || e.source === focusedId || e.target === focusedId
+  }
 
   function go(node: RelationNode) {
     router.push(`${node.type === 'person' ? '/people' : '/artists'}/${node.id}`)
   }
+  function toggleFocus(id: string) {
+    setFocusedId((prev) => (prev === id ? null : id))
+  }
 
   return (
     <svg viewBox={`0 0 ${width} ${height}`} className="w-full select-none" style={{ maxHeight: 640 }}>
+      <ArrowDefs />
+      <rect x={0} y={0} width={width} height={height} fill="transparent" onClick={() => setFocusedId(null)} />
       <g>
         {groupInfo.map((g) => (
           <rect
@@ -287,7 +420,7 @@ function ColumnLayout({
             x={g.x - 60}
             y={rowsTop - 26}
             width={120}
-            height={g.count * ROW_HEIGHT + 20}
+            height={g.rows * ROW_HEIGHT + 20}
             rx={10}
             fill={colorForCategory(g.label)}
             fillOpacity={0.06}
@@ -310,17 +443,20 @@ function ColumnLayout({
           if (!s || !t) return null
           if (s.x !== t.x) return null // 列またぎは下の専用レーンで描画
           // 経路が同じ列の他の無関係なノードの真上を通らないよう、列の外側へ迂回する
+          const active = isEdgeActive(e)
+          const mid = sameColumnBumpMidpoint(s.x, s.y + 9, t.y + 9, 22)
           return (
-            <path
-              key={i}
-              d={sameColumnBumpPath(s.x, s.y + 9, t.y + 9, 22)}
-              fill="none"
-              stroke="rgba(255,255,255,0.25)"
-              strokeWidth={1.25}
-              strokeDasharray={e.style === 'dotted' ? '4 4' : undefined}
-            >
-              {e.label && <title>{e.label}</title>}
-            </path>
+            <g key={i} opacity={active ? 1 : 0.12}>
+              <path
+                d={sameColumnBumpPath(s.x, s.y + 9, t.y + 9, 22)}
+                fill="none"
+                stroke={active && focusedId ? '#fff' : 'rgba(255,255,255,0.25)'}
+                strokeWidth={active && focusedId ? 2 : 1.25}
+                strokeDasharray={e.style === 'dotted' ? '4 4' : undefined}
+                markerEnd={e.style === 'solid' ? `url(#${active && focusedId ? 'rg-arrow-active' : 'rg-arrow'})` : undefined}
+              />
+              {e.label && <EdgeLabel x={mid.x} y={mid.y} text={e.label} active={Boolean(active && focusedId)} />}
+            </g>
           )
         })}
       </g>
@@ -332,17 +468,20 @@ function ColumnLayout({
           // 列をまたぐ経路は、途中の列のノードの上を通らないよう、
           // 全ノードより上の専用レーンを経由させる(線ごとに高さをずらす)
           const laneY = highwayTop + laneIndex * LANE_GAP
+          const active = isEdgeActive(e)
+          const mid = highwayMidpoint(s.x, t.x, laneY)
           return (
-            <path
-              key={`cross-${laneIndex}`}
-              d={highwayPath(s.x, s.y + 9, t.x, t.y + 9, laneY)}
-              fill="none"
-              stroke="rgba(255,255,255,0.25)"
-              strokeWidth={1.25}
-              strokeDasharray={e.style === 'dotted' ? '4 4' : undefined}
-            >
-              {e.label && <title>{e.label}</title>}
-            </path>
+            <g key={`cross-${laneIndex}`} opacity={active ? 1 : 0.1}>
+              <path
+                d={highwayPath(s.x, s.y + 9, t.x, t.y + 9, laneY)}
+                fill="none"
+                stroke={active && focusedId ? '#fff' : 'rgba(255,255,255,0.25)'}
+                strokeWidth={active && focusedId ? 2 : 1.25}
+                strokeDasharray={e.style === 'dotted' ? '4 4' : undefined}
+                markerEnd={e.style === 'solid' ? `url(#${active && focusedId ? 'rg-arrow-active' : 'rg-arrow'})` : undefined}
+              />
+              {e.label && <EdgeLabel x={mid.x} y={mid.y} text={e.label} active={Boolean(active && focusedId)} />}
+            </g>
           )
         })}
       </g>
@@ -351,18 +490,25 @@ function ColumnLayout({
           const pos = posById.get(node.id)
           if (!pos) return null
           const color = node.category ? colorForCategory(node.category) : 'rgba(255,255,255,0.6)'
+          const dimmed = isNodeDimmed(node.id)
+          const cy = pos.y + 9
           return (
-            <g key={node.id} onClick={() => go(node)} className="cursor-pointer">
-              <circle
-                cx={pos.x}
-                cy={pos.y + 9}
-                r={NODE_R}
-                fill="rgba(255,255,255,0.14)"
-                stroke={color}
-                strokeWidth={1.5}
-                strokeDasharray={node.type === 'person' ? '2 2' : undefined}
-              />
-              <text x={pos.x} y={pos.y + 27} textAnchor="middle" fill="rgba(255,255,255,0.85)" fontSize={11}>
+            <g key={node.id} opacity={dimmed ? 0.15 : 1}>
+              {pos.displayX !== pos.x && (
+                <line x1={pos.x} y1={cy} x2={pos.displayX} y2={cy} stroke={color} strokeOpacity={0.35} strokeWidth={1} />
+              )}
+              <g onClick={() => toggleFocus(node.id)} className="cursor-pointer">
+                <Avatar node={node} cx={pos.displayX} cy={cy} r={NODE_R} strokeColor={color} />
+              </g>
+              <text
+                x={pos.displayX}
+                y={pos.y + NODE_R + 17}
+                textAnchor="middle"
+                fill="rgba(255,255,255,0.85)"
+                fontSize={11}
+                onClick={() => go(node)}
+                className="cursor-pointer hover:underline"
+              >
                 {node.name}
               </text>
             </g>
@@ -396,24 +542,27 @@ export default function RelationGraph({
   return (
     <div>
       {!centerId && (
-        <div className="flex gap-1 border-b border-white/10 p-2">
-          {(
-            [
-              ['genre', 'ジャンル'],
-              ['relation', 'リレーション'],
-            ] as const
-          ).map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => setHubMode(value)}
-              className={`rounded px-3 py-1 text-xs ${
-                hubMode === value ? 'bg-white text-black' : 'text-white/60 hover:text-white'
-              }`}
-            >
-              {label}
-            </button>
-          ))}
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 p-2">
+          <div className="flex gap-1">
+            {(
+              [
+                ['genre', 'ジャンル'],
+                ['relation', 'リレーション'],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setHubMode(value)}
+                className={`rounded px-3 py-1 text-xs ${
+                  hubMode === value ? 'bg-white text-black' : 'text-white/60 hover:text-white'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <p className="px-1 text-[11px] text-white/30">アイコンクリックで関係を強調 / 名前クリックで詳細へ</p>
         </div>
       )}
 

@@ -5,7 +5,7 @@ export default async function RelationsPage() {
   const supabase = await createClient()
 
   const [{ data: artists }, { data: relations }, { data: artistGenres }] = await Promise.all([
-    supabase.from('artist').select('id, name'),
+    supabase.from('artist').select('id, name, image_url'),
     supabase
       .from('artist_relation')
       .select('artist_id_a, artist_id_b, relation_type, relation_style, description'),
@@ -23,6 +23,7 @@ export default async function RelationsPage() {
     id: a.id,
     name: a.name,
     category: categoryByArtist.get(a.id) ?? null,
+    imageUrl: a.image_url,
   }))
 
   const edges: RelationEdge[] = (relations ?? []).map((r) => ({

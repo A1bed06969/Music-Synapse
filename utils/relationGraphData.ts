@@ -16,10 +16,10 @@ export async function buildArtistRelationGraph(
     new Set((relations ?? []).map((r) => (r.artist_id_a === artistId ? r.artist_id_b : r.artist_id_a)))
   )
 
-  const [{ data: others }, { data: artistGenres }, { data: artistCredits }] = await Promise.all([
+  const [{ data: others }, { data: artistGenres }, { data: artistCredits }, { data: centerArtist }] = await Promise.all([
     otherIds.length
-      ? supabase.from('artist').select('id, name').in('id', otherIds)
-      : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+      ? supabase.from('artist').select('id, name, image_url').in('id', otherIds)
+      : Promise.resolve({ data: [] as { id: string; name: string; image_url: string | null }[] }),
     supabase
       .from('artist_genre')
       .select('artist_id, genre:genre_id(name)')
@@ -28,6 +28,7 @@ export async function buildArtistRelationGraph(
       .from('artist_credit')
       .select('id, role, credit_person:credit_person_id(id, name)')
       .eq('artist_id', artistId),
+    supabase.from('artist').select('image_url').eq('id', artistId).single(),
   ])
 
   const categoryByArtist = new Map<string, string>()
@@ -67,12 +68,14 @@ export async function buildArtistRelationGraph(
             name: artistName,
             category: categoryByArtist.get(artistId) ?? null,
             type: 'artist' as const,
+            imageUrl: centerArtist?.image_url ?? null,
           },
           ...(others ?? []).map((a) => ({
             id: a.id,
             name: a.name,
             category: categoryByArtist.get(a.id) ?? null,
             type: 'artist' as const,
+            imageUrl: a.image_url,
           })),
           ...personNodes,
         ]
