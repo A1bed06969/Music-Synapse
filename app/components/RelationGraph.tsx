@@ -252,7 +252,8 @@ function EgoTree({
   if (!center) return null
 
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} className="w-full select-none" style={{ maxHeight: 640 }}>
+    <div className="overflow-auto" style={{ maxHeight: 640 }}>
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="select-none">
       <ArrowDefs />
       <g>
         {positioned.map(({ node, y: ny }) => {
@@ -319,6 +320,7 @@ function EgoTree({
         })}
       </g>
     </svg>
+    </div>
   )
 }
 
@@ -410,7 +412,8 @@ function ColumnLayout({
   }
 
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} className="w-full select-none" style={{ maxHeight: 640 }}>
+    <div className="overflow-auto" style={{ maxHeight: 640 }}>
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="select-none">
       <ArrowDefs />
       <rect x={0} y={0} width={width} height={height} fill="transparent" onClick={() => setFocusedId(null)} />
       <g>
@@ -516,6 +519,7 @@ function ColumnLayout({
         })}
       </g>
     </svg>
+    </div>
   )
 }
 
