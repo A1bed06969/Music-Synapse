@@ -229,47 +229,49 @@ export default async function OnAirPage({
         )}
       </div>
 
-      <section className="mt-8">
-        <h2 className="text-lg font-semibold">都道府県別プッシュ状況</h2>
-        <p className="mt-1 text-xs text-white/40">数字はその月にプッシュした局数</p>
-        <div className="mt-4">
-          <PrefectureMap data={prefectureData} />
-        </div>
-      </section>
-
-      {ranking.length > 0 && (
-        <section className="mt-8">
-          <h2 className="text-lg font-semibold">🏆 {monthLabel(currentMonth)}のパワープレイ&ヘビロテ ランキング</h2>
-          <table className="mt-4 w-full border-collapse text-sm">
-            <thead>
-              <tr className="border-b border-white/10 text-left text-xs text-white/40">
-                <th className="py-2 pr-2">#</th>
-                <th className="py-2">曲 / アーティスト</th>
-                <th className="py-2 text-right">選出局数</th>
-              </tr>
-            </thead>
-            <tbody>
-              {ranking.map((r, i) => (
-                <tr key={r.key} className="border-b border-white/5">
-                  <td className="py-2 pr-2 font-bold text-white/40">{i + 1}</td>
-                  <td className="py-2">
-                    {r.href ? (
-                      <Link href={r.href} className="font-medium hover:opacity-70">
-                        {r.label}
-                      </Link>
-                    ) : (
-                      r.label
-                    )}
-                    {r.sub && <span className="ml-2 text-xs text-white/40">{r.sub}</span>}
-                    <span className="ml-2 text-xs text-white/30">({MUSIC_TYPE_LABEL[r.musicType]})</span>
-                  </td>
-                  <td className="py-2 text-right text-white/60">{r.mediaIds.size}局</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      <div className="mt-8 flex flex-col gap-8 lg:flex-row lg:items-start">
+        <section className="lg:flex-1">
+          <h2 className="text-lg font-semibold">都道府県別プッシュ状況</h2>
+          <p className="mt-1 text-xs text-white/40">数字はその月にプッシュした局数</p>
+          <div className="mt-4">
+            <PrefectureMap data={prefectureData} />
+          </div>
         </section>
-      )}
+
+        {ranking.length > 0 && (
+          <section className="lg:w-[480px] lg:shrink-0">
+            <h2 className="text-lg font-semibold">🏆 {monthLabel(currentMonth)}のパワープレイ&ヘビロテ ランキング</h2>
+            <table className="mt-4 w-full border-collapse text-sm">
+              <thead>
+                <tr className="border-b border-white/10 text-left text-xs text-white/40">
+                  <th className="py-2 pr-2">#</th>
+                  <th className="py-2">曲 / アーティスト</th>
+                  <th className="py-2 text-right">選出局数</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ranking.map((r, i) => (
+                  <tr key={r.key} className="border-b border-white/5">
+                    <td className="py-2 pr-2 font-bold text-white/40">{i + 1}</td>
+                    <td className="py-2">
+                      {r.href ? (
+                        <Link href={r.href} className="font-medium hover:opacity-70">
+                          {r.label}
+                        </Link>
+                      ) : (
+                        r.label
+                      )}
+                      {r.sub && <span className="ml-2 text-xs text-white/40">{r.sub}</span>}
+                      <span className="ml-2 text-xs text-white/30">({MUSIC_TYPE_LABEL[r.musicType]})</span>
+                    </td>
+                    <td className="py-2 text-right text-white/60">{r.mediaIds.size}局</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </section>
+        )}
+      </div>
 
       <h2 className="mt-10 text-lg font-semibold">エントリ一覧</h2>
       <form className="mt-4 flex flex-wrap gap-2" action="/media/on-air">
