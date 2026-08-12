@@ -6,9 +6,9 @@ import SubmitButton from './SubmitButton'
 
 export const maxDuration = 60
 
-type MatchedPick = FestivalPick & {
-  matchedArtistId: string
-  matchedArtistName: string
+type DisplayPick = FestivalPick & {
+  matchedArtistId: string | null
+  matchedArtistName: string | null
   alreadyRegistered: boolean
 }
 
@@ -56,20 +56,19 @@ export default async function FestivalPilotPage({
     }
   }
 
-  const matched: MatchedPick[] = []
-  for (const pick of picks) {
+  const displayPicks: DisplayPick[] = picks.map((pick) => {
     const artist = artistByName.get(pick.artistName.trim().toUpperCase())
-    if (!artist) continue
-    matched.push({
+    return {
       ...pick,
-      matchedArtistId: artist.id,
-      matchedArtistName: artist.name,
-      alreadyRegistered: registeredArtistIds.has(artist.id),
-    })
-  }
+      matchedArtistId: artist?.id ?? null,
+      matchedArtistName: artist?.name ?? null,
+      alreadyRegistered: artist ? registeredArtistIds.has(artist.id) : false,
+    }
+  })
+  const matchedCount = displayPicks.filter((p) => p.matchedArtistId).length
 
-  const byStage = new Map<string, MatchedPick[]>()
-  for (const p of matched) {
+  const byStage = new Map<string, DisplayPick[]>()
+  for (const p of displayPicks) {
     const key = p.stage ?? '不明'
     const list = byStage.get(key) ?? []
     list.push(p)
@@ -100,51 +99,76 @@ export default async function FestivalPilotPage({
 
       {picks.length > 0 && (
         <p className="mt-6 text-xs text-white/40">
-          {picks[0].editionYear}年開催分を取得: 出演{picks.length}件中、カタログに一致{matched.length}件
+          {picks[0].editionYear}年開催分を取得: 出演{picks.length}件中、カタログに一致{matchedCount}件
+          (一致しなかった{picks.length - matchedCount}件も下に薄く表示しています)
         </p>
       )}
 
-      {matched.length === 0 ? (
-        !fetchError && <p className="mt-8 text-sm text-white/40">カタログに一致する出演者が見つかりませんでした。</p>
-      ) : (
-        Array.from(byStage.entries()).map(([stage, picksForStage]) => (
-          <section key={stage} className="mt-8">
-            <h2 className="text-sm font-semibold">{stage}</h2>
-            <ul className="mt-3 space-y-2 text-sm">
-              {picksForStage.map((p, i) => (
-                <li key={i} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-white/15 px-4 py-3">
-                  <div>
-                    <span className="font-medium">{p.matchedArtistName}</span>
-                    {p.day && (
-                      <span className="ml-2 text-xs text-white/30">
-                        ({p.day}
-                        {p.startAt && ` ${p.startAt.slice(11, 16)}-${p.endAt?.slice(11, 16) ?? ''}`})
+      {picks.length === 0
+        ? !fetchError && <p className="mt-8 text-sm text-white/40">出演者情報が取得できませんでした。</p>
+        : Array.from(byStage.entries()).map(([stage, picksForStage]) => {
+            const matchedRows = picksForStage.filter((p) => p.matchedArtistId)
+            const unmatchedRows = picksForStage.filter((p) => !p.matchedArtistId)
+            return (
+              <section key={stage} className="mt-8">
+                <h2 className="text-sm font-semibold">
+                  {stage} <span className="font-normal text-white/30">({picksForStage.length}件)</span>
+                </h2>
+
+                {matchedRows.length > 0 && (
+                  <ul className="mt-3 space-y-2 text-sm">
+                    {matchedRows.map((p, i) => (
+                      <li
+                        key={i}
+                        className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-white/15 px-4 py-3"
+                      >
+                        <div>
+                          <span className="font-medium">{p.matchedArtistName}</span>
+                          {p.day && (
+                            <span className="ml-2 text-xs text-white/30">
+                              ({p.day}
+                              {p.startAt && ` ${p.startAt.slice(11, 16)}-${p.endAt?.slice(11, 16) ?? ''}`})
+                            </span>
+                          )}
+                        </div>
+                        {p.alreadyRegistered ? (
+                          <span className="shrink-0 text-xs text-white/30">登録済み</span>
+                        ) : (
+                          <form action={registerFestivalAppearance}>
+                            <input type="hidden" name="festival_name" value={p.festivalName} />
+                            <input type="hidden" name="edition_year" value={p.editionYear} />
+                            <input type="hidden" name="start_date" value={p.startDate ?? ''} />
+                            <input type="hidden" name="end_date" value={p.endDate ?? ''} />
+                            <input type="hidden" name="artist_id" value={p.matchedArtistId!} />
+                            <input type="hidden" name="artist_name" value={p.matchedArtistName!} />
+                            <input type="hidden" name="stage" value={p.stage ?? ''} />
+                            <input type="hidden" name="performance_date" value={p.performanceDate ?? ''} />
+                            <input type="hidden" name="start_at" value={p.startAt ?? ''} />
+                            <input type="hidden" name="end_at" value={p.endAt ?? ''} />
+                            <SubmitButton />
+                          </form>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+
+                {unmatchedRows.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {unmatchedRows.map((p, i) => (
+                      <span
+                        key={i}
+                        title={p.day ?? undefined}
+                        className="rounded-full border border-white/5 px-2 py-0.5 text-xs text-white/25"
+                      >
+                        {p.artistName}
                       </span>
-                    )}
+                    ))}
                   </div>
-                  {p.alreadyRegistered ? (
-                    <span className="shrink-0 text-xs text-white/30">登録済み</span>
-                  ) : (
-                    <form action={registerFestivalAppearance}>
-                      <input type="hidden" name="festival_name" value={p.festivalName} />
-                      <input type="hidden" name="edition_year" value={p.editionYear} />
-                      <input type="hidden" name="start_date" value={p.startDate ?? ''} />
-                      <input type="hidden" name="end_date" value={p.endDate ?? ''} />
-                      <input type="hidden" name="artist_id" value={p.matchedArtistId} />
-                      <input type="hidden" name="artist_name" value={p.matchedArtistName} />
-                      <input type="hidden" name="stage" value={p.stage ?? ''} />
-                      <input type="hidden" name="performance_date" value={p.performanceDate ?? ''} />
-                      <input type="hidden" name="start_at" value={p.startAt ?? ''} />
-                      <input type="hidden" name="end_at" value={p.endAt ?? ''} />
-                      <SubmitButton />
-                    </form>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </section>
-        ))
-      )}
+                )}
+              </section>
+            )
+          })}
     </div>
   )
 }
