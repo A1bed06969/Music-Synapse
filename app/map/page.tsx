@@ -17,7 +17,7 @@ export default async function MapPage() {
 
   const { data: artists } = await supabase
     .from('artist')
-    .select('id, name, image_url, origin_latitude, origin_longitude, origin_prefecture, hometown_city')
+    .select('id, name, image_url, origin_latitude, origin_longitude, origin_prefecture, hometown_city, hometown_country')
     .not('origin_latitude', 'is', null)
     .not('origin_longitude', 'is', null)
 
@@ -59,6 +59,7 @@ export default async function MapPage() {
         )
         .join('')
       const placeName = a.hometown_city ?? a.origin_prefecture
+      const region = a.origin_prefecture ?? a.hometown_country ?? null
       return {
         id: `artist-${a.id}`,
         latitude: Number(a.origin_latitude),
@@ -66,6 +67,8 @@ export default async function MapPage() {
         color: '#e85d5d',
         category: 'artist' as const,
         label: a.name,
+        imageUrl: a.image_url,
+        region,
         popupHtml: `<div style="min-width:160px;">${
           a.image_url
             ? `<img src="${escapeHtml(a.image_url)}" alt="" style="width:48px;height:48px;object-fit:cover;border-radius:50%;" />`

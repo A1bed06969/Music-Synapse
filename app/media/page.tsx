@@ -77,7 +77,7 @@ export default async function MediaHubPage({
       {mediaList.length === 0 ? (
         <p className="mt-10 text-sm text-white/40">該当するメディアが登録されていません。</p>
       ) : (
-        <div className="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-3">
+        <div className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
           {mediaList.map((m) => (
             <Link
               key={m.id}

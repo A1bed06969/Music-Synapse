@@ -2,30 +2,6 @@ import Link from 'next/link'
 import { createClient } from '@/utils/Supabase/server'
 import { formatDate, STREAMING_STATUS_LABEL } from '@/utils/format'
 
-async function getStats() {
-  const supabase = await createClient()
-
-  const [artist, album, track, event, discGuide, recordShop, livehouse] = await Promise.all([
-    supabase.from('artist').select('*', { count: 'exact', head: true }),
-    supabase.from('album').select('*', { count: 'exact', head: true }),
-    supabase.from('track').select('*', { count: 'exact', head: true }),
-    supabase.from('event').select('*', { count: 'exact', head: true }),
-    supabase.from('disc_guide').select('*', { count: 'exact', head: true }),
-    supabase.from('recordshop').select('*', { count: 'exact', head: true }),
-    supabase.from('livehouse').select('*', { count: 'exact', head: true }),
-  ])
-
-  return {
-    artist: artist.count ?? 0,
-    album: album.count ?? 0,
-    track: track.count ?? 0,
-    event: event.count ?? 0,
-    discGuide: discGuide.count ?? 0,
-    recordShop: recordShop.count ?? 0,
-    livehouse: livehouse.count ?? 0,
-  }
-}
-
 async function getLatestAlbums() {
   const supabase = await createClient()
   const { data } = await supabase
@@ -82,22 +58,8 @@ const HUB_CARDS: { image: string; title: string; subtitle: string; href: string 
   { image: '/curation_playlist.png', title: '厳選プレイリストハブ', subtitle: 'キュレーションプレイリスト集', href: '/media/features' },
 ]
 
-const STAT_ITEMS: {
-  key: 'artist' | 'album' | 'track' | 'event' | 'discGuide' | 'recordShop' | 'livehouse'
-  label: string
-  href?: string
-}[] = [
-  { key: 'artist', label: 'アーティスト', href: '/artists' },
-  { key: 'album', label: 'アルバム', href: '/albums' },
-  { key: 'track', label: 'トラック', href: '/tracks' },
-  { key: 'event', label: 'イベント', href: '/events' },
-  { key: 'discGuide', label: 'ディスクガイド' },
-  { key: 'recordShop', label: 'レコードショップ', href: '/map' },
-  { key: 'livehouse', label: 'ライブハウス', href: '/map' },
-]
-
 export default async function Home() {
-  const [stats, latestAlbums, latestRotations] = await Promise.all([getStats(), getLatestAlbums(), getLatestRotations()])
+  const [latestAlbums, latestRotations] = await Promise.all([getLatestAlbums(), getLatestRotations()])
 
   return (
     <div className="mx-auto max-w-[1600px] px-6 py-12">
@@ -130,25 +92,8 @@ export default async function Home() {
         </form>
       </section>
 
-      <section className="mt-12 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
-        {STAT_ITEMS.map((item) => {
-          const tileClass = 'rounded-lg border border-white/10 bg-white/[0.03] px-4 py-5 text-center'
-          const tileContent = (
-            <>
-              <p className="text-2xl font-bold">{stats[item.key].toLocaleString()}</p>
-              <p className="mt-1 text-xs text-white/50">{item.label}</p>
-            </>
-          )
-          return item.href ? (
-            <Link key={item.key} href={item.href} className={`${tileClass} transition hover:border-white/25`}>
-              {tileContent}
-            </Link>
-          ) : (
-            <div key={item.key} className={tileClass}>
-              {tileContent}
-            </div>
-          )
-        })}
+      <section className="mt-14 text-center">
+        <p className="text-2xl font-bold tracking-tight sm:text-3xl">音楽をつなぎ、新しい発見へ。</p>
       </section>
 
       <section className="mt-10 grid grid-cols-1 gap-4 sm:grid-cols-3">

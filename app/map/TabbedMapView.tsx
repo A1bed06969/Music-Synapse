@@ -68,11 +68,23 @@ export default function TabbedMapView({ markers }: { markers: MapMarker[] }) {
                         focusId === marker.id ? 'bg-white/10' : ''
                       }`}
                     >
-                      <span
-                        className="h-2.5 w-2.5 shrink-0 rounded-full"
-                        style={{ backgroundColor: marker.color }}
-                      />
-                      <span className="truncate">{marker.label}</span>
+                      {marker.imageUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={marker.imageUrl}
+                          alt=""
+                          className="h-7 w-7 shrink-0 rounded-full object-cover"
+                        />
+                      ) : (
+                        <span
+                          className="h-2.5 w-2.5 shrink-0 rounded-full"
+                          style={{ backgroundColor: marker.color }}
+                        />
+                      )}
+                      <span className="min-w-0 flex-1 truncate">{marker.label}</span>
+                      {marker.region && (
+                        <span className="shrink-0 text-xs text-white/40">{marker.region}</span>
+                      )}
                     </button>
                   </li>
                 ))}

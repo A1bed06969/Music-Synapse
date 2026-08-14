@@ -15,6 +15,10 @@ export type MapMarker = {
   category: MapCategory
   /** 一覧パネル表示用の短いラベル(ポップアップ内のHTMLとは別に持つ) */
   label: string
+  /** 一覧パネルのサムネイル用(未設定の場合は色付きドットにフォールバック) */
+  imageUrl?: string | null
+  /** 一覧パネル行末に表示する地域名(国名/都道府県名など) */
+  region?: string | null
 }
 
 // 座標が完全に一致するマーカーはピンが重なって隠れてしまうため、
@@ -85,8 +89,8 @@ export default function LeafletMap({
     const map = L.map(containerRef.current).setView([35.6812, 139.7671], 5)
     mapRef.current = map
 
-    // ダークモノトーン(CartoDB Dark Matter)でSpotify風のダークモードに揃える
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    // 白ベース(CartoDB Positron)ですっきりとした明るい地図にする
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
       attribution:
         '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
       subdomains: 'abcd',
@@ -110,7 +114,7 @@ export default function LeafletMap({
     for (const marker of spreadMarkers) {
       const icon = L.divIcon({
         className: '',
-        html: `<span style="display:block;width:14px;height:14px;border-radius:50%;background:${marker.color};border:2px solid #fff;box-shadow:0 0 2px rgba(0,0,0,0.6);"></span>`,
+        html: `<span style="display:block;width:14px;height:14px;border-radius:50%;background:${marker.color};border:2px solid #1a1a1a;box-shadow:0 0 2px rgba(0,0,0,0.3);"></span>`,
         iconSize: [14, 14],
         iconAnchor: [7, 7],
       })

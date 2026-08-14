@@ -2,47 +2,66 @@
 
 import Link from 'next/link'
 import { useState } from 'react'
+import type { SiteStats } from '@/utils/stats'
 
 const NAV_LINKS = [
   { href: '/', label: 'ホーム' },
   { href: '/search', label: '検索' },
   { href: '/relations', label: '相関図' },
   { href: '/events', label: 'フェス&イベント' },
+  { href: '/albums/calendar', label: '新譜カレンダー' },
   { href: '/map', label: 'マップ' },
   { href: '/media', label: 'メディア' },
   { href: '/admin/import', label: 'iTunes登録' },
   { href: '/admin/data', label: '手動データ' },
 ]
 
-export default function SiteHeader() {
+const STAT_ITEMS: { key: keyof SiteStats; label: string; href?: string }[] = [
+  { key: 'artist', label: 'アーティスト', href: '/artists' },
+  { key: 'album', label: 'アルバム', href: '/albums' },
+  { key: 'track', label: 'トラック', href: '/tracks' },
+  { key: 'event', label: 'イベント', href: '/events' },
+  { key: 'discGuide', label: 'ディスクガイド' },
+  { key: 'recordShop', label: 'レコードショップ', href: '/map' },
+  { key: 'livehouse', label: 'ライブハウス', href: '/map' },
+]
+
+export default function SiteHeader({ stats }: { stats: SiteStats }) {
   const [menuOpen, setMenuOpen] = useState(false)
 
   return (
     <header className="sticky top-0 z-20 border-b border-white/10 bg-[#0a0a0a]/90 backdrop-blur">
-      <div className="mx-auto flex max-w-[1600px] items-center justify-between px-6 py-4">
-        <Link href="/" className="flex items-center gap-2" onClick={() => setMenuOpen(false)}>
+      <div className="mx-auto flex max-w-[1600px] items-center justify-between gap-4 px-6 py-3">
+        <Link href="/" className="flex shrink-0 items-center gap-2" onClick={() => setMenuOpen(false)}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo-icon.png" alt="Music Synapse" className="h-9 w-9 shrink-0 object-contain" />
-          <span className="flex items-baseline gap-2">
-            <span className="text-lg font-bold tracking-tight text-white">Music Synapse</span>
-            <span className="hidden text-xs text-white/40 sm:inline">ミュージック・シナプス</span>
-          </span>
+          <img src="/logo-icon.png" alt="Music Synapse" className="h-8 w-8 shrink-0 object-contain" />
+          <span className="hidden text-base font-bold tracking-tight text-white sm:inline">Music Synapse</span>
         </Link>
 
-        <nav className="hidden gap-5 text-sm text-white/70 sm:flex">
-          {NAV_LINKS.map((link) => (
-            <Link key={link.href} href={link.href} className="transition hover:text-white">
-              {link.label}
-            </Link>
-          ))}
-        </nav>
+        <div className="hidden min-w-0 flex-1 items-center justify-center gap-x-4 gap-y-1 overflow-x-auto text-xs text-white/50 lg:flex">
+          {STAT_ITEMS.map((item) => {
+            const content = (
+              <span className="flex items-baseline gap-1 whitespace-nowrap">
+                <span className="font-semibold text-white">{stats[item.key].toLocaleString()}</span>
+                <span>{item.label}</span>
+              </span>
+            )
+            return item.href ? (
+              <Link key={item.key} href={item.href} className="transition hover:text-white">
+                {content}
+              </Link>
+            ) : (
+              <span key={item.key}>{content}</span>
+            )
+          })}
+        </div>
 
         <button
           type="button"
           onClick={() => setMenuOpen((v) => !v)}
           aria-expanded={menuOpen}
           aria-label="メニュー"
-          className="flex h-8 w-8 flex-col items-center justify-center gap-1.5 sm:hidden"
+          className="flex h-8 w-8 shrink-0 flex-col items-center justify-center gap-1.5"
         >
           <span
             className={`block h-0.5 w-5 bg-white/80 transition-transform duration-300 ${menuOpen ? 'translate-y-2 rotate-45' : ''}`}
@@ -55,17 +74,17 @@ export default function SiteHeader() {
       </div>
 
       <nav
-        className={`overflow-hidden transition-[max-height] duration-300 ease-in-out sm:hidden ${
-          menuOpen ? 'max-h-96' : 'max-h-0'
+        className={`overflow-hidden transition-[max-height] duration-300 ease-in-out ${
+          menuOpen ? 'max-h-[32rem]' : 'max-h-0'
         }`}
       >
-        <div className="flex flex-col gap-1 border-t border-white/10 px-6 py-3">
+        <div className="mx-auto flex max-w-[1600px] flex-col gap-1 border-t border-white/10 px-6 py-3 sm:flex-row sm:flex-wrap sm:gap-2">
           {NAV_LINKS.map((link) => (
             <Link
               key={link.href}
               href={link.href}
               onClick={() => setMenuOpen(false)}
-              className="rounded-md px-2 py-2.5 text-sm text-white/70 transition hover:bg-white/5 hover:text-white"
+              className="rounded-md px-2 py-2.5 text-sm text-white/70 transition hover:bg-white/5 hover:text-white sm:px-3"
             >
               {link.label}
             </Link>
