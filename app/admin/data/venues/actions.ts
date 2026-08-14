@@ -8,6 +8,7 @@ export async function importVenueLocation(formData: FormData) {
   const venueName = String(formData.get('venue_name') ?? '')
   const latitudeRaw = formData.get('latitude')
   const longitudeRaw = formData.get('longitude')
+  const geocodeSource = String(formData.get('geocode_source') ?? '') === 'gsi' ? 'gsi' : 'nominatim'
 
   if (!venueName || latitudeRaw === null || longitudeRaw === null) {
     redirect('/admin/data/venues')
@@ -24,7 +25,7 @@ export async function importVenueLocation(formData: FormData) {
   const { error } = await supabase
     .from('venue_location')
     .upsert(
-      { venue_name: venueName, latitude, longitude, source: 'nominatim' },
+      { venue_name: venueName, latitude, longitude, source: geocodeSource },
       { onConflict: 'venue_name', ignoreDuplicates: true }
     )
 

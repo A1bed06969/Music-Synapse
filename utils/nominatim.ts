@@ -52,6 +52,8 @@ export type GeocodeWithFallbackResult = {
   results: NominatimResult[]
   /** 詳細住所では0件だったため、都道府県+市区町村レベルまで簡略化して再検索した結果である場合true */
   isApproximate: boolean
+  /** どちらのジオコーダーが結果を返したか(DBのsource列に記録する用途) */
+  source: 'gsi' | 'nominatim'
 }
 
 /**
@@ -77,15 +79,15 @@ export async function geocodeWithFallback(query: string): Promise<GeocodeWithFal
         city,
       }
     })
-    return { results, isApproximate: gsiResults.every((r) => isCityLevelOnlyTitle(r.title)) }
+    return { results, isApproximate: gsiResults.every((r) => isCityLevelOnlyTitle(r.title)), source: 'gsi' }
   }
 
   const results = await geocodeVenue(query)
-  if (results.length > 0) return { results, isApproximate: false }
+  if (results.length > 0) return { results, isApproximate: false, source: 'nominatim' }
 
   const simplified = simplifyJapaneseAddress(query)
-  if (!simplified) return { results: [], isApproximate: false }
+  if (!simplified) return { results: [], isApproximate: false, source: 'nominatim' }
 
   const fallbackResults = await geocodeVenue(simplified)
-  return { results: fallbackResults, isApproximate: fallbackResults.length > 0 }
+  return { results: fallbackResults, isApproximate: fallbackResults.length > 0, source: 'nominatim' }
 }

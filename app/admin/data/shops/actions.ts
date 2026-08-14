@@ -14,6 +14,7 @@ export async function importRecordShop(formData: FormData) {
   const city = String(formData.get('city') ?? '').trim()
   const latitudeRaw = formData.get('latitude')
   const longitudeRaw = formData.get('longitude')
+  const geocodeSource = String(formData.get('geocode_source') ?? '') === 'gsi' ? 'gsi' : 'nominatim'
 
   if (!name || latitudeRaw === null || longitudeRaw === null) {
     redirect('/admin/data/shops')
@@ -37,7 +38,7 @@ export async function importRecordShop(formData: FormData) {
     city: city || null,
     latitude,
     longitude,
-    source: 'nominatim',
+    source: geocodeSource,
   })
 
   if (error) {

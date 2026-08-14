@@ -85,10 +85,12 @@ async function LivehouseCandidates({
 }) {
   let results
   let isApproximate = false
+  let geocodeSource: 'gsi' | 'nominatim' = 'nominatim'
   try {
     const geocoded = await geocodeWithFallback(address)
     results = geocoded.results
     isApproximate = geocoded.isApproximate
+    geocodeSource = geocoded.source
   } catch (err) {
     console.error('Nominatim検索に失敗しました:', err)
     return <p className="mt-8 text-sm text-white/40">検索に失敗しました。</p>
@@ -130,6 +132,7 @@ async function LivehouseCandidates({
             <input type="hidden" name="city" value={r.city ?? ''} />
             <input type="hidden" name="latitude" value={r.latitude} />
             <input type="hidden" name="longitude" value={r.longitude} />
+            <input type="hidden" name="geocode_source" value={geocodeSource} />
             <span>{r.displayName}</span>
             <SubmitButton />
           </form>
