@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/utils/Supabase/server'
-import { formatDuration, extractYoutubeVideoId } from '@/utils/format'
+import { formatDuration, extractYoutubeVideoId, CREDIT_ROLE_LABEL } from '@/utils/format'
 import PreviewButton from '@/app/components/PreviewButton'
 
 const WORK_TYPE_LABEL: Record<string, string> = {
@@ -35,7 +35,11 @@ export default async function TrackDetailPage({
 
   const [{ data: credits }, { data: trackInstruments }, { data: syncEntries }, { data: rotations }] =
     await Promise.all([
-      supabase.from('track_credit').select('role, person_name').eq('track_id', id),
+      supabase
+        .from('artist_credit')
+        .select('role, credit_person:credit_person_id(id, name)')
+        .eq('album_id', track.album_id)
+        .or(`track_id.eq.${id},track_id.is.null`),
       supabase.from('track_instrument').select('instrument:instrument_id(id, name)').eq('track_id', id),
       supabase
         .from('sync_entry')
@@ -52,6 +56,19 @@ export default async function TrackDetailPage({
 
   const album = Array.isArray(track.album) ? track.album[0] : track.album
   const artist = Array.isArray(track.artist) ? track.artist[0] : track.artist
+
+  const ROLE_ORDER = ['producer', 'mix', 'mastering', 'composer', 'lyricist', 'arranger', 'artwork', 'musician'] as const
+  const creditsByRole = new Map<string, { id: string; name: string }[]>()
+  for (const c of credits ?? []) {
+    const person = Array.isArray(c.credit_person) ? c.credit_person[0] : c.credit_person
+    if (!person) continue
+    const list = creditsByRole.get(c.role) ?? []
+    if (!list.some((p) => p.id === person.id)) list.push({ id: person.id, name: person.name })
+    creditsByRole.set(c.role, list)
+  }
+  const creditGroups = ROLE_ORDER.map((role) => ({ role, people: creditsByRole.get(role) ?? [] })).filter(
+    (g) => g.people.length > 0
+  )
 
   const youtubeVideoId = track.youtube_video_id ? extractYoutubeVideoId(track.youtube_video_id) : null
   const youtubeSrc = youtubeVideoId ? `https://www.youtube.com/embed/${youtubeVideoId}` : null
@@ -161,14 +178,23 @@ export default async function TrackDetailPage({
         </section>
       )}
 
-      {credits && credits.length > 0 && (
+      {creditGroups.length > 0 && (
         <section className="mt-8">
           <h2 className="text-xs font-medium uppercase tracking-wide text-white/40">クレジット</h2>
           <ul className="mt-3 space-y-1.5 text-sm">
-            {credits.map((credit, i) => (
-              <li key={i} className="flex justify-between text-white/70">
-                <span>{credit.person_name}</span>
-                <span className="text-white/40">{credit.role}</span>
+            {creditGroups.map((group) => (
+              <li key={group.role} className="flex justify-between gap-4 text-white/70">
+                <span className="text-white/40">{CREDIT_ROLE_LABEL[group.role] ?? group.role}</span>
+                <span className="text-right">
+                  {group.people.map((person, i) => (
+                    <span key={person.id}>
+                      {i > 0 && '、'}
+                      <Link href={`/people/${person.id}`} className="hover:text-white">
+                        {person.name}
+                      </Link>
+                    </span>
+                  ))}
+                </span>
               </li>
             ))}
           </ul>
