@@ -214,7 +214,7 @@ export async function importAndRegisterFestivalArtist(
   // ここまでで出演登録は完了。アルバム・トラックの取込はレスポンス後に続行する
   after(async () => {
     try {
-      await syncAlbumsAndTracksForArtist(supabase, artistId, itunesAlbums)
+      await syncAlbumsAndTracksForArtist(supabase, artistId, itunesAlbums, String(itunesArtist.artistId))
       revalidatePath(`/artists/${artistId}`)
     } catch (err) {
       console.error(`アルバム・トラック取込に失敗しました(${itunesArtist.artistName}):`, err)

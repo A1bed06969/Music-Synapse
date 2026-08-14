@@ -11,6 +11,7 @@ import {
   type ItunesArtist,
   type ItunesAlbum,
 } from '@/utils/itunes'
+import { fetchAppleMusicArtistImage } from '@/utils/appleMusicImage'
 
 type ImportResult = {
   success: boolean
@@ -77,8 +78,19 @@ export async function upsertArtistFromItunes(
 export async function syncAlbumsAndTracksForArtist(
   supabase: SupabaseClient,
   artistId: string,
-  itunesAlbums: ItunesAlbum[]
+  itunesAlbums: ItunesAlbum[],
+  appleMusicArtistId: string
 ): Promise<number> {
+  // 画像が未設定のアーティストのみ、Apple Musicの公開ページからOGP画像を取得して登録する
+  // (取得失敗はベストエフォートで無視し、アルバム・トラック取込は継続する)
+  const { data: artistRow } = await supabase.from('artist').select('image_url').eq('id', artistId).single()
+  if (!artistRow?.image_url) {
+    const imageUrl = await fetchAppleMusicArtistImage(appleMusicArtistId)
+    if (imageUrl) {
+      await supabase.from('artist').update({ image_url: imageUrl }).eq('id', artistId)
+    }
+  }
+
   let totalTrackCount = 0
 
   for (const itunesAlbum of itunesAlbums) {
@@ -180,7 +192,12 @@ async function importOneArtist(artistUrl: string): Promise<ImportResult> {
     return { success: false, sourceUrl: artistUrl, message: `アーティストの登録に失敗しました: ${errorMessage}` }
   }
 
-  const totalTrackCount = await syncAlbumsAndTracksForArtist(supabase, artistId, itunesAlbums)
+  const totalTrackCount = await syncAlbumsAndTracksForArtist(
+    supabase,
+    artistId,
+    itunesAlbums,
+    String(itunesArtist.artistId)
+  )
 
   return {
     success: true,

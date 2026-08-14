@@ -72,9 +72,7 @@ export default async function Home() {
             className="mx-auto h-24 w-auto object-contain sm:h-32"
           />
         </h1>
-        <p className="mt-2 text-sm text-white/50">
-          世界中の音楽データ・メディア・文脈をシナプスのように結合する
-        </p>
+        <p className="mt-2 text-sm text-white/50">音楽をつなぎ、新しい発見へ。</p>
 
         <form action="/search" className="mx-auto mt-8 flex max-w-xl gap-2">
           <input
@@ -92,11 +90,7 @@ export default async function Home() {
         </form>
       </section>
 
-      <section className="mt-14 text-center">
-        <p className="text-2xl font-bold tracking-tight sm:text-3xl">音楽をつなぎ、新しい発見へ。</p>
-      </section>
-
-      <section className="mt-10 grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <section className="mt-14 grid grid-cols-1 gap-4 sm:grid-cols-3">
         {HUB_CARDS.map((card) => (
           <Link
             key={card.href}
