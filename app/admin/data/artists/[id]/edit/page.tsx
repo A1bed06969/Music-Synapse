@@ -55,7 +55,7 @@ export default async function ArtistEditPage({
             prefetch={false}
             className="text-xs text-white/40 hover:text-white/70"
           >
-            Wikidataで座標を検索
+            座標を検索(Wikidata/住所)
           </Link>
         </div>
       </div>
