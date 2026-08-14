@@ -1,3 +1,5 @@
+import { geocodeJapaneseAddress, isCityLevelOnlyTitle, parseJapanesePrefectureCity } from '@/utils/gsi'
+
 const NOMINATIM_BASE = 'https://nominatim.openstreetmap.org/search'
 const USER_AGENT = 'MusicSynapse/1.0 (https://github.com/A1bed06969/Music-Synapse)'
 
@@ -53,10 +55,31 @@ export type GeocodeWithFallbackResult = {
 }
 
 /**
- * 住所(または都市名・地名)で検索し、0件だった場合は都道府県+市区町村レベルまで
- * 自動的に簡略化して再検索する(代表地点にフォールバックする)。
+ * 住所(または都市名・地名)で検索する。
+ * ① まず国土地理院(GSI)で検索する。日本の住所を番地レベルまで高精度に
+ *    ジオコーディングできるため(Nominatimは同じ住所で0件になることが多い、
+ *    実データで確認済み)、日本国内の住所はこちらを優先する。
+ * ② GSIで0件だった場合(海外の住所等、GSIの対象外)はNominatimにフォールバックする。
+ * ③ Nominatimも0件だった場合は都道府県+市区町村レベルまで簡略化して再検索する
+ *    (代表地点へのフォールバック)。
  */
 export async function geocodeWithFallback(query: string): Promise<GeocodeWithFallbackResult> {
+  const gsiResults = await geocodeJapaneseAddress(query)
+  if (gsiResults.length > 0) {
+    const results: NominatimResult[] = gsiResults.map((r) => {
+      const { prefecture, city } = parseJapanesePrefectureCity(r.title)
+      return {
+        latitude: r.latitude,
+        longitude: r.longitude,
+        displayName: r.title,
+        country: '日本',
+        prefectureOrState: prefecture,
+        city,
+      }
+    })
+    return { results, isApproximate: gsiResults.every((r) => isCityLevelOnlyTitle(r.title)) }
+  }
+
   const results = await geocodeVenue(query)
   if (results.length > 0) return { results, isApproximate: false }
 
