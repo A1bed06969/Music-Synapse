@@ -82,12 +82,12 @@ export default async function MediaHubPage({
             <Link
               key={m.id}
               href={`/media/on-air?media=${m.id}`}
-              className="rounded-lg border border-white/10 bg-white/[0.03] p-4 text-center transition hover:bg-white/[0.06]"
+              className="rounded-lg border border-white/10 bg-white/[0.03] p-3 text-center transition hover:bg-white/[0.06]"
             >
-              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-white/10 text-lg">
+              <div className="mx-auto flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-sm">
                 {m.media_type === 'radio' ? '📻' : m.media_type === 'tv' ? '📺' : m.media_type === 'web' ? '💻' : '📖'}
               </div>
-              <p className="mt-3 truncate text-sm font-medium">{m.name}</p>
+              <p className="mt-2 truncate text-sm font-medium">{m.name}</p>
               <p className="mt-0.5 text-xs text-white/40">
                 {m.media_type ? MEDIA_TYPE_LABEL[m.media_type] ?? m.media_type : ''}
                 {m.area ? ` · ${m.area}` : ''}

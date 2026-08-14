@@ -76,10 +76,10 @@ async function getLatestRotations() {
   })
 }
 
-const HUB_CARDS: { icon: string; title: string; subtitle: string; href: string }[] = [
-  { icon: '🗓️', title: '新譜リリーススケジュール', subtitle: '今週・来週の新譜一覧', href: '/albums/calendar' },
-  { icon: '📰', title: '最新ニュースストリーム', subtitle: '直近の更新・記事一覧', href: '/media' },
-  { icon: '🎧', title: '厳選プレイリストハブ', subtitle: 'キュレーションプレイリスト集', href: '/media/features' },
+const HUB_CARDS: { image: string; title: string; subtitle: string; href: string }[] = [
+  { image: '/release_schedule.png', title: '新譜リリーススケジュール', subtitle: '今週・来週の新譜一覧', href: '/albums/calendar' },
+  { image: '/news_stream.png', title: '最新ニュースストリーム', subtitle: '直近の更新・記事一覧', href: '/media' },
+  { image: '/curation_playlist.png', title: '厳選プレイリストハブ', subtitle: 'キュレーションプレイリスト集', href: '/media/features' },
 ]
 
 const STAT_ITEMS: {
@@ -156,11 +156,14 @@ export default async function Home() {
           <Link
             key={card.href}
             href={card.href}
-            className="rounded-lg border border-white/10 bg-white/[0.03] p-6 transition hover:border-white/25 hover:bg-white/[0.06]"
+            className="group relative block aspect-[4/3] overflow-hidden rounded-lg border border-white/10 transition hover:border-white/25"
           >
-            <span className="text-2xl">{card.icon}</span>
-            <p className="mt-3 text-base font-semibold">{card.title}</p>
-            <p className="mt-1 text-xs text-white/50">{card.subtitle}</p>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={card.image}
+              alt={card.title}
+              className="h-full w-full object-cover transition duration-300 group-hover:scale-105 group-hover:opacity-80"
+            />
           </Link>
         ))}
       </section>
