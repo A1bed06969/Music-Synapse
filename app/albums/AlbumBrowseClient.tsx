@@ -61,21 +61,26 @@ export default function AlbumBrowseClient({
     <div className="mx-auto max-w-[1600px] px-6 py-12">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h1 className="text-2xl font-bold">アルバム</h1>
-        <div className="flex gap-1 rounded-md border border-white/15 p-0.5 text-xs">
-          <button
-            type="button"
-            onClick={() => setSortMode('kana')}
-            className={`rounded px-3 py-1 ${sortMode === 'kana' ? 'bg-white text-black' : 'text-white/60 hover:text-white'}`}
-          >
-            50音順
-          </button>
-          <button
-            type="button"
-            onClick={() => setSortMode('release')}
-            className={`rounded px-3 py-1 ${sortMode === 'release' ? 'bg-white text-black' : 'text-white/60 hover:text-white'}`}
-          >
-            発売日順
-          </button>
+        <div className="flex items-center gap-3">
+          <Link href="/albums/calendar" className="text-xs text-white/50 transition hover:text-white">
+            🗓️ カレンダーで見る
+          </Link>
+          <div className="flex gap-1 rounded-md border border-white/15 p-0.5 text-xs">
+            <button
+              type="button"
+              onClick={() => setSortMode('kana')}
+              className={`rounded px-3 py-1 ${sortMode === 'kana' ? 'bg-white text-black' : 'text-white/60 hover:text-white'}`}
+            >
+              50音順
+            </button>
+            <button
+              type="button"
+              onClick={() => setSortMode('release')}
+              className={`rounded px-3 py-1 ${sortMode === 'release' ? 'bg-white text-black' : 'text-white/60 hover:text-white'}`}
+            >
+              発売日順
+            </button>
+          </div>
         </div>
       </div>
 

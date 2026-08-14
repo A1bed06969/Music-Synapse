@@ -148,9 +148,14 @@ export default async function Home() {
       <section className="mt-14">
         <div className="flex items-baseline justify-between">
           <h2 className="text-lg font-semibold">新着アルバム</h2>
-          <Link href="/albums?sort=release" className="text-xs text-white/40 hover:text-white/70">
-            発売日順ですべて見る →
-          </Link>
+          <div className="flex items-center gap-4">
+            <Link href="/albums/calendar" className="text-xs text-white/40 hover:text-white/70">
+              🗓️ カレンダーで見る
+            </Link>
+            <Link href="/albums?sort=release" className="text-xs text-white/40 hover:text-white/70">
+              発売日順ですべて見る →
+            </Link>
+          </div>
         </div>
 
         {latestAlbums.length === 0 ? (

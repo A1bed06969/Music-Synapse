@@ -45,7 +45,12 @@ export default function TabbedMapView({ markers }: { markers: MapMarker[] }) {
 
       <div className="mt-4 flex flex-col gap-4 lg:flex-row">
         <div className="lg:flex-1">
-          <LeafletMap markers={filteredMarkers} focusId={focusId} />
+          <LeafletMap
+            markers={filteredMarkers}
+            focusId={focusId}
+            onMarkerHover={(id) => setFocusId(id ?? null)}
+            onMarkerClick={setFocusId}
+          />
         </div>
         <div className="lg:w-72 lg:shrink-0">
           <div className="max-h-[600px] overflow-y-auto rounded-lg border border-white/10">
@@ -58,6 +63,7 @@ export default function TabbedMapView({ markers }: { markers: MapMarker[] }) {
                     <button
                       type="button"
                       onClick={() => setFocusId(marker.id)}
+                      onMouseEnter={() => setFocusId(marker.id)}
                       className={`flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm transition hover:bg-white/5 ${
                         focusId === marker.id ? 'bg-white/10' : ''
                       }`}

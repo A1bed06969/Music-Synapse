@@ -48,19 +48,36 @@ function spreadOverlapping(markers: MapMarker[]): MapMarker[] {
   return result
 }
 
+// ホバー/クリックでピンにフォーカスした際にズームインする目標レベル。
+// 現在のズームがこれより既に大きい(寄っている)場合はズームアウトさせない。
+const FOCUS_ZOOM = 14
+
 export default function LeafletMap({
   markers,
   heightClassName = 'h-[600px]',
   focusId,
+  onMarkerHover,
+  onMarkerClick,
 }: {
   markers: MapMarker[]
   heightClassName?: string
-  /** 一覧パネルなどからピンを選んだ時にセットすると、そのピンへパン+ポップアップを開く */
+  /** 一覧パネルなどからピンを選んだ時にセットすると、そのピンへスムーズにフライト+ポップアップを開く */
   focusId?: string | null
+  /** ピン自体にマウスホバーした時に呼ばれる(一覧パネル側のハイライトなどに利用) */
+  onMarkerHover?: (id: string | null) => void
+  /** ピン自体をクリックした時に呼ばれる */
+  onMarkerClick?: (id: string) => void
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<L.Map | null>(null)
   const leafletMarkersRef = useRef<Map<string, L.Marker>>(new Map())
+  // マーカー生成エフェクトを再実行させずに常に最新のコールバックを呼べるようref経由で保持する
+  const onMarkerHoverRef = useRef(onMarkerHover)
+  const onMarkerClickRef = useRef(onMarkerClick)
+  useEffect(() => {
+    onMarkerHoverRef.current = onMarkerHover
+    onMarkerClickRef.current = onMarkerClick
+  }, [onMarkerHover, onMarkerClick])
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return
@@ -97,6 +114,9 @@ export default function LeafletMap({
       const leafletMarker = L.marker([marker.latitude, marker.longitude], { icon })
         .addTo(layerGroup)
         .bindPopup(marker.popupHtml)
+        .on('mouseover', () => onMarkerHoverRef.current?.(marker.id))
+        .on('mouseout', () => onMarkerHoverRef.current?.(null))
+        .on('click', () => onMarkerClickRef.current?.(marker.id))
       leafletMarkers.set(marker.id, leafletMarker)
     }
     leafletMarkersRef.current = leafletMarkers
@@ -115,7 +135,8 @@ export default function LeafletMap({
     if (!map || !focusId) return
     const marker = leafletMarkersRef.current.get(focusId)
     if (!marker) return
-    map.panTo(marker.getLatLng())
+    const targetZoom = Math.max(map.getZoom(), FOCUS_ZOOM)
+    map.flyTo(marker.getLatLng(), targetZoom, { duration: 0.8 })
     marker.openPopup()
   }, [focusId])
 
