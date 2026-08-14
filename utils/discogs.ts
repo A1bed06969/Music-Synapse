@@ -1,10 +1,17 @@
 // Discogs API client. Read-only usage via a personal access token
 // (no OAuth flow needed) — see https://www.discogs.com/settings/developers
-// Rate limit: 60 req/min authenticated. We don't burst enough to need
-// explicit throttling (MusicBrainz's 1req/sec pattern is unnecessary here).
+// Rate limit: 60 req/min authenticated. A single admin-triggered credits
+// import stays well under that without help, but the bulk backfill script
+// (scripts/bulk-import-credits.ts) issues far more requests, so every call
+// is throttled here to stay safely under the limit.
 
 const DISCOGS_BASE = 'https://api.discogs.com'
 const USER_AGENT = 'MusicSynapse/1.0 (https://github.com/A1bed06969/Music-Synapse)'
+const MIN_REQUEST_INTERVAL_MS = 600 // 60req/min上限に対して十分な余裕を持たせる
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
 
 function authHeaders(): Record<string, string> {
   const token = process.env.DISCOGS_TOKEN
@@ -19,6 +26,7 @@ function authHeaders(): Record<string, string> {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function fetchDiscogs(url: string, label: string): Promise<any> {
+  await sleep(MIN_REQUEST_INTERVAL_MS)
   const res = await fetch(url, { headers: authHeaders() })
   if (!res.ok) {
     throw new Error(`Discogs API error (${label}): ${res.status}`)
