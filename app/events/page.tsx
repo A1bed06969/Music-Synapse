@@ -1,11 +1,14 @@
 import Link from 'next/link'
 import { createClient } from '@/utils/Supabase/server'
+import { continentForCountry, CONTINENT_ORDER } from '@/utils/continents'
 
 const EVENT_TYPE_LABEL: Record<string, string> = {
   festival: 'フェス',
   one_off_live: '単発イベント',
   other: 'その他',
 }
+
+const NO_GENRE = 'ジャンル未設定'
 
 export default async function EventsPage({
   searchParams,
@@ -15,16 +18,59 @@ export default async function EventsPage({
   const { event_type: eventType } = await searchParams
   const supabase = await createClient()
 
-  let query = supabase.from('event').select('id, name, event_type, founded_year').order('name')
+  let query = supabase
+    .from('event')
+    .select('id, name, event_type, founded_year, country, genre:genre_id(name)')
+    .order('name')
 
   if (eventType) query = query.eq('event_type', eventType)
 
   const { data: events } = await query
 
+  type EventRow = {
+    id: string
+    name: string
+    event_type: string | null
+    founded_year: number | null
+    country: string | null
+    genreName: string
+  }
+
+  const rows: EventRow[] = (events ?? []).map((e) => {
+    const genre = Array.isArray(e.genre) ? e.genre[0] : e.genre
+    return {
+      id: e.id,
+      name: e.name,
+      event_type: e.event_type,
+      founded_year: e.founded_year,
+      country: e.country,
+      genreName: genre?.name ?? NO_GENRE,
+    }
+  })
+
+  // 大陸 → ジャンル → イベント一覧の階層にまとめる
+  const byContinent = new Map<string, Map<string, EventRow[]>>()
+  for (const row of rows) {
+    const continent = continentForCountry(row.country)
+    if (!byContinent.has(continent)) byContinent.set(continent, new Map())
+    const byGenre = byContinent.get(continent)!
+    if (!byGenre.has(row.genreName)) byGenre.set(row.genreName, [])
+    byGenre.get(row.genreName)!.push(row)
+  }
+
+  const continentSections = CONTINENT_ORDER.filter((c) => byContinent.has(c)).map((continent) => ({
+    continent,
+    genres: Array.from(byContinent.get(continent)!.entries()).sort(([a], [b]) => {
+      if (a === NO_GENRE) return 1
+      if (b === NO_GENRE) return -1
+      return a.localeCompare(b, 'ja')
+    }),
+  }))
+
   return (
     <div className="mx-auto max-w-[1600px] px-6 py-12">
-      <h1 className="text-2xl font-bold">イベント</h1>
-      <p className="mt-2 text-sm text-white/50">フェス・単発イベントの開催情報。</p>
+      <h1 className="text-2xl font-bold">フェス&イベント</h1>
+      <p className="mt-2 text-sm text-white/50">大陸・ジャンル別にまとめたフェス・単発イベントの開催情報。</p>
 
       <form className="mt-6 flex flex-wrap gap-2" action="/events">
         <select
@@ -47,22 +93,36 @@ export default async function EventsPage({
         </button>
       </form>
 
-      {!events || events.length === 0 ? (
+      {continentSections.length === 0 ? (
         <p className="mt-10 text-sm text-white/40">該当するイベントが登録されていません。</p>
       ) : (
-        <ul className="mt-8 divide-y divide-white/10">
-          {events.map((e) => (
-            <li key={e.id} className="py-3">
-              <Link href={`/events/${e.id}`} className="font-medium hover:opacity-70">
-                {e.name}
-              </Link>
-              <p className="mt-0.5 text-xs text-white/40">
-                {e.event_type ? EVENT_TYPE_LABEL[e.event_type] ?? e.event_type : ''}
-                {e.founded_year ? ` · ${e.founded_year}年〜` : ''}
-              </p>
-            </li>
+        <div className="mt-10 space-y-10">
+          {continentSections.map(({ continent, genres }) => (
+            <section key={continent}>
+              <h2 className="text-xl font-bold">{continent}</h2>
+              <div className="mt-4 space-y-6">
+                {genres.map(([genreName, genreEvents]) => (
+                  <div key={genreName}>
+                    <h3 className="text-xs font-medium uppercase tracking-wide text-white/40">{genreName}</h3>
+                    <ul className="mt-2 grid grid-cols-1 gap-x-6 gap-y-1 sm:grid-cols-2 lg:grid-cols-3">
+                      {genreEvents.map((e) => (
+                        <li key={e.id} className="border-b border-white/5 py-2.5">
+                          <Link href={`/events/${e.id}`} className="font-medium hover:opacity-70">
+                            {e.name}
+                          </Link>
+                          <p className="mt-0.5 text-xs text-white/40">
+                            {e.event_type ? EVENT_TYPE_LABEL[e.event_type] ?? e.event_type : ''}
+                            {e.founded_year ? ` · ${e.founded_year}年〜` : ''}
+                          </p>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            </section>
           ))}
-        </ul>
+        </div>
       )}
     </div>
   )

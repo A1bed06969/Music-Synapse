@@ -25,12 +25,14 @@ export default async function EventsAdminPage({
 
   const [
     { data: artists },
+    { data: genres },
     { data: events },
     { data: eventEditions },
     { data: eventAppearances },
     { data: musicEvents },
   ] = await Promise.all([
     supabase.from('artist').select('id, name').order('name'),
+    supabase.from('genre').select('id, name').order('name'),
     supabase.from('event').select('id, name, event_type').order('name'),
     supabase.from('event_edition').select('id, year, event:event_id(name)').order('year', { ascending: false }),
     supabase
@@ -46,6 +48,7 @@ export default async function EventsAdminPage({
   ])
 
   const artistOptions = artists ?? []
+  const genreOptions = genres ?? []
   const eventOptions = events ?? []
   const eventEditionOptions = (eventEditions ?? []).map((row) => {
     const event = Array.isArray(row.event) ? row.event[0] : row.event
@@ -88,6 +91,14 @@ export default async function EventsAdminPage({
         <div className="flex flex-wrap gap-2">
           <input name="country" placeholder="国(任意)" className={`${inputClass} max-w-[160px]`} />
           <input name="prefecture" placeholder="都道府県(任意)" className={`${inputClass} max-w-[160px]`} />
+          <select name="genre_id" className={`${inputClass} max-w-[160px]`} defaultValue="">
+            <option value="">ジャンル(任意)</option>
+            {genreOptions.map((g) => (
+              <option key={g.id} value={g.id}>
+                {g.name}
+              </option>
+            ))}
+          </select>
         </div>
         <input name="description" placeholder="概要(任意)" className={inputClass} />
         <button type="submit" className={buttonClass}>

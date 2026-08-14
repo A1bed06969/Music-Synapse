@@ -39,13 +39,52 @@ function buildQuery(params: Record<string, string | undefined>) {
   return qs ? `/media/on-air?${qs}` : '/media/on-air'
 }
 
+const ENTRY_PAGE_SIZE = 20
+
+// 1回のクエリはPostgRESTの上限(1000件)で切られてしまうため、月間集計は
+// range()で全件を取り切るまでページングして取得する
+async function fetchAllMonthRows(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  monthStart: string,
+  monthEnd: string
+) {
+  const pageSize = 1000
+  const query = (page: number) =>
+    supabase
+      .from('radio_rotation')
+      .select(
+        `track_id, album_id, artist_id, music_type,
+         media_program:media_program_id(media_id, media:media_id(name, prefecture)),
+         track:track_id(id, title, artist:artist_id(name), album:album_id(jacket_url)),
+         album:album_id(id, title, jacket_url, artist:artist_id(name)),
+         artist:artist_id(id, name)`
+      )
+      .gte('period_start_date', monthStart)
+      .lt('period_start_date', monthEnd)
+      .range(page * pageSize, page * pageSize + pageSize - 1)
+
+  const { data: firstPage } = await query(0)
+  const rows = [...(firstPage ?? [])]
+  let hasMore = (firstPage?.length ?? 0) === pageSize
+  let page = 1
+  while (hasMore) {
+    const { data } = await query(page)
+    if (!data || data.length === 0) break
+    rows.push(...data)
+    hasMore = data.length === pageSize
+    page++
+  }
+  return rows
+}
+
 export default async function OnAirPage({
   searchParams,
 }: {
-  searchParams: Promise<{ media?: string; music_type?: string; month?: string }>
+  searchParams: Promise<{ media?: string; music_type?: string; month?: string; page?: string }>
 }) {
-  const { media: mediaId, music_type: musicType, month: monthParam } = await searchParams
+  const { media: mediaId, music_type: musicType, month: monthParam, page: pageParam } = await searchParams
   const supabase = await createClient()
+  const currentPage = Math.max(1, Number(pageParam) || 1)
 
   const [{ data: mediaList }, { data: allDates }] = await Promise.all([
     supabase.from('media').select('id, name, area').order('name'),
@@ -66,7 +105,8 @@ export default async function OnAirPage({
        media_program:media_program_id!inner(program_name, media_id, media:media_id(id, name)),
        track:track_id(id, title, artist:artist_id(name)),
        album:album_id(id, title, artist:artist_id(name)),
-       artist:artist_id(id, name)`
+       artist:artist_id(id, name)`,
+      { count: 'exact' }
     )
     .gte('period_start_date', monthStart)
     .lt('period_start_date', monthEnd)
@@ -79,20 +119,14 @@ export default async function OnAirPage({
     query = query.eq('music_type', musicType)
   }
 
-  const { data: rotations } = await query
+  const { data: rotations, count: rotationCount } = await query.range(
+    (currentPage - 1) * ENTRY_PAGE_SIZE,
+    currentPage * ENTRY_PAGE_SIZE - 1
+  )
+  const totalPages = Math.max(1, Math.ceil((rotationCount ?? 0) / ENTRY_PAGE_SIZE))
 
   // 今月のパワープレイ&ヘビロテ ランキング(局横断・選出局数順)。フィルターに関わらず月全体を集計
-  const { data: monthRows } = await supabase
-    .from('radio_rotation')
-    .select(
-      `track_id, album_id, artist_id, music_type,
-       media_program:media_program_id(media_id, media:media_id(name, prefecture)),
-       track:track_id(id, title, artist:artist_id(name), album:album_id(jacket_url)),
-       album:album_id(id, title, jacket_url, artist:artist_id(name)),
-       artist:artist_id(id, name)`
-    )
-    .gte('period_start_date', monthStart)
-    .lt('period_start_date', monthEnd)
+  const monthRows = await fetchAllMonthRows(supabase, monthStart, monthEnd)
 
   type RankingRow = {
     key: string
@@ -348,6 +382,34 @@ export default async function OnAirPage({
             )
           })}
         </ul>
+      )}
+
+      {totalPages > 1 && (
+        <div className="mt-6 flex items-center justify-center gap-3 text-sm">
+          {currentPage > 1 ? (
+            <Link
+              href={buildQuery({ media: mediaId, music_type: musicType, month: currentMonth, page: String(currentPage - 1) })}
+              className="rounded-md border border-white/15 px-3 py-1.5 hover:bg-white/5"
+            >
+              ← 前へ
+            </Link>
+          ) : (
+            <span className="rounded-md border border-white/5 px-3 py-1.5 text-white/20">← 前へ</span>
+          )}
+          <span className="text-white/50">
+            {currentPage} / {totalPages}
+          </span>
+          {currentPage < totalPages ? (
+            <Link
+              href={buildQuery({ media: mediaId, music_type: musicType, month: currentMonth, page: String(currentPage + 1) })}
+              className="rounded-md border border-white/15 px-3 py-1.5 hover:bg-white/5"
+            >
+              次へ →
+            </Link>
+          ) : (
+            <span className="rounded-md border border-white/5 px-3 py-1.5 text-white/20">次へ →</span>
+          )}
+        </div>
       )}
     </div>
   )

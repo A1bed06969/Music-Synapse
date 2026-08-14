@@ -1,6 +1,6 @@
 import { createClient } from '@/utils/Supabase/server'
 import { normalizeVenueName } from '@/utils/textNormalize'
-import MapClientWrapper from './MapClientWrapper'
+import TabbedMapView from './TabbedMapView'
 import type { MapMarker } from './LeafletMap'
 
 function escapeHtml(value: string): string {
@@ -64,6 +64,8 @@ export default async function MapPage() {
         latitude: Number(a.origin_latitude),
         longitude: Number(a.origin_longitude),
         color: '#e85d5d',
+        category: 'artist' as const,
+        label: a.name,
         popupHtml: `<div style="min-width:160px;">${
           a.image_url
             ? `<img src="${escapeHtml(a.image_url)}" alt="" style="width:48px;height:48px;object-fit:cover;border-radius:50%;" />`
@@ -136,6 +138,8 @@ export default async function MapPage() {
       latitude: Number(v.latitude),
       longitude: Number(v.longitude),
       color: '#5aa9e6',
+      category: 'venue' as const,
+      label: v.venue_name,
       popupHtml: `<div style="min-width:160px;"><div style="font-weight:bold;">${escapeHtml(
         v.venue_name
       )}</div>${linksHtml}</div>`,
@@ -161,6 +165,8 @@ export default async function MapPage() {
       latitude: Number(s.latitude),
       longitude: Number(s.longitude),
       color: '#5ad66f',
+      category: 'shop' as const,
+      label: s.name,
       popupHtml: `<div style="min-width:160px;"><div style="font-weight:bold;"><a href="/shops/${escapeHtml(
         s.id
       )}" style="color:inherit;">${escapeHtml(s.name)}</a></div>${detailsHtml}</div>`,
@@ -186,6 +192,8 @@ export default async function MapPage() {
       latitude: Number(l.latitude),
       longitude: Number(l.longitude),
       color: '#c77dff',
+      category: 'venue' as const,
+      label: l.name,
       popupHtml: `<div style="min-width:160px;"><div style="font-weight:bold;"><a href="/livehouses/${escapeHtml(
         l.id
       )}" style="color:inherit;">${escapeHtml(l.name)}</a></div>${detailsHtml}</div>`,
@@ -198,10 +206,10 @@ export default async function MapPage() {
     <div className="mx-auto max-w-[1600px] px-6 py-12">
       <h1 className="text-2xl font-bold">マップ</h1>
       <p className="mt-2 text-sm text-white/50">
-        アーティストの出身地・結成地(赤)、イベント会場(青)、レコードショップ(緑)、ライブハウス(紫)を地図で表示します。
+        アーティストの出身地・結成地、ライブ会場(フェス会場・ライブハウス)、レコードショップをタブで切り替えて表示します。
       </p>
       <div className="mt-8">
-        <MapClientWrapper markers={markers} />
+        <TabbedMapView markers={markers} />
       </div>
     </div>
   )

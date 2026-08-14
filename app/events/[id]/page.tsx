@@ -111,6 +111,8 @@ export default async function EventDetailPage({
         longitude: venueLocation.longitude,
         color: '#e8a63c',
         popupHtml: venueSummary,
+        category: 'venue',
+        label: venueSummary,
       }
     }
   }

@@ -4,12 +4,17 @@ import { useEffect, useRef } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 
+export type MapCategory = 'artist' | 'venue' | 'shop'
+
 export type MapMarker = {
   id: string
   latitude: number
   longitude: number
   color: string
   popupHtml: string
+  category: MapCategory
+  /** 一覧パネル表示用の短いラベル(ポップアップ内のHTMLとは別に持つ) */
+  label: string
 }
 
 // 座標が完全に一致するマーカーはピンが重なって隠れてしまうため、
@@ -46,12 +51,16 @@ function spreadOverlapping(markers: MapMarker[]): MapMarker[] {
 export default function LeafletMap({
   markers,
   heightClassName = 'h-[600px]',
+  focusId,
 }: {
   markers: MapMarker[]
   heightClassName?: string
+  /** 一覧パネルなどからピンを選んだ時にセットすると、そのピンへパン+ポップアップを開く */
+  focusId?: string | null
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<L.Map | null>(null)
+  const leafletMarkersRef = useRef<Map<string, L.Marker>>(new Map())
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return
@@ -76,6 +85,7 @@ export default function LeafletMap({
 
     const layerGroup = L.featureGroup().addTo(map)
     const spreadMarkers = spreadOverlapping(markers)
+    const leafletMarkers = new Map<string, L.Marker>()
 
     for (const marker of spreadMarkers) {
       const icon = L.divIcon({
@@ -84,8 +94,12 @@ export default function LeafletMap({
         iconSize: [14, 14],
         iconAnchor: [7, 7],
       })
-      L.marker([marker.latitude, marker.longitude], { icon }).addTo(layerGroup).bindPopup(marker.popupHtml)
+      const leafletMarker = L.marker([marker.latitude, marker.longitude], { icon })
+        .addTo(layerGroup)
+        .bindPopup(marker.popupHtml)
+      leafletMarkers.set(marker.id, leafletMarker)
     }
+    leafletMarkersRef.current = leafletMarkers
 
     if (markers.length > 0) {
       map.fitBounds(layerGroup.getBounds(), { padding: [40, 40], maxZoom: 12 })
@@ -95,6 +109,15 @@ export default function LeafletMap({
       layerGroup.remove()
     }
   }, [markers])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !focusId) return
+    const marker = leafletMarkersRef.current.get(focusId)
+    if (!marker) return
+    map.panTo(marker.getLatLng())
+    marker.openPopup()
+  }, [focusId])
 
   return <div ref={containerRef} className={`w-full rounded-lg ${heightClassName}`} />
 }

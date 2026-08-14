@@ -15,6 +15,7 @@ export async function createEvent(formData: FormData) {
   const country = String(formData.get('country') ?? '').trim()
   const prefecture = String(formData.get('prefecture') ?? '').trim()
   const description = String(formData.get('description') ?? '').trim()
+  const genreId = String(formData.get('genre_id') ?? '').trim()
 
   if (!name) {
     redirectWith('error', 'イベント名を入力してください。')
@@ -28,6 +29,7 @@ export async function createEvent(formData: FormData) {
     country: country || null,
     prefecture: prefecture || null,
     description: description || null,
+    genre_id: genreId || null,
   })
 
   if (error) {
