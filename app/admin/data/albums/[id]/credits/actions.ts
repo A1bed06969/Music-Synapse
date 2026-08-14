@@ -35,13 +35,19 @@ export async function importAlbumCredits(formData: FormData) {
     if (formData.get(`credit_${i}_include`) !== '1') continue
 
     const personName = String(formData.get(`credit_${i}_person_name`) ?? '')
-    const personMbid = String(formData.get(`credit_${i}_person_mbid`) ?? '')
+    const personSourceId = String(formData.get(`credit_${i}_person_source_id`) ?? '')
+    const source = String(formData.get(`credit_${i}_source`) ?? '') === 'discogs' ? 'discogs' : 'musicbrainz'
     const role = String(formData.get(`credit_${i}_role`) ?? '')
     const sourceUrl = String(formData.get(`credit_${i}_source_url`) ?? '')
     const trackId = String(formData.get(`credit_${i}_track_id`) ?? '') || null
     const instrumentName = String(formData.get(`credit_${i}_instrument_name`) ?? '') || null
-    if (!personName || !personMbid || !role) continue
+    if (!personName || !personSourceId || !role) continue
     if (!(role in CREDIT_ROLE_LABEL)) continue
+
+    // MusicBrainzはartist.musicbrainz_id、Discogsはartist.discogs_artist_idで
+    // 既存アーティストと照合する(ソースごとにID体系が別物のため)
+    const artistMatchColumn = source === 'discogs' ? 'discogs_artist_id' : 'musicbrainz_id'
+    const personMatchColumn = source === 'discogs' ? 'discogs_id' : 'musicbrainz_id'
 
     // ミュージシャンロールは、カタログとの人物一致状況に関わらず
     // 「このトラックでこの楽器が使われた」というトラック単位の記録を別途残す
@@ -87,7 +93,7 @@ export async function importAlbumCredits(formData: FormData) {
     const { data: matchedArtist } = await supabase
       .from('artist')
       .select('id')
-      .eq('musicbrainz_id', personMbid)
+      .eq(artistMatchColumn, personSourceId)
       .maybeSingle()
 
     if (matchedArtist?.id === artistId) {
@@ -124,14 +130,14 @@ export async function importAlbumCredits(formData: FormData) {
     const { data: existingPerson } = await supabase
       .from('credit_person')
       .select('id')
-      .eq('musicbrainz_id', personMbid)
+      .eq(personMatchColumn, personSourceId)
       .maybeSingle()
 
     let creditPersonId = existingPerson?.id as string | undefined
     if (!creditPersonId) {
       const { data: createdPerson, error: createError } = await supabase
         .from('credit_person')
-        .insert({ name: personName, musicbrainz_id: personMbid })
+        .insert({ name: personName, [personMatchColumn]: personSourceId })
         .select('id')
         .single()
       if (createError) {
@@ -151,7 +157,7 @@ export async function importAlbumCredits(formData: FormData) {
           track_id: trackId,
           credit_person_id: creditPersonId,
           role,
-          source: 'musicbrainz',
+          source,
           source_url: sourceUrl || null,
         },
         { onConflict: 'artist_id,album_id,track_id,credit_person_id,role,source', ignoreDuplicates: true }

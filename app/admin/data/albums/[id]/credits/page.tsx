@@ -1,7 +1,8 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/utils/Supabase/server'
-import { searchRelease, fetchReleaseCreditsAndInstruments, type MusicBrainzReleaseCredit } from '@/utils/musicbrainz'
+import { searchRelease as searchMusicBrainzRelease, fetchReleaseCreditsAndInstruments } from '@/utils/musicbrainz'
+import { searchRelease as searchDiscogsRelease, fetchReleaseCredits as fetchDiscogsReleaseCredits } from '@/utils/discogs'
 import { CREDIT_ROLE_LABEL } from '@/utils/format'
 import { importAlbumCredits } from './actions'
 import SubmitButton from './SubmitButton'
@@ -10,15 +11,32 @@ import SubmitButton from './SubmitButton'
 // 収録曲・クレジットが多いアルバムだと1分近くかかることがある
 export const maxDuration = 60
 
+type Source = 'musicbrainz' | 'discogs'
+
+const SOURCE_LABEL: Record<Source, string> = {
+  musicbrainz: 'MusicBrainz',
+  discogs: 'Discogs',
+}
+
+type UnifiedCredit = {
+  personName: string
+  personSourceId: string
+  role: 'producer' | 'mix' | 'mastering' | 'composer' | 'lyricist' | 'arranger' | 'artwork' | 'musician'
+  sourceUrl: string
+  trackTitle: string | null
+  instrumentName?: string
+}
+
 export default async function AlbumCreditsPage({
   params,
   searchParams,
 }: {
   params: Promise<{ id: string }>
-  searchParams: Promise<{ mbid?: string; success?: string; error?: string }>
+  searchParams: Promise<{ source?: string; releaseId?: string; success?: string; error?: string }>
 }) {
   const { id } = await params
-  const { mbid, success, error: errorMessage } = await searchParams
+  const { source: sourceParam, releaseId, success, error: errorMessage } = await searchParams
+  const source: Source = sourceParam === 'discogs' ? 'discogs' : 'musicbrainz'
   const supabase = await createClient()
 
   const { data: album, error } = await supabase
@@ -44,6 +62,21 @@ export default async function AlbumCreditsPage({
 
       <h1 className="mt-4 text-2xl font-bold">{album.title} のクレジットを取り込む</h1>
 
+      {!releaseId && (
+        <div className="mt-4 flex gap-1 rounded-md border border-white/15 p-0.5 text-xs w-fit">
+          {(['musicbrainz', 'discogs'] as const).map((s) => (
+            <Link
+              key={s}
+              href={`/admin/data/albums/${album.id}/credits?source=${s}`}
+              prefetch={false}
+              className={`rounded px-3 py-1.5 ${source === s ? 'bg-white text-black' : 'text-white/60 hover:text-white'}`}
+            >
+              {SOURCE_LABEL[s]}
+            </Link>
+          ))}
+        </div>
+      )}
+
       {success && (
         <div className="mt-4 rounded-md border border-green-500/30 bg-green-500/5 px-4 py-3 text-sm">{success}</div>
       )}
@@ -51,10 +84,10 @@ export default async function AlbumCreditsPage({
         <div className="mt-4 rounded-md border border-red-500/30 bg-red-500/5 px-4 py-3 text-sm">{errorMessage}</div>
       )}
 
-      {mbid ? (
-        <CreditsPreview artistId={artist.id} albumId={album.id} releaseMbid={mbid} />
+      {releaseId ? (
+        <CreditsPreview artistId={artist.id} albumId={album.id} source={source} releaseId={releaseId} />
       ) : (
-        <ReleaseSearchResults albumId={album.id} albumTitle={album.title} artistName={artist.name} />
+        <ReleaseSearchResults albumId={album.id} albumTitle={album.title} artistName={artist.name} source={source} />
       )}
     </div>
   )
@@ -64,17 +97,34 @@ async function ReleaseSearchResults({
   albumId,
   albumTitle,
   artistName,
+  source,
 }: {
   albumId: string
   albumTitle: string
   artistName: string
+  source: Source
 }) {
-  let results
+  type Result = { id: string; title: string; meta: string }
+  let results: Result[]
   try {
-    results = await searchRelease(albumTitle, artistName)
+    if (source === 'musicbrainz') {
+      const raw = await searchMusicBrainzRelease(albumTitle, artistName)
+      results = raw.map((r) => ({
+        id: r.mbid,
+        title: r.title,
+        meta: `${r.date ?? '発売日不明'} / ${r.country ?? '国不明'} / 一致度: ${r.score ?? '?'}%`,
+      }))
+    } else {
+      const raw = await searchDiscogsRelease(albumTitle, artistName)
+      results = raw.map((r) => ({
+        id: String(r.discogsId),
+        title: r.title,
+        meta: `${r.year ?? '発売年不明'} / ${r.country ?? '国不明'} / ${r.format ?? '形式不明'}`,
+      }))
+    }
   } catch (err) {
-    console.error('MusicBrainzリリース検索に失敗しました:', err)
-    return <p className="mt-8 text-sm text-white/40">MusicBrainzでの検索に失敗しました。</p>
+    console.error(`${SOURCE_LABEL[source]}リリース検索に失敗しました:`, err)
+    return <p className="mt-8 text-sm text-white/40">{SOURCE_LABEL[source]}での検索に失敗しました。</p>
   }
 
   if (results.length === 0) {
@@ -85,15 +135,13 @@ async function ReleaseSearchResults({
     <div className="mt-8 space-y-2">
       {results.map((r) => (
         <Link
-          key={r.mbid}
-          href={`/admin/data/albums/${albumId}/credits?mbid=${r.mbid}`}
+          key={r.id}
+          href={`/admin/data/albums/${albumId}/credits?source=${source}&releaseId=${r.id}`}
           prefetch={false}
           className="block rounded-md border border-white/15 px-4 py-3 text-sm hover:bg-white/5"
         >
           <span className="font-medium">{r.title}</span>
-          <span className="ml-2 text-xs text-white/40">
-            {r.date ?? '発売日不明'} / {r.country ?? '国不明'} / 一致度: {r.score ?? '?'}%
-          </span>
+          <span className="ml-2 text-xs text-white/40">{r.meta}</span>
         </Link>
       ))}
     </div>
@@ -103,19 +151,26 @@ async function ReleaseSearchResults({
 async function CreditsPreview({
   artistId,
   albumId,
-  releaseMbid,
+  source,
+  releaseId,
 }: {
   artistId: string
   albumId: string
-  releaseMbid: string
+  source: Source
+  releaseId: string
 }) {
-  let credits: MusicBrainzReleaseCredit[]
+  let credits: UnifiedCredit[]
   try {
-    const result = await fetchReleaseCreditsAndInstruments(releaseMbid)
-    credits = result.credits
+    if (source === 'musicbrainz') {
+      const result = await fetchReleaseCreditsAndInstruments(releaseId)
+      credits = result.credits.map((c) => ({ ...c, personSourceId: c.personMbid }))
+    } else {
+      const result = await fetchDiscogsReleaseCredits(Number(releaseId))
+      credits = result.credits.map((c) => ({ ...c, personSourceId: c.personDiscogsId }))
+    }
   } catch (err) {
-    console.error('MusicBrainzクレジット取得に失敗しました:', err)
-    return <p className="mt-8 text-sm text-white/40">MusicBrainzからの取得に失敗しました。</p>
+    console.error(`${SOURCE_LABEL[source]}クレジット取得に失敗しました:`, err)
+    return <p className="mt-8 text-sm text-white/40">{SOURCE_LABEL[source]}からの取得に失敗しました。</p>
   }
 
   if (credits.length === 0) {
@@ -123,13 +178,22 @@ async function CreditsPreview({
   }
 
   const supabase = await createClient()
-  const personMbids = Array.from(new Set(credits.map((c) => c.personMbid)))
+  const personSourceIds = Array.from(new Set(credits.map((c) => c.personSourceId)))
   const [{ data: matchedArtists }, { data: albumTracks }] = await Promise.all([
-    supabase.from('artist').select('id, name, musicbrainz_id').in('musicbrainz_id', personMbids),
+    source === 'musicbrainz'
+      ? supabase.from('artist').select('id, name, musicbrainz_id').in('musicbrainz_id', personSourceIds)
+      : supabase.from('artist').select('id, name, discogs_artist_id').in('discogs_artist_id', personSourceIds),
     supabase.from('track').select('id, title').eq('album_id', albumId),
   ])
 
-  const artistByMbid = new Map((matchedArtists ?? []).map((a) => [a.musicbrainz_id as string, a]))
+  const artistBySourceId = new Map(
+    (matchedArtists ?? []).map((a) => [
+      (source === 'musicbrainz'
+        ? (a as { musicbrainz_id: string | null }).musicbrainz_id
+        : (a as { discogs_artist_id: string | null }).discogs_artist_id) as string,
+      a,
+    ])
+  )
 
   const normalizeTitle = (title: string) => title.trim().toLowerCase()
   const trackIdByTitle = new Map((albumTracks ?? []).map((t) => [normalizeTitle(t.title), t.id]))
@@ -152,13 +216,14 @@ async function CreditsPreview({
 
   function renderRow(pick: (typeof picks)[number]) {
     const i = index++
-    const matched = artistByMbid.get(pick.personMbid)
+    const matched = artistBySourceId.get(pick.personSourceId)
     const needsTrack = Boolean(pick.trackTitle)
     const canInclude = !needsTrack || Boolean(pick.trackId)
     return (
       <div key={i} className="flex items-center gap-3 text-sm">
         <input type="hidden" name={`credit_${i}_person_name`} value={pick.personName} />
-        <input type="hidden" name={`credit_${i}_person_mbid`} value={pick.personMbid} />
+        <input type="hidden" name={`credit_${i}_person_source_id`} value={pick.personSourceId} />
+        <input type="hidden" name={`credit_${i}_source`} value={source} />
         <input type="hidden" name={`credit_${i}_role`} value={pick.role} />
         <input type="hidden" name={`credit_${i}_source_url`} value={pick.sourceUrl} />
         <input type="hidden" name={`credit_${i}_track_id`} value={pick.trackId ?? ''} />
@@ -180,7 +245,7 @@ async function CreditsPreview({
   return (
     <div className="mt-8">
       <Link
-        href={`/admin/data/albums/${albumId}/credits`}
+        href={`/admin/data/albums/${albumId}/credits?source=${source}`}
         prefetch={false}
         className="text-xs text-white/40 hover:text-white/70"
       >
