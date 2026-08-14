@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import SiteHeader from "./components/SiteHeader";
 import SiteFooter from "./components/SiteFooter";
+import { PreviewPlayerProvider } from "./components/PreviewPlayerContext";
 import { getStats } from "@/utils/stats";
 import "./globals.css";
 
@@ -34,7 +35,9 @@ export default async function RootLayout({
     >
       <body className="min-h-full flex flex-col bg-[#0a0a0a] text-white" suppressHydrationWarning>
         <SiteHeader stats={stats} />
-        <main className="flex-1">{children}</main>
+        <PreviewPlayerProvider>
+          <main className="flex-1">{children}</main>
+        </PreviewPlayerProvider>
         <SiteFooter />
       </body>
     </html>

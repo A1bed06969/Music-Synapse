@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/utils/Supabase/server'
 import { formatDuration, extractYoutubeVideoId } from '@/utils/format'
+import PreviewButton from '@/app/components/PreviewButton'
 
 const WORK_TYPE_LABEL: Record<string, string> = {
   cm: 'CM',
@@ -100,7 +101,10 @@ export default async function TrackDetailPage({
               {artist.name}
             </Link>
           )}
-          <p className="mt-2 text-sm text-white/40">{formatDuration(track.duration_seconds)}</p>
+          <div className="mt-3 flex items-center gap-3">
+            <PreviewButton previewUrl={track.preview_url} trackId={track.id} size="lg" />
+            <p className="text-sm text-white/40">{formatDuration(track.duration_seconds)}</p>
+          </div>
         </div>
       </div>
 

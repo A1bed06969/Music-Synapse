@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/utils/Supabase/server'
 import { formatDate, formatDuration, STREAMING_STATUS_LABEL } from '@/utils/format'
+import PreviewButton from '@/app/components/PreviewButton'
 
 export default async function AlbumDetailPage({
   params,
@@ -24,7 +25,7 @@ export default async function AlbumDetailPage({
   const [{ data: tracks }, { data: discGuideSelections }] = await Promise.all([
     supabase
       .from('track')
-      .select('id, track_no, title, duration_seconds')
+      .select('id, track_no, title, duration_seconds, preview_url')
       .eq('album_id', id)
       .order('track_no', { ascending: true }),
     supabase
@@ -126,15 +127,16 @@ export default async function AlbumDetailPage({
         ) : (
           <ol className="mt-4 divide-y divide-white/10">
             {tracks.map((track) => (
-              <li key={track.id}>
+              <li key={track.id} className="flex items-center gap-3 py-3 text-sm">
                 <Link
                   href={`/tracks/${track.id}`}
-                  className="flex items-center gap-4 py-3 text-sm transition hover:opacity-70"
+                  className="flex flex-1 items-center gap-4 transition hover:opacity-70"
                 >
                   <span className="w-5 shrink-0 text-right text-white/30">{track.track_no ?? '-'}</span>
                   <span className="flex-1">{track.title}</span>
                   <span className="text-white/30">{formatDuration(track.duration_seconds)}</span>
                 </Link>
+                <PreviewButton previewUrl={track.preview_url} trackId={track.id} size="sm" />
               </li>
             ))}
           </ol>

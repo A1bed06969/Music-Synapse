@@ -151,6 +151,7 @@ export async function syncAlbumsAndTracksForArtist(
         title: itunesTrack.trackName,
         duration_seconds: millisToSeconds(itunesTrack.trackTimeMillis),
         apple_music_track_id: String(itunesTrack.trackId),
+        preview_url: itunesTrack.previewUrl ?? null,
         last_synced_at: new Date().toISOString(),
       }
 
