@@ -101,7 +101,7 @@ export default async function Home() {
           <img
             src="/logo-full.png"
             alt="Music Synapse"
-            className="mx-auto h-16 w-auto object-contain sm:h-20"
+            className="mx-auto h-24 w-auto object-contain sm:h-32"
           />
         </h1>
         <p className="mt-2 text-sm text-white/50">
