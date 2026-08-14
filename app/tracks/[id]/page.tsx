@@ -25,7 +25,7 @@ export default async function TrackDetailPage({
 
   const { data: track, error } = await supabase
     .from('track')
-    .select('*, album:album_id(id, title, jacket_url, apple_music_album_id), artist:artist_id(id, name)')
+    .select('*, album:album_id(id, title, jacket_url), artist:artist_id(id, name)')
     .eq('id', id)
     .single()
 
@@ -53,14 +53,9 @@ export default async function TrackDetailPage({
   const album = Array.isArray(track.album) ? track.album[0] : track.album
   const artist = Array.isArray(track.artist) ? track.artist[0] : track.artist
 
-  const appleMusicSrc =
-    track.apple_music_track_id && album?.apple_music_album_id
-      ? `https://embed.music.apple.com/jp/album/${encodeURIComponent(track.title)}/${album.apple_music_album_id}?i=${track.apple_music_track_id}`
-      : null
-
   const youtubeVideoId = track.youtube_video_id ? extractYoutubeVideoId(track.youtube_video_id) : null
   const youtubeSrc = youtubeVideoId ? `https://www.youtube.com/embed/${youtubeVideoId}` : null
-  const hasPlayer = Boolean(youtubeSrc || appleMusicSrc || track.spotify_track_id)
+  const hasPlayer = Boolean(youtubeSrc)
 
   return (
     <div className="mx-auto max-w-[1600px] px-6 py-12">
@@ -128,29 +123,6 @@ export default async function TrackDetailPage({
                     className="h-full w-full"
                   />
                 </div>
-              )}
-              {appleMusicSrc && (
-                <iframe
-                  allow="autoplay *; encrypted-media *; clipboard-write"
-                  frameBorder="0"
-                  height="175"
-                  style={{ width: '100%', maxWidth: '660px', overflow: 'hidden', borderRadius: '10px' }}
-                  sandbox="allow-forms allow-popups allow-same-origin allow-scripts allow-storage-access-by-user-activation allow-top-navigation-by-user-activation"
-                  src={appleMusicSrc}
-                  loading="lazy"
-                />
-              )}
-              {track.spotify_track_id && (
-                <iframe
-                  style={{ borderRadius: '12px' }}
-                  src={`https://open.spotify.com/embed/track/${track.spotify_track_id}?utm_source=generator`}
-                  width="100%"
-                  height="152"
-                  frameBorder="0"
-                  allowFullScreen
-                  allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
-                  loading="lazy"
-                />
               )}
             </div>
           )}
