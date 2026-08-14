@@ -11,9 +11,18 @@ const buttonClass = 'rounded-md bg-white px-4 py-2 text-sm font-medium text-blac
 export default async function ShopsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ name?: string; address?: string; url?: string; hours?: string; success?: string; error?: string }>
+  searchParams: Promise<{
+    name?: string
+    address?: string
+    url?: string
+    hours?: string
+    sns_x_url?: string
+    sns_instagram_url?: string
+    success?: string
+    error?: string
+  }>
 }) {
-  const { name, address, url, hours, success, error: errorMessage } = await searchParams
+  const { name, address, url, hours, sns_x_url, sns_instagram_url, success, error: errorMessage } = await searchParams
   const supabase = await createClient()
 
   const { data: shops } = await supabase
@@ -37,13 +46,22 @@ export default async function ShopsPage({
       )}
 
       {name && address ? (
-        <ShopCandidates name={name} address={address} url={url ?? ''} hours={hours ?? ''} />
+        <ShopCandidates
+          name={name}
+          address={address}
+          url={url ?? ''}
+          hours={hours ?? ''}
+          snsXUrl={sns_x_url ?? ''}
+          snsInstagramUrl={sns_instagram_url ?? ''}
+        />
       ) : (
         <form action="/admin/data/shops" className="mt-8 space-y-2">
           <input name="name" placeholder="店名(例: バナナレコード 大阪梅田店)" required className={inputClass} />
           <input name="address" placeholder="住所" required className={inputClass} />
           <input name="url" placeholder="公式サイトURL(任意)" className={inputClass} />
           <input name="hours" placeholder="営業時間(任意。例: 11:00〜20:00)" className={inputClass} />
+          <input name="sns_x_url" placeholder="XアカウントURL(任意)" className={inputClass} />
+          <input name="sns_instagram_url" placeholder="InstagramアカウントURL(任意)" className={inputClass} />
           <button type="submit" className={buttonClass}>
             住所から座標を検索
           </button>
@@ -77,11 +95,15 @@ async function ShopCandidates({
   address,
   url,
   hours,
+  snsXUrl,
+  snsInstagramUrl,
 }: {
   name: string
   address: string
   url: string
   hours: string
+  snsXUrl: string
+  snsInstagramUrl: string
 }) {
   let results
   let isApproximate = false
@@ -127,6 +149,8 @@ async function ShopCandidates({
             <input type="hidden" name="address" value={address} />
             <input type="hidden" name="official_site_url" value={url} />
             <input type="hidden" name="hours" value={hours} />
+            <input type="hidden" name="sns_x_url" value={snsXUrl} />
+            <input type="hidden" name="sns_instagram_url" value={snsInstagramUrl} />
             <input type="hidden" name="country" value={r.country ?? ''} />
             <input type="hidden" name="prefecture_or_state" value={r.prefectureOrState ?? ''} />
             <input type="hidden" name="city" value={r.city ?? ''} />

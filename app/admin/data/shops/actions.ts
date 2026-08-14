@@ -9,6 +9,8 @@ export async function importRecordShop(formData: FormData) {
   const address = String(formData.get('address') ?? '').trim()
   const officialSiteUrl = String(formData.get('official_site_url') ?? '').trim()
   const hours = String(formData.get('hours') ?? '').trim()
+  const snsXUrl = String(formData.get('sns_x_url') ?? '').trim()
+  const snsInstagramUrl = String(formData.get('sns_instagram_url') ?? '').trim()
   const country = String(formData.get('country') ?? '').trim()
   const prefectureOrState = String(formData.get('prefecture_or_state') ?? '').trim()
   const city = String(formData.get('city') ?? '').trim()
@@ -33,6 +35,8 @@ export async function importRecordShop(formData: FormData) {
     address: address || null,
     official_site_url: officialSiteUrl || null,
     hours: hours || null,
+    sns_x_url: snsXUrl || null,
+    sns_instagram_url: snsInstagramUrl || null,
     country: country || null,
     prefecture_or_state: prefectureOrState || null,
     city: city || null,

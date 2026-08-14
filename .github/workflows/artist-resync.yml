@@ -1,0 +1,27 @@
+name: Artist catalog resync
+
+on:
+  schedule:
+    # 毎月1日・15日の 03:00 UTC (日本時間 12:00)
+    - cron: '0 3 1,15 * *'
+  workflow_dispatch: {}
+
+jobs:
+  resync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - run: npm ci
+
+      - name: Resync all artists
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          DISCOGS_TOKEN: ${{ secrets.DISCOGS_TOKEN }}
+        run: npx tsx scripts/resync-all-artists.ts

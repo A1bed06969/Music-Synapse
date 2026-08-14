@@ -180,16 +180,16 @@ export type MusicBrainzReleaseSearchResult = {
   date: string | null
   country: string | null
   score: number | null
+  /** リリースの筆頭アーティストのMBID(artist-creditの先頭)。アーティスト自体の
+   * MBID自動照合(utils/artistProfileImport.ts)に使う */
+  artistMbid: string | null
 }
 
 function escapeLuceneQueryValue(value: string): string {
   return value.replace(/"/g, '\\"')
 }
 
-export async function searchRelease(title: string, artistName: string): Promise<MusicBrainzReleaseSearchResult[]> {
-  const query = `release:"${escapeLuceneQueryValue(title)}" AND artist:"${escapeLuceneQueryValue(artistName)}"`
-  const url = `${MUSICBRAINZ_BASE}/release?query=${encodeURIComponent(query)}&fmt=json&limit=5`
-  const data = await fetchMusicBrainz(url, 'release search')
+function mapReleaseSearchResults(data: any): MusicBrainzReleaseSearchResult[] {
   return (data.releases ?? []).map((r: any) => {
     const event = Array.isArray(r['release-events']) ? r['release-events'][0] : null
     return {
@@ -198,8 +198,32 @@ export async function searchRelease(title: string, artistName: string): Promise<
       date: event?.date ?? null,
       country: event?.area?.name ?? null,
       score: r.score != null && !Number.isNaN(Number(r.score)) ? Number(r.score) : null,
+      artistMbid: r['artist-credit']?.[0]?.artist?.id ?? null,
     }
   })
+}
+
+export async function searchRelease(title: string, artistName: string): Promise<MusicBrainzReleaseSearchResult[]> {
+  const query = `release:"${escapeLuceneQueryValue(title)}" AND artist:"${escapeLuceneQueryValue(artistName)}"`
+  const url = `${MUSICBRAINZ_BASE}/release?query=${encodeURIComponent(query)}&fmt=json&limit=5`
+  const data = await fetchMusicBrainz(url, 'release search')
+  return mapReleaseSearchResults(data)
+}
+
+/**
+ * タイトルのみでのrelease検索(アーティスト名で絞らない)。
+ * うちのDBのアーティスト名はiTunes JPカタログ由来のカタカナ表記のことが多く、
+ * MusicBrainz側には該当するアーティスト名の表記が存在しないため
+ * (例:「フー・ファイターズ」⇔"Foo Fighters")、artist:"..."で絞り込むと
+ * 海外アーティストで機械的にゼロ件になってしまう。そのためアーティストMBIDの
+ * 自動照合(utils/artistProfileImport.ts)ではタイトルのみで検索し、複数タイトルの
+ * 一致結果が同じartistMbidに集まるかどうかで確からしさを担保する
+ */
+export async function searchReleaseByTitle(title: string): Promise<MusicBrainzReleaseSearchResult[]> {
+  const query = `release:"${escapeLuceneQueryValue(title)}"`
+  const url = `${MUSICBRAINZ_BASE}/release?query=${encodeURIComponent(query)}&fmt=json&limit=5`
+  const data = await fetchMusicBrainz(url, 'release search (title only)')
+  return mapReleaseSearchResults(data)
 }
 
 export type MusicBrainzReleaseCredit = {

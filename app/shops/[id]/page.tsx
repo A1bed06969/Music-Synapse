@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
+import { siX, siInstagram } from 'simple-icons'
 import { createClient } from '@/utils/Supabase/server'
 
 export default async function ShopDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -8,7 +9,7 @@ export default async function ShopDetailPage({ params }: { params: Promise<{ id:
 
   const { data: shop, error } = await supabase
     .from('recordshop')
-    .select('id, name, address, country, prefecture_or_state, city, hours, official_site_url')
+    .select('id, name, address, country, prefecture_or_state, city, hours, official_site_url, sns_x_url, sns_instagram_url')
     .eq('id', id)
     .single()
 
@@ -32,16 +33,48 @@ export default async function ShopDetailPage({ params }: { params: Promise<{ id:
         {shop.hours && <p>営業時間: {shop.hours}</p>}
       </div>
 
-      {shop.official_site_url && (
-        <a
-          href={shop.official_site_url}
-          target="_blank"
-          rel="noreferrer"
-          className="mt-4 inline-block rounded-full border border-white/15 px-3 py-1 text-xs text-white/60 hover:text-white"
-        >
-          公式サイト →
-        </a>
-      )}
+      <div className="mt-4 flex flex-wrap items-center gap-2">
+        {shop.official_site_url && (
+          <a
+            href={shop.official_site_url}
+            target="_blank"
+            rel="noreferrer"
+            className="rounded-full border border-white/15 px-3 py-1 text-xs text-white/60 hover:text-white"
+          >
+            公式サイト →
+          </a>
+        )}
+        {shop.sns_x_url && (
+          <a
+            href={shop.sns_x_url}
+            target="_blank"
+            rel="noreferrer"
+            title="X"
+            aria-label="X"
+            className="flex h-9 w-9 items-center justify-center rounded-full transition hover:opacity-80"
+            style={{ backgroundColor: `#${siX.hex}` }}
+          >
+            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="#fff">
+              <path d={siX.path} />
+            </svg>
+          </a>
+        )}
+        {shop.sns_instagram_url && (
+          <a
+            href={shop.sns_instagram_url}
+            target="_blank"
+            rel="noreferrer"
+            title="Instagram"
+            aria-label="Instagram"
+            className="flex h-9 w-9 items-center justify-center rounded-full transition hover:opacity-80"
+            style={{ backgroundColor: `#${siInstagram.hex}` }}
+          >
+            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="#fff">
+              <path d={siInstagram.path} />
+            </svg>
+          </a>
+        )}
+      </div>
     </div>
   )
 }

@@ -187,7 +187,7 @@ export function buildTrackIdResolver(albumTracks: { id: string; title: string }[
   return (trackTitle) => (trackTitle ? (trackIdByTitle.get(normalizeTitle(trackTitle)) ?? null) : null)
 }
 
-function normalizeAlbumTitle(title: string): string {
+export function normalizeAlbumTitle(title: string): string {
   return title.trim().toLowerCase().replace(/\s+/g, ' ')
 }
 

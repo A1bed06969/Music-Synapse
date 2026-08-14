@@ -10,7 +10,7 @@ export default async function UnreleasedArtistsListPage() {
     supabase
       .from('album')
       .select('id, title, streaming_status, artist:artist_id(id, name)')
-      .in('streaming_status', ['apple_only', 'none'])
+      .eq('streaming_status', 'none')
       .order('title'),
   ])
 
@@ -45,8 +45,10 @@ export default async function UnreleasedArtistsListPage() {
       )}
 
       <section className="mt-12 border-t border-white/10 pt-8">
-        <h2 className="text-lg font-semibold">配信が一部制限されているアルバム</h2>
-        <p className="mt-1 text-xs text-white/40">全配信中ではない(Apple Music限定・配信なし)アルバムです。</p>
+        <h2 className="text-lg font-semibold">未解禁・配信停止のアルバム</h2>
+        <p className="mt-1 text-xs text-white/40">
+          配信が確認できていない、または過去に配信が確認できなくなったアルバムです。
+        </p>
 
         {!albums || albums.length === 0 ? (
           <p className="mt-6 text-sm text-white/40">該当するアルバムはいません。</p>

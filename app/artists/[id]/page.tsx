@@ -1,7 +1,13 @@
 import Link from 'next/link'
 import { createClient } from '@/utils/Supabase/server'
 import { notFound } from 'next/navigation'
-import { formatDate, extractYoutubeVideoId, ARTIST_STREAMING_STATUS_LABEL, ARTIST_TYPE_LABEL } from '@/utils/format'
+import {
+  formatDate,
+  extractYoutubeVideoId,
+  ARTIST_STREAMING_STATUS_LABEL,
+  ARTIST_TYPE_LABEL,
+  STREAMING_STATUS_LABEL,
+} from '@/utils/format'
 import RelationGraph from '@/app/components/RelationGraph'
 import { buildArtistRelationGraph } from '@/utils/relationGraphData'
 import ArtistLinkIcons from '@/app/components/ArtistLinkIcons'
@@ -39,7 +45,7 @@ export default async function ArtistDetailPage({
       supabase.from('artist').select('*').eq('id', id).single(),
       supabase
         .from('album')
-        .select('id, title, jacket_url, release_date, album_type')
+        .select('id, title, jacket_url, release_date, album_type, streaming_status')
         .eq('artist_id', id)
         .order('release_date', { ascending: false, nullsFirst: false }),
       supabase
@@ -203,26 +209,38 @@ export default async function ArtistDetailPage({
         <p className="mt-4 text-sm text-white/40">まだアルバムが登録されていません。</p>
       ) : (
         <div className="mt-4 flex gap-4 overflow-x-auto pb-2">
-          {albums.map((album) => (
-            <Link key={album.id} href={`/albums/${album.id}`} className="group block w-28 flex-shrink-0">
-              <div className="aspect-square overflow-hidden rounded-md bg-white/5">
-                {album.jacket_url ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={album.jacket_url}
-                    alt={album.title}
-                    className="h-full w-full object-cover transition group-hover:scale-105"
-                  />
-                ) : (
-                  <div className="flex h-full w-full items-center justify-center text-white/20">
-                    No Art
-                  </div>
+          {albums.map((album) => {
+            // Apple Music限定(apple_only)は自動判定できず手動設定でしか付かないため、
+            // ここでは自動検知される「配信なし(未解禁・配信停止)」のみバッジ表示する
+            const status = album.streaming_status === 'none' ? STREAMING_STATUS_LABEL.none : null
+            return (
+              <Link key={album.id} href={`/albums/${album.id}`} className="group block w-28 flex-shrink-0">
+                <div className="relative aspect-square overflow-hidden rounded-md bg-white/5">
+                  {album.jacket_url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={album.jacket_url}
+                      alt={album.title}
+                      className={`h-full w-full object-cover transition group-hover:scale-105 ${
+                        status ? 'opacity-60' : ''
+                      }`}
+                    />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center text-white/20">
+                      No Art
+                    </div>
+                  )}
+                </div>
+                <p className="mt-2 truncate text-sm font-medium">{album.title}</p>
+                <p className="text-xs text-white/40">{formatDate(album.release_date)}</p>
+                {status && (
+                  <p className="mt-0.5 text-xs text-white/40">
+                    {status.icon} {status.label}
+                  </p>
                 )}
-              </div>
-              <p className="mt-2 truncate text-sm font-medium">{album.title}</p>
-              <p className="text-xs text-white/40">{formatDate(album.release_date)}</p>
-            </Link>
-          ))}
+              </Link>
+            )
+          })}
         </div>
       )}
 
