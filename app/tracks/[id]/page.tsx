@@ -37,7 +37,7 @@ export default async function TrackDetailPage({
     await Promise.all([
       supabase
         .from('artist_credit')
-        .select('role, credit_person:credit_person_id(id, name)')
+        .select('role, credit_person:credit_person_id(id, name), instrument:instrument_id(id, name)')
         .eq('album_id', track.album_id)
         .or(`track_id.eq.${id},track_id.is.null`),
       supabase.from('track_instrument').select('instrument:instrument_id(id, name)').eq('track_id', id),
@@ -57,9 +57,12 @@ export default async function TrackDetailPage({
   const album = Array.isArray(track.album) ? track.album[0] : track.album
   const artist = Array.isArray(track.artist) ? track.artist[0] : track.artist
 
-  const ROLE_ORDER = ['producer', 'mix', 'mastering', 'composer', 'lyricist', 'arranger', 'artwork', 'musician'] as const
+  // 「ミュージシャン」ロールは楽器名ごとに演奏者をまとめて「使用楽器」欄で表示するため、
+  // ここでは楽器を伴わないロール(プロデューサー等)だけを対象にする
+  const ROLE_ORDER = ['producer', 'mix', 'mastering', 'composer', 'lyricist', 'arranger', 'artwork'] as const
   const creditsByRole = new Map<string, { id: string; name: string }[]>()
   for (const c of credits ?? []) {
+    if (c.role === 'musician') continue
     const person = Array.isArray(c.credit_person) ? c.credit_person[0] : c.credit_person
     if (!person) continue
     const list = creditsByRole.get(c.role) ?? []
@@ -69,6 +72,27 @@ export default async function TrackDetailPage({
   const creditGroups = ROLE_ORDER.map((role) => ({ role, people: creditsByRole.get(role) ?? [] })).filter(
     (g) => g.people.length > 0
   )
+
+  // 使用楽器: track_instrument(このトラックで使われた楽器の全量)を軸に、
+  // artist_credit(musicianロール)から分かる演奏者名があれば付け加える
+  const performersByInstrumentId = new Map<string, { id: string; name: string }[]>()
+  for (const c of credits ?? []) {
+    if (c.role !== 'musician') continue
+    const person = Array.isArray(c.credit_person) ? c.credit_person[0] : c.credit_person
+    const instrument = Array.isArray(c.instrument) ? c.instrument[0] : c.instrument
+    if (!person || !instrument) continue
+    const list = performersByInstrumentId.get(instrument.id) ?? []
+    if (!list.some((p) => p.id === person.id)) list.push({ id: person.id, name: person.name })
+    performersByInstrumentId.set(instrument.id, list)
+  }
+  const instrumentGroups = (trackInstruments ?? [])
+    .map((ti) => (Array.isArray(ti.instrument) ? ti.instrument[0] : ti.instrument))
+    .filter((instrument): instrument is { id: string; name: string } => Boolean(instrument))
+    .map((instrument) => ({
+      instrumentId: instrument.id,
+      instrumentName: instrument.name,
+      people: performersByInstrumentId.get(instrument.id) ?? [],
+    }))
 
   const youtubeVideoId = track.youtube_video_id ? extractYoutubeVideoId(track.youtube_video_id) : null
   const youtubeSrc = youtubeVideoId ? `https://www.youtube.com/embed/${youtubeVideoId}` : null
@@ -157,24 +181,30 @@ export default async function TrackDetailPage({
         </a>
       )}
 
-      {trackInstruments && trackInstruments.length > 0 && (
+      {instrumentGroups.length > 0 && (
         <section className="mt-8">
           <h2 className="text-xs font-medium uppercase tracking-wide text-white/40">使用楽器</h2>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {trackInstruments.map((row, i) => {
-              const instrument = Array.isArray(row.instrument) ? row.instrument[0] : row.instrument
-              if (!instrument) return null
-              return (
-                <Link
-                  key={i}
-                  href={`/tracks/instrument/${instrument.id}`}
-                  className="rounded-full border border-white/15 px-3 py-1 text-xs text-white/60 hover:text-white"
-                >
-                  🎸 {instrument.name}
+          <ul className="mt-3 space-y-1.5 text-sm">
+            {instrumentGroups.map((group) => (
+              <li key={group.instrumentId} className="flex flex-wrap items-baseline gap-x-2 text-white/70">
+                <Link href={`/tracks/instrument/${group.instrumentId}`} className="text-white/40 hover:text-white">
+                  {group.instrumentName}
                 </Link>
-              )
-            })}
-          </div>
+                {group.people.length > 0 && (
+                  <span>
+                    {group.people.map((person, i) => (
+                      <span key={person.id}>
+                        {i > 0 && '、'}
+                        <Link href={`/people/${person.id}`} className="hover:text-white">
+                          {person.name}
+                        </Link>
+                      </span>
+                    ))}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
         </section>
       )}
 
@@ -183,9 +213,9 @@ export default async function TrackDetailPage({
           <h2 className="text-xs font-medium uppercase tracking-wide text-white/40">クレジット</h2>
           <ul className="mt-3 space-y-1.5 text-sm">
             {creditGroups.map((group) => (
-              <li key={group.role} className="flex justify-between gap-4 text-white/70">
+              <li key={group.role} className="flex flex-wrap items-baseline gap-x-2 text-white/70">
                 <span className="text-white/40">{CREDIT_ROLE_LABEL[group.role] ?? group.role}</span>
-                <span className="text-right">
+                <span>
                   {group.people.map((person, i) => (
                     <span key={person.id}>
                       {i > 0 && '、'}

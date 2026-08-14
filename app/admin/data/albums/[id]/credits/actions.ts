@@ -50,15 +50,17 @@ export async function importAlbumCredits(formData: FormData) {
     const personMatchColumn = source === 'discogs' ? 'discogs_id' : 'musicbrainz_id'
 
     // ミュージシャンロールは、カタログとの人物一致状況に関わらず
-    // 「このトラックでこの楽器が使われた」というトラック単位の記録を別途残す
-    if (role === 'musician' && trackId && instrumentName) {
+    // 「この楽器が使われた」という記録を別途残す(instrument_idはartist_creditにも
+    // 付与し、後で「誰が何を演奏したか」を表示できるようにする)
+    let instrumentId: string | undefined
+    if (role === 'musician' && instrumentName) {
       const { data: existingInstrument } = await supabase
         .from('instrument')
         .select('id')
         .ilike('name', instrumentName)
         .maybeSingle()
 
-      let instrumentId = existingInstrument?.id as string | undefined
+      instrumentId = existingInstrument?.id as string | undefined
       if (!instrumentId) {
         const { data: createdInstrument, error: createError } = await supabase
           .from('instrument')
@@ -73,7 +75,8 @@ export async function importAlbumCredits(formData: FormData) {
         }
       }
 
-      if (instrumentId) {
+      // track_instrument(トラック↔楽器の一覧表示用)はトラックが特定できる場合のみ書き込む
+      if (instrumentId && trackId) {
         const { data: tiData, error: tiError } = await supabase
           .from('track_instrument')
           .upsert(
@@ -159,8 +162,12 @@ export async function importAlbumCredits(formData: FormData) {
           role,
           source,
           source_url: sourceUrl || null,
+          instrument_id: instrumentId ?? null,
         },
-        { onConflict: 'artist_id,album_id,track_id,credit_person_id,role,source', ignoreDuplicates: true }
+        {
+          onConflict: 'artist_id,album_id,track_id,credit_person_id,role,source,instrument_id',
+          ignoreDuplicates: true,
+        }
       )
       .select()
     if (creditError) {
