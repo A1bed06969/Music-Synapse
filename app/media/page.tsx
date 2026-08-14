@@ -30,6 +30,9 @@ export default async function MediaHubPage({
       <p className="mt-2 text-sm text-white/50">全国のメディア・番組からパワープレイ・企画・タイアップ実績を発見できます。</p>
 
       <div className="mt-6 flex flex-wrap gap-3 text-sm">
+        <Link href="/media/news" className="rounded-full border border-white/15 px-4 py-1.5 hover:bg-white/5">
+          📰 NEWS STREAM
+        </Link>
         <Link href="/media/on-air" className="rounded-full border border-white/15 px-4 py-1.5 hover:bg-white/5">
           📻 パワープレイ&ヘビロテ
         </Link>
