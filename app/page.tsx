@@ -55,7 +55,7 @@ async function getLatestRotations() {
 const HUB_CARDS: { image: string; title: string; subtitle: string; href: string }[] = [
   { image: '/release_schedule.png', title: '新譜リリーススケジュール', subtitle: '今週・来週の新譜一覧', href: '/albums/calendar' },
   { image: '/news_stream.png', title: '最新ニュースストリーム', subtitle: '直近の更新・記事一覧', href: '/media/news' },
-  { image: '/curation_playlist.png', title: '厳選プレイリストハブ', subtitle: 'キュレーションプレイリスト集', href: '/media/features' },
+  { image: '/curation_playlist.png', title: '厳選プレイリストハブ', subtitle: 'キュレーションプレイリスト集', href: '/media/playlists' },
 ]
 
 export default async function Home() {

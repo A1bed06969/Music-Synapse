@@ -33,6 +33,9 @@ export default async function MediaHubPage({
         <Link href="/media/news" className="rounded-full border border-white/15 px-4 py-1.5 hover:bg-white/5">
           📰 NEWS STREAM
         </Link>
+        <Link href="/media/playlists" className="rounded-full border border-white/15 px-4 py-1.5 hover:bg-white/5">
+          🎧 厳選プレイリスト
+        </Link>
         <Link href="/media/on-air" className="rounded-full border border-white/15 px-4 py-1.5 hover:bg-white/5">
           📻 パワープレイ&ヘビロテ
         </Link>
