@@ -12,6 +12,7 @@ import {
   type ItunesAlbum,
 } from '@/utils/itunes'
 import { fetchAppleMusicArtistImage } from '@/utils/appleMusicImage'
+import { autoImportFromMusicBrainz, autoImportFromDiscogs } from '@/utils/creditImport'
 
 type ImportResult = {
   success: boolean
@@ -74,10 +75,13 @@ export async function upsertArtistFromItunes(
 
 /** 指定アーティストのアルバムを1件ずつupsertし、収録トラックも取得して登録する。
  * iTunes APIのレート制限対策で1アルバムごとに間隔を空けるため、アルバム数が
- * 多いアーティストは数十秒〜かかることがある(呼び出し側で長時間処理として扱うこと) */
+ * 多いアーティストは数十秒〜かかることがある(呼び出し側で長時間処理として扱うこと)。
+ * アルバムごとにMusicBrainz→Discogsでクレジット取込も試みる(完全一致時のみ、
+ * ベストエフォート)ため、クレジットが多いアーティストはさらに時間がかかる */
 export async function syncAlbumsAndTracksForArtist(
   supabase: SupabaseClient,
   artistId: string,
+  artistName: string,
   itunesAlbums: ItunesAlbum[],
   appleMusicArtistId: string
 ): Promise<number> {
@@ -136,6 +140,8 @@ export async function syncAlbumsAndTracksForArtist(
       albumId = insertedAlbum.id
     }
 
+    const albumTrackList: { id: string; title: string }[] = []
+
     for (const itunesTrack of itunesTracks) {
       const { data: existingTrack } = await supabase
         .from('track')
@@ -157,14 +163,34 @@ export async function syncAlbumsAndTracksForArtist(
 
       if (existingTrack) {
         await supabase.from('track').update(trackPayload).eq('id', existingTrack.id)
+        albumTrackList.push({ id: existingTrack.id, title: itunesTrack.trackName })
       } else {
-        const { error: trackError } = await supabase.from('track').insert(trackPayload)
-        if (trackError) {
-          console.error('トラック登録失敗:', itunesTrack.trackName, trackError.message)
+        const { data: insertedTrack, error: trackError } = await supabase
+          .from('track')
+          .insert(trackPayload)
+          .select('id')
+          .single()
+        if (trackError || !insertedTrack) {
+          console.error('トラック登録失敗:', itunesTrack.trackName, trackError?.message)
           continue
         }
+        albumTrackList.push({ id: insertedTrack.id, title: itunesTrack.trackName })
       }
       totalTrackCount++
+    }
+
+    // このアルバムのクレジットをMusicBrainz→Discogsの順で試みる(タイトル完全一致時のみ、
+    // ベストエフォート。取得失敗・不一致はアルバム・トラック登録自体には影響させない)
+    const albumForCredits = { id: albumId, title: albumPayload.title }
+    try {
+      await autoImportFromMusicBrainz(supabase, artistId, artistName, albumForCredits, albumTrackList)
+    } catch (err) {
+      console.error(`MusicBrainzクレジット取込に失敗しました(${albumPayload.title}):`, err)
+    }
+    try {
+      await autoImportFromDiscogs(supabase, artistId, artistName, albumForCredits, albumTrackList)
+    } catch (err) {
+      console.error(`Discogsクレジット取込に失敗しました(${albumPayload.title}):`, err)
     }
   }
 
@@ -196,6 +222,7 @@ async function importOneArtist(artistUrl: string): Promise<ImportResult> {
   const totalTrackCount = await syncAlbumsAndTracksForArtist(
     supabase,
     artistId,
+    itunesArtist.artistName,
     itunesAlbums,
     String(itunesArtist.artistId)
   )

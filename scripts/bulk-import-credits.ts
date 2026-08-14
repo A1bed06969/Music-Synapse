@@ -19,109 +19,7 @@
  * 追加取得も必要なため全体で数時間規模。バックグラウンド実行を推奨。
  */
 import { createAdminClient } from '@/utils/Supabase/admin'
-import { searchRelease as searchMbRelease, fetchReleaseCreditsAndInstruments } from '@/utils/musicbrainz'
-import { searchRelease as searchDiscogsRelease, fetchReleaseCredits as fetchDiscogsCredits } from '@/utils/discogs'
-import { writeAlbumCredits, buildTrackIdResolver, type UnifiedCreditInput } from '@/utils/creditImport'
-import type { SupabaseClient } from '@supabase/supabase-js'
-
-function normalize(title: string): string {
-  return title.trim().toLowerCase().replace(/\s+/g, ' ')
-}
-
-// Discogsの検索結果タイトルは "Artist - Title" 形式で返ってくるため、
-// アーティスト名プレフィックスを除去してからアルバムタイトルと比較する
-function stripDiscogsArtistPrefix(resultTitle: string, artistName: string): string {
-  const prefix = `${artistName} - `
-  if (resultTitle.startsWith(prefix)) return resultTitle.slice(prefix.length)
-  const idx = resultTitle.indexOf(' - ')
-  return idx >= 0 ? resultTitle.slice(idx + 3) : resultTitle
-}
-
-type AlbumRow = { id: string; title: string }
-
-async function processMusicBrainz(
-  supabase: SupabaseClient,
-  artistId: string,
-  artistName: string,
-  album: AlbumRow
-): Promise<string> {
-  let results
-  try {
-    results = await searchMbRelease(album.title, artistName)
-  } catch (err) {
-    return `MB検索失敗: ${(err as Error).message}`
-  }
-
-  const exact = results.find((r) => normalize(r.title) === normalize(album.title))
-  if (!exact) return 'MB一致なし'
-
-  let mbCredits
-  try {
-    const result = await fetchReleaseCreditsAndInstruments(exact.mbid)
-    mbCredits = result.credits
-  } catch (err) {
-    return `MBクレジット取得失敗: ${(err as Error).message}`
-  }
-  if (mbCredits.length === 0) return 'MB一致(クレジット0件)'
-
-  const { data: albumTracks } = await supabase.from('track').select('id, title').eq('album_id', album.id)
-  const resolveTrackId = buildTrackIdResolver(albumTracks ?? [])
-
-  const unified: UnifiedCreditInput[] = mbCredits.map((c) => ({
-    personName: c.personName,
-    personSourceId: c.personMbid,
-    source: 'musicbrainz',
-    role: c.role,
-    sourceUrl: c.sourceUrl,
-    trackId: resolveTrackId(c.trackTitle),
-    instrumentName: c.instrumentName ?? null,
-  }))
-
-  const r = await writeAlbumCredits(supabase, artistId, album.id, unified)
-  return `MB取込: 関係${r.relationsWritten}/クレジット${r.creditsWritten}/楽器${r.instrumentsWritten}(失敗${r.failureCount})`
-}
-
-async function processDiscogs(
-  supabase: SupabaseClient,
-  artistId: string,
-  artistName: string,
-  album: AlbumRow
-): Promise<string> {
-  let results
-  try {
-    results = await searchDiscogsRelease(album.title, artistName)
-  } catch (err) {
-    return `Discogs検索失敗: ${(err as Error).message}`
-  }
-
-  const exact = results.find((r) => normalize(stripDiscogsArtistPrefix(r.title, artistName)) === normalize(album.title))
-  if (!exact) return 'Discogs一致なし'
-
-  let discogsCredits
-  try {
-    const result = await fetchDiscogsCredits(exact.discogsId)
-    discogsCredits = result.credits
-  } catch (err) {
-    return `Discogsクレジット取得失敗: ${(err as Error).message}`
-  }
-  if (discogsCredits.length === 0) return 'Discogs一致(クレジット0件)'
-
-  const { data: albumTracks } = await supabase.from('track').select('id, title').eq('album_id', album.id)
-  const resolveTrackId = buildTrackIdResolver(albumTracks ?? [])
-
-  const unified: UnifiedCreditInput[] = discogsCredits.map((c) => ({
-    personName: c.personName,
-    personSourceId: c.personDiscogsId,
-    source: 'discogs',
-    role: c.role,
-    sourceUrl: c.sourceUrl,
-    trackId: resolveTrackId(c.trackTitle),
-    instrumentName: c.instrumentName ?? null,
-  }))
-
-  const r = await writeAlbumCredits(supabase, artistId, album.id, unified)
-  return `Discogs取込: 関係${r.relationsWritten}/クレジット${r.creditsWritten}/楽器${r.instrumentsWritten}(失敗${r.failureCount})`
-}
+import { autoImportFromMusicBrainz, autoImportFromDiscogs } from '@/utils/creditImport'
 
 async function main() {
   const supabase = createAdminClient()
@@ -153,8 +51,8 @@ async function main() {
         continue
       }
 
-      const mbResult = await processMusicBrainz(supabase, artist.id, artist.name, album)
-      const discogsResult = await processDiscogs(supabase, artist.id, artist.name, album)
+      const mbResult = await autoImportFromMusicBrainz(supabase, artist.id, artist.name, album)
+      const discogsResult = await autoImportFromDiscogs(supabase, artist.id, artist.name, album)
       albumsProcessed += 1
 
       console.log(`  ${album.title}`)

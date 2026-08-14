@@ -1,5 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { CREDIT_ROLE_LABEL } from '@/utils/format'
+import { searchRelease as searchMbRelease, fetchReleaseCreditsAndInstruments } from '@/utils/musicbrainz'
+import { searchRelease as searchDiscogsRelease, fetchReleaseCredits as fetchDiscogsCredits } from '@/utils/discogs'
 
 export type UnifiedCreditInput = {
   personName: string
@@ -183,4 +185,122 @@ export function buildTrackIdResolver(albumTracks: { id: string; title: string }[
   const normalizeTitle = (title: string) => title.trim().toLowerCase()
   const trackIdByTitle = new Map(albumTracks.map((t) => [normalizeTitle(t.title), t.id]))
   return (trackTitle) => (trackTitle ? (trackIdByTitle.get(normalizeTitle(trackTitle)) ?? null) : null)
+}
+
+function normalizeAlbumTitle(title: string): string {
+  return title.trim().toLowerCase().replace(/\s+/g, ' ')
+}
+
+// Discogsの検索結果タイトルは "Artist - Title" 形式で返ってくるため、
+// アーティスト名プレフィックスを除去してからアルバムタイトルと比較する
+function stripDiscogsArtistPrefix(resultTitle: string, artistName: string): string {
+  const prefix = `${artistName} - `
+  if (resultTitle.startsWith(prefix)) return resultTitle.slice(prefix.length)
+  const idx = resultTitle.indexOf(' - ')
+  return idx >= 0 ? resultTitle.slice(idx + 3) : resultTitle
+}
+
+export type AlbumForCreditImport = { id: string; title: string }
+
+async function resolveAlbumTracks(
+  supabase: SupabaseClient,
+  album: AlbumForCreditImport,
+  albumTracks?: { id: string; title: string }[]
+): Promise<{ id: string; title: string }[]> {
+  if (albumTracks) return albumTracks
+  const { data } = await supabase.from('track').select('id, title').eq('album_id', album.id)
+  return data ?? []
+}
+
+/**
+ * MusicBrainzでアルバムを検索し、タイトルが完全一致(正規化後)した場合のみ
+ * クレジットを自動取込する。人間の確認を挟まないため、一致しない場合は
+ * 何もせず理由文字列を返すだけにする(誤マッチ防止)。
+ * 一括バックフィルスクリプトとiTunesバルク登録の自動クレジット取込の両方から使う。
+ */
+export async function autoImportFromMusicBrainz(
+  supabase: SupabaseClient,
+  artistId: string,
+  artistName: string,
+  album: AlbumForCreditImport,
+  albumTracks?: { id: string; title: string }[]
+): Promise<string> {
+  let results
+  try {
+    results = await searchMbRelease(album.title, artistName)
+  } catch (err) {
+    return `MB検索失敗: ${(err as Error).message}`
+  }
+
+  const exact = results.find((r) => normalizeAlbumTitle(r.title) === normalizeAlbumTitle(album.title))
+  if (!exact) return 'MB一致なし'
+
+  let mbCredits
+  try {
+    const result = await fetchReleaseCreditsAndInstruments(exact.mbid)
+    mbCredits = result.credits
+  } catch (err) {
+    return `MBクレジット取得失敗: ${(err as Error).message}`
+  }
+  if (mbCredits.length === 0) return 'MB一致(クレジット0件)'
+
+  const resolveTrackId = buildTrackIdResolver(await resolveAlbumTracks(supabase, album, albumTracks))
+
+  const unified: UnifiedCreditInput[] = mbCredits.map((c) => ({
+    personName: c.personName,
+    personSourceId: c.personMbid,
+    source: 'musicbrainz',
+    role: c.role,
+    sourceUrl: c.sourceUrl,
+    trackId: resolveTrackId(c.trackTitle),
+    instrumentName: c.instrumentName ?? null,
+  }))
+
+  const r = await writeAlbumCredits(supabase, artistId, album.id, unified)
+  return `MB取込: 関係${r.relationsWritten}/クレジット${r.creditsWritten}/楽器${r.instrumentsWritten}(失敗${r.failureCount})`
+}
+
+/** Discogs版のautoImportFromMusicBrainz。挙動・方針は同じ */
+export async function autoImportFromDiscogs(
+  supabase: SupabaseClient,
+  artistId: string,
+  artistName: string,
+  album: AlbumForCreditImport,
+  albumTracks?: { id: string; title: string }[]
+): Promise<string> {
+  let results
+  try {
+    results = await searchDiscogsRelease(album.title, artistName)
+  } catch (err) {
+    return `Discogs検索失敗: ${(err as Error).message}`
+  }
+
+  const exact = results.find(
+    (r) => normalizeAlbumTitle(stripDiscogsArtistPrefix(r.title, artistName)) === normalizeAlbumTitle(album.title)
+  )
+  if (!exact) return 'Discogs一致なし'
+
+  let discogsCredits
+  try {
+    const result = await fetchDiscogsCredits(exact.discogsId)
+    discogsCredits = result.credits
+  } catch (err) {
+    return `Discogsクレジット取得失敗: ${(err as Error).message}`
+  }
+  if (discogsCredits.length === 0) return 'Discogs一致(クレジット0件)'
+
+  const resolveTrackId = buildTrackIdResolver(await resolveAlbumTracks(supabase, album, albumTracks))
+
+  const unified: UnifiedCreditInput[] = discogsCredits.map((c) => ({
+    personName: c.personName,
+    personSourceId: c.personDiscogsId,
+    source: 'discogs',
+    role: c.role,
+    sourceUrl: c.sourceUrl,
+    trackId: resolveTrackId(c.trackTitle),
+    instrumentName: c.instrumentName ?? null,
+  }))
+
+  const r = await writeAlbumCredits(supabase, artistId, album.id, unified)
+  return `Discogs取込: 関係${r.relationsWritten}/クレジット${r.creditsWritten}/楽器${r.instrumentsWritten}(失敗${r.failureCount})`
 }
