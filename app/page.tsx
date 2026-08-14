@@ -76,6 +76,12 @@ async function getLatestRotations() {
   })
 }
 
+const HUB_CARDS: { icon: string; title: string; subtitle: string; href: string }[] = [
+  { icon: '🗓️', title: '新譜リリーススケジュール', subtitle: '今週・来週の新譜一覧', href: '/albums/calendar' },
+  { icon: '📰', title: '最新ニュースストリーム', subtitle: '直近の更新・記事一覧', href: '/media' },
+  { icon: '🎧', title: '厳選プレイリストハブ', subtitle: 'キュレーションプレイリスト集', href: '/media/features' },
+]
+
 const STAT_ITEMS: {
   key: 'artist' | 'album' | 'track' | 'event' | 'discGuide' | 'recordShop' | 'livehouse'
   label: string
@@ -143,6 +149,20 @@ export default async function Home() {
             </div>
           )
         })}
+      </section>
+
+      <section className="mt-10 grid grid-cols-1 gap-4 sm:grid-cols-3">
+        {HUB_CARDS.map((card) => (
+          <Link
+            key={card.href}
+            href={card.href}
+            className="rounded-lg border border-white/10 bg-white/[0.03] p-6 transition hover:border-white/25 hover:bg-white/[0.06]"
+          >
+            <span className="text-2xl">{card.icon}</span>
+            <p className="mt-3 text-base font-semibold">{card.title}</p>
+            <p className="mt-1 text-xs text-white/50">{card.subtitle}</p>
+          </Link>
+        ))}
       </section>
 
       <section className="mt-14">
