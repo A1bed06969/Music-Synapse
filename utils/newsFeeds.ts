@@ -17,4 +17,6 @@ export const NEWS_SOURCES: NewsSource[] = [
   { name: '音楽と人', feedUrl: 'https://ongakutohito.com/feed/' },
   { name: 'BIG UP!zine', feedUrl: 'https://big-up.style/zine/feed/' },
   { name: 'TURN', feedUrl: 'https://turntokyo.com/feed/' },
+  { name: 'Mikiki', feedUrl: 'https://mikiki.tokyo.jp/list/feed/rss' },
+  { name: 'NME Japan', feedUrl: 'https://nme-jp.com/feed/' },
 ]

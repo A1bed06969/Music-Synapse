@@ -21,7 +21,7 @@ export type NewsItem = {
   category: NewsCategory
 }
 
-const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '@_' })
+const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '@_', htmlEntities: true })
 
 // RSS/Atomのタグ構成はソースごとにバラつくため、パース結果は動的な構造として扱う
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -56,6 +56,11 @@ function extractThumbnail(raw: XmlNode): string | null {
   if (mediaThumbnail) {
     if (typeof mediaThumbnail === 'string') return mediaThumbnail
     if (mediaThumbnail['@_url']) return mediaThumbnail['@_url']
+  }
+
+  const mediaContent = raw['media:content']
+  if (mediaContent?.['@_url'] && String(mediaContent['@_type'] ?? '').startsWith('image')) {
+    return mediaContent['@_url']
   }
 
   const enclosure = raw.enclosure
@@ -123,6 +128,30 @@ function normalizeRssItems(channel: XmlNode, sourceName: string): NewsItem[] {
   })
 }
 
+// RSS 1.0(RDF)形式: <rdf:RDF>直下にchannel(メタ情報)とitem要素が兄弟として並ぶ
+// (RSS2.0のようにitemがchannelの中に入れ子にならない)。Mikikiがこの形式。
+function normalizeRdfItems(root: XmlNode, sourceName: string): NewsItem[] {
+  const items = Array.isArray(root.item) ? root.item : root.item ? [root.item] : []
+
+  return items.map((item: XmlNode, i: number) => {
+    const categories = toStringArray(item['dc:subject'])
+      .map((c) => c.trim())
+      .filter(Boolean)
+    const publishedAt = item['dc:date'] ?? new Date().toISOString()
+    const title = textOf(item.title).trim()
+    return {
+      id: textOf(item.link) || `${sourceName}-${i}`,
+      source: sourceName,
+      title,
+      link: textOf(item.link),
+      thumbnailUrl: extractThumbnail(item),
+      publishedAt: new Date(publishedAt).toISOString(),
+      author: item['dc:author'] ? textOf(item['dc:author']).trim() : null,
+      category: classifyCategory(title, categories),
+    }
+  })
+}
+
 export async function fetchNewsFeed(source: NewsSource): Promise<NewsItem[]> {
   const res = await fetch(source.feedUrl, {
     headers: { 'User-Agent': 'Mozilla/5.0 (compatible; MusicSynapseBot/1.0)' },
@@ -141,10 +170,13 @@ export async function fetchNewsFeed(source: NewsSource): Promise<NewsItem[]> {
   if (parsed.rss?.channel) {
     return normalizeRssItems(parsed.rss.channel, source.name)
   }
+  if (parsed['rdf:RDF']) {
+    return normalizeRdfItems(parsed['rdf:RDF'], source.name)
+  }
   return []
 }
 
-const MAX_ITEMS_PER_SOURCE = 20
+const MAX_ITEMS_PER_SOURCE = 5
 
 export async function fetchAllNews(sources: NewsSource[]): Promise<{ items: NewsItem[]; failedSources: string[] }> {
   const results = await Promise.allSettled(sources.map((s) => fetchNewsFeed(s)))
