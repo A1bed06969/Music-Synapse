@@ -1,8 +1,8 @@
 /**
  * scripts/test-apple-music-artist-image.tsで検証したApple Music公開アーティスト
- * ページのog:imageスクレイピングを使い、image_url未設定の全アーティストに
- * 画像を一括登録する。Wikidata経由の一括更新(app/admin/data/artists/images)と
- * 同じ方針で、既にimage_urlが設定済みのアーティストは上書きしない。
+ * ページのog:imageスクレイピングを使い、apple_music_artist_idを持つ全アーティストの
+ * image_urlをApple Music側の画像に統一する。Wikidata由来など既存の画像も上書きする
+ * (画像ソースをApple Musicに揃えるための再同期スクリプト)。
  *
  * 実行方法:
  *   npx tsx --env-file=.env.local scripts/backfill-apple-music-artist-images.ts
@@ -85,7 +85,6 @@ async function main() {
     .select('id, name, apple_music_artist_id, image_url')
     .not('apple_music_artist_id', 'is', null)
     .neq('apple_music_artist_id', '')
-    .is('image_url', null)
 
   if (error) {
     console.error('アーティスト取得に失敗しました:', error.message)
@@ -95,7 +94,7 @@ async function main() {
   const rows = (artists ?? []) as (ArtistRow & { image_url: string | null })[]
 
   if (rows.length === 0) {
-    console.log('image_url未設定でapple_music_artist_idを持つアーティストはいません。')
+    console.log('apple_music_artist_idを持つアーティストはいません。')
     return
   }
 
