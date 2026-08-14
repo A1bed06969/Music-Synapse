@@ -1,7 +1,6 @@
 import Link from 'next/link'
 import { createClient } from '@/utils/Supabase/server'
 import { formatDate, STREAMING_STATUS_LABEL } from '@/utils/format'
-import Logo from './components/Logo'
 
 async function getStats() {
   const supabase = await createClient()
@@ -97,9 +96,13 @@ export default async function Home() {
   return (
     <div className="mx-auto max-w-[1600px] px-6 py-12">
       <section className="text-center">
-        <h1 className="flex items-center justify-center gap-3 text-3xl font-bold tracking-tight sm:text-4xl">
-          <Logo className="h-10 w-10 shrink-0 sm:h-12 sm:w-12" />
-          Music Synapse
+        <h1>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/logo-full.png"
+            alt="Music Synapse"
+            className="mx-auto h-16 w-auto object-contain sm:h-20"
+          />
         </h1>
         <p className="mt-2 text-sm text-white/50">
           世界中の音楽データ・メディア・文脈をシナプスのように結合する

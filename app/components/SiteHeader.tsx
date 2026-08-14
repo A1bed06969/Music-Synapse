@@ -2,7 +2,6 @@
 
 import Link from 'next/link'
 import { useState } from 'react'
-import Logo from './Logo'
 
 const NAV_LINKS = [
   { href: '/', label: 'ホーム' },
@@ -22,7 +21,8 @@ export default function SiteHeader() {
     <header className="sticky top-0 z-20 border-b border-white/10 bg-[#0a0a0a]/90 backdrop-blur">
       <div className="mx-auto flex max-w-[1600px] items-center justify-between px-6 py-4">
         <Link href="/" className="flex items-center gap-2" onClick={() => setMenuOpen(false)}>
-          <Logo className="h-7 w-7 shrink-0" />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo-icon.png" alt="Music Synapse" className="h-9 w-9 shrink-0 object-contain" />
           <span className="flex items-baseline gap-2">
             <span className="text-lg font-bold tracking-tight text-white">Music Synapse</span>
             <span className="hidden text-xs text-white/40 sm:inline">ミュージック・シナプス</span>
