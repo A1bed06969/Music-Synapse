@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { createClient } from '@/utils/Supabase/server'
-import { geocodeVenue } from '@/utils/nominatim'
+import { geocodeWithFallback } from '@/utils/nominatim'
 import { importRecordShop } from './actions'
 import SubmitButton from './SubmitButton'
 
@@ -84,15 +84,22 @@ async function ShopCandidates({
   hours: string
 }) {
   let results
+  let isApproximate = false
   try {
-    results = await geocodeVenue(address)
+    const geocoded = await geocodeWithFallback(address)
+    results = geocoded.results
+    isApproximate = geocoded.isApproximate
   } catch (err) {
     console.error('Nominatim検索に失敗しました:', err)
     return <p className="mt-8 text-sm text-white/40">検索に失敗しました。</p>
   }
 
   if (results.length === 0) {
-    return <p className="mt-8 text-sm text-white/40">該当する候補が見つかりませんでした。</p>
+    return (
+      <p className="mt-8 text-sm text-white/40">
+        該当する候補が見つかりませんでした。詳細な住所でヒットしない場合は、「東京都渋谷区」のように都道府県・市区町村名だけで再検索すると見つかることがあります。
+      </p>
+    )
   }
 
   return (
@@ -100,6 +107,12 @@ async function ShopCandidates({
       <Link href="/admin/data/shops" prefetch={false} className="text-xs text-white/40 hover:text-white/70">
         ← 入力し直す
       </Link>
+
+      {isApproximate && (
+        <p className="mt-4 text-xs text-white/40">
+          入力された詳細住所は見つからなかったため、周辺エリアの代表地点を表示しています。
+        </p>
+      )}
 
       <div className="mt-4 space-y-2">
         {results.map((r, i) => (
