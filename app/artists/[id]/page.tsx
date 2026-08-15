@@ -11,6 +11,8 @@ import {
 import RelationGraph from '@/app/components/RelationGraph'
 import { buildArtistRelationGraph } from '@/utils/relationGraphData'
 import ArtistLinkIcons from '@/app/components/ArtistLinkIcons'
+import { resolveArtistPageKind, hasOwnRelease } from '@/utils/artistPageKind'
+import MemberProfile from './MemberProfile'
 
 function SectionDivider({ label }: { label: string }) {
   return (
@@ -41,6 +43,7 @@ export default async function ArtistDetailPage({
       { data: membershipRows },
     ],
     relationGraph,
+    ownsRelease,
   ] = await Promise.all([
     Promise.all([
       supabase.from('artist').select('*').eq('id', id).single(),
@@ -76,6 +79,7 @@ export default async function ArtistDetailPage({
       const { data: nameRow } = await supabase.from('artist').select('name').eq('id', id).single()
       return buildArtistRelationGraph(supabase, id, nameRow?.name ?? '')
     })(),
+    hasOwnRelease(supabase, id),
   ])
 
   if (error || !artist) {
@@ -97,6 +101,36 @@ export default async function ArtistDetailPage({
     } else if (member.id === id) {
       belongsToBands.push({ id: band.id, name: band.name, description: row.description })
     }
+  }
+
+  const pageKind = resolveArtistPageKind(artist.page_override, ownsRelease)
+
+  if (pageKind === 'member') {
+    const { data: productionRows } = await supabase
+      .from('artist_relation')
+      .select('id, description, target:artist_id_b(id, name)')
+      .eq('artist_id_a', id)
+      .eq('relation_type', 'production')
+
+    const productions = (productionRows ?? [])
+      .map((row) => {
+        const target = Array.isArray(row.target) ? row.target[0] : row.target
+        if (!target) return null
+        return { id: row.id, artistId: target.id, artistName: target.name, description: row.description }
+      })
+      .filter((row): row is { id: number; artistId: string; artistName: string; description: string | null } => row !== null)
+
+    return (
+      <MemberProfile
+        name={artist.name}
+        nameKana={artist.name_kana}
+        nameEn={artist.name_en}
+        imageUrl={artist.image_url}
+        bio={artist.bio}
+        bands={belongsToBands}
+        productions={productions}
+      />
+    )
   }
 
   const appearances = (eventAppearances ?? [])
