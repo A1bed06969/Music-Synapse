@@ -143,29 +143,39 @@ export async function writeArtistProfileFromMusicBrainzDetails(
   }
 
   // バンドメンバーシップ(relation_type='membership')。credit_person(artist行を
-  // 持たない人物)にはメンバーを登録しない方針のため、相手アーティストが既に
-  // カタログにいる(musicbrainz_idで確認できる)場合のみ関係を作る。
-  // 見つからなかった相手はcredit_personへの誤登録が無いか等の確認のため名前を返す
-  // (呼び出し側が /admin/data/artists/musicbrainz-queue 等でのフォローアップに使える)。
+  // 持たない人物)にはメンバーを登録しない方針のため、バンドメンバーは正式にartist行として
+  // 作成する。MusicBrainzの"member of band"はキュレーションされた確定情報(MBIDが
+  // 一意に特定できる)なので、アルバムタイトル一致によるMBID自動照合とは違い、
+  // 人間の確認を挟まず自動作成してよい確度がある。
   // artist_id_a=バンド、artist_id_b=メンバー、というのはこの関数だけが書き込む
   // membership行の内部的な向きの取り決め(artist_relationテーブル自体には
   // a/bの向きを示す列が無く、他のrelation_type(production等)は一貫していないため)
   let membershipsWritten = 0
   const membershipsUnresolved: string[] = []
   for (const membership of details.memberships) {
-    const { data: otherArtist } = await supabase
+    const { data: existingOtherArtist } = await supabase
       .from('artist')
       .select('id')
       .eq('musicbrainz_id', membership.mbid)
       .maybeSingle()
 
-    if (!otherArtist) {
-      membershipsUnresolved.push(membership.name)
-      continue
+    let otherArtistId = existingOtherArtist?.id as string | undefined
+    if (!otherArtistId) {
+      const { data: createdArtist, error: createArtistError } = await supabase
+        .from('artist')
+        .insert({ name: membership.name, musicbrainz_id: membership.mbid })
+        .select('id')
+        .single()
+      if (createArtistError || !createdArtist) {
+        console.error(`メンバー「${membership.name}」のartist作成に失敗しました:`, createArtistError?.message)
+        membershipsUnresolved.push(membership.name)
+        continue
+      }
+      otherArtistId = createdArtist.id
     }
 
-    const bandId = membership.subjectIsBand ? artistId : otherArtist.id
-    const memberId = membership.subjectIsBand ? otherArtist.id : artistId
+    const bandId = membership.subjectIsBand ? artistId : otherArtistId
+    const memberId = membership.subjectIsBand ? otherArtistId : artistId
 
     const descriptionParts: string[] = []
     if (membership.attributes.length > 0) descriptionParts.push(membership.attributes.join('・'))
@@ -184,7 +194,7 @@ export async function writeArtistProfileFromMusicBrainzDetails(
       { onConflict: 'artist_id_a,artist_id_b,relation_type', ignoreDuplicates: true }
     )
     if (membershipError) {
-      console.error(`メンバーシップ関係の保存に失敗しました(${artistId} <-> ${otherArtist.id}):`, membershipError.message)
+      console.error(`メンバーシップ関係の保存に失敗しました(${artistId} <-> ${otherArtistId}):`, membershipError.message)
     } else {
       membershipsWritten++
     }

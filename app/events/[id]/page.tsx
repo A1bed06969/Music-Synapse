@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/utils/Supabase/server'
-import { formatDate } from '@/utils/format'
+import { formatDate, extractYoutubeVideoId } from '@/utils/format'
 import MapClientWrapper from '@/app/map/MapClientWrapper'
 import type { MapMarker } from '@/app/map/LeafletMap'
 
@@ -27,10 +27,83 @@ type Appearance = {
   timeLabel: string | null
   artistId: string
   artistName: string
+  artistImageUrl: string | null
 }
 
 function toHHMM(isoStr: string): string {
   return isoStr.slice(11, 16)
+}
+
+/** イベントの画像を、出典(公式サイト or 公式YouTube)へのリンク付きで表示する。
+ * 著作権的に問題が起きにくいよう、画像は必ずその出典元へ戻れる形にする。
+ * image_urlが無い場合はofficial_youtube_url(動画URL)からサムネイルを導出する
+ * フォールバックも用意している(動画しか無いイベント向け)。
+ * official_site_urlがあれば、画像とは別に小さな公式サイトリンクも添える。
+ * どちらも無ければプレースホルダーを出す */
+function EventThumbnail({
+  imageUrl,
+  youtubeUrl,
+  officialSiteUrl,
+  eventName,
+}: {
+  imageUrl: string | null
+  youtubeUrl: string | null
+  officialSiteUrl: string | null
+  eventName: string
+}) {
+  // image_urlが未設定なら、動画URLからサムネイルを導出するフォールバック
+  const videoId = !imageUrl && youtubeUrl ? extractYoutubeVideoId(youtubeUrl) : null
+  const displayImageUrl = imageUrl ?? (videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : null)
+  // 画像のリンク先は、その画像の出典元(YouTubeチャンネル/動画があればそちら、
+  // 無ければ公式サイト)にする。出典と違う場所へリンクすると「引用」の理屈が弱くなるため
+  const imageLinkUrl = youtubeUrl ?? officialSiteUrl
+  const sourceLabel = videoId || youtubeUrl ? '公式YouTubeより' : '公式サイトより'
+
+  if (!displayImageUrl) {
+    return (
+      <div className="flex aspect-video w-full shrink-0 items-center justify-center rounded-lg border border-white/10 bg-gradient-to-br from-white/[0.07] to-white/[0.01] sm:w-96">
+        <span className="text-6xl">🎪</span>
+      </div>
+    )
+  }
+
+  return (
+    <div className="w-full shrink-0 sm:w-96">
+      <a
+        href={imageLinkUrl ?? displayImageUrl}
+        target="_blank"
+        rel="noreferrer"
+        className="group relative block aspect-video overflow-hidden rounded-lg border border-white/10 bg-black"
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={displayImageUrl}
+          alt={eventName}
+          className="h-full w-full object-contain transition group-hover:opacity-80"
+        />
+        {videoId && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-black/60 transition group-hover:bg-black/75">
+              <svg viewBox="0 0 24 24" className="ml-0.5 h-5 w-5 fill-white">
+                <path d="M8 5v14l11-7z" />
+              </svg>
+            </div>
+          </div>
+        )}
+        <span className="absolute bottom-1.5 right-2 text-[10px] text-white/70">{sourceLabel}</span>
+      </a>
+      {officialSiteUrl && (
+        <a
+          href={officialSiteUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="mt-1.5 block text-center text-xs text-white/40 hover:text-white/70"
+        >
+          公式サイトへ →
+        </a>
+      )}
+    </div>
+  )
 }
 
 export default async function EventDetailPage({
@@ -46,7 +119,9 @@ export default async function EventDetailPage({
 
   const { data: event, error } = await supabase
     .from('event')
-    .select('id, name, event_type, founded_year, country, prefecture, description')
+    .select(
+      'id, name, event_type, founded_year, country, prefecture, description, official_youtube_url, official_site_url, image_url'
+    )
     .eq('id', id)
     .single()
 
@@ -70,7 +145,7 @@ export default async function EventDetailPage({
   if (selectedEdition) {
     const { data: appearanceRows } = await supabase
       .from('event_appearance')
-      .select('id, stage, venue, is_headliner, start_time, end_time, artist:artist_id(id, name)')
+      .select('id, stage, venue, is_headliner, start_time, end_time, artist:artist_id(id, name, image_url)')
       .eq('event_edition_id', selectedEdition.id)
       .order('is_headliner', { ascending: false })
       .order('start_time', { ascending: true, nullsFirst: false })
@@ -89,6 +164,7 @@ export default async function EventDetailPage({
         timeLabel: hasRealTime ? `${toHHMM(row.start_time!)}-${toHHMM(row.end_time!)}` : null,
         artistId: artist?.id ?? '',
         artistName: artist?.name ?? '?',
+        artistImageUrl: artist?.image_url ?? null,
       }
     })
   }
@@ -137,9 +213,12 @@ export default async function EventDetailPage({
       </Link>
 
       <div className="mt-6 flex flex-col gap-6 sm:flex-row">
-        <div className="flex aspect-square w-full shrink-0 items-center justify-center rounded-lg border border-white/10 bg-gradient-to-br from-white/[0.07] to-white/[0.01] sm:w-64">
-          <span className="text-6xl">🎪</span>
-        </div>
+        <EventThumbnail
+          imageUrl={event.image_url}
+          youtubeUrl={event.official_youtube_url}
+          officialSiteUrl={event.official_site_url}
+          eventName={event.name}
+        />
         <div className="min-w-0 flex-1">
           <p className="text-xs text-white/40">
             {event.event_type ? EVENT_TYPE_LABEL[event.event_type] ?? event.event_type : ''}
@@ -233,16 +312,31 @@ export default async function EventDetailPage({
                               <Link
                                 key={a.id}
                                 href={`/artists/${a.artistId}`}
-                                title={a.timeLabel ?? undefined}
-                                className={`rounded-full border px-3 py-1.5 text-sm transition hover:border-white/40 hover:bg-white/[0.08] ${
+                                className={`flex items-center gap-2 rounded-full border py-1 pl-1 pr-3 text-sm transition hover:border-white/40 hover:bg-white/[0.08] ${
                                   a.isHeadliner
                                     ? 'border-white/40 bg-white/[0.06] font-semibold'
                                     : 'border-white/15 bg-white/[0.03] text-white/85'
                                 }`}
                               >
-                                {a.artistName}
-                                {a.timeLabel && <span className="ml-1 text-xs text-white/40">{a.timeLabel}</span>}
-                                {a.isHeadliner && ' ★'}
+                                {a.artistImageUrl ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img
+                                    src={a.artistImageUrl}
+                                    alt=""
+                                    className="h-10 w-10 shrink-0 rounded-full object-cover"
+                                  />
+                                ) : (
+                                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/10 text-base">
+                                    🎤
+                                  </span>
+                                )}
+                                <span className="leading-tight">
+                                  <span className="block">
+                                    {a.artistName}
+                                    {a.isHeadliner && ' ★'}
+                                  </span>
+                                  {a.timeLabel && <span className="block text-xs text-white/40">{a.timeLabel}</span>}
+                                </span>
                               </Link>
                             ))}
                           </div>

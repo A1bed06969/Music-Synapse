@@ -20,7 +20,7 @@ export default async function EventsPage({
 
   let query = supabase
     .from('event')
-    .select('id, name, event_type, founded_year, country, genre:genre_id(name)')
+    .select('id, name, event_type, founded_year, country, image_url, genre:genre_id(name)')
     .order('name')
 
   if (eventType) query = query.eq('event_type', eventType)
@@ -33,6 +33,7 @@ export default async function EventsPage({
     event_type: string | null
     founded_year: number | null
     country: string | null
+    imageUrl: string | null
     genreName: string
   }
 
@@ -44,6 +45,7 @@ export default async function EventsPage({
       event_type: e.event_type,
       founded_year: e.founded_year,
       country: e.country,
+      imageUrl: e.image_url,
       genreName: genre?.name ?? NO_GENRE,
     }
   })
@@ -104,16 +106,28 @@ export default async function EventsPage({
                 {genres.map(([genreName, genreEvents]) => (
                   <div key={genreName}>
                     <h3 className="text-xs font-medium uppercase tracking-wide text-white/40">{genreName}</h3>
-                    <ul className="mt-2 grid grid-cols-1 gap-x-6 gap-y-1 sm:grid-cols-2 lg:grid-cols-3">
+                    <ul className="mt-3 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
                       {genreEvents.map((e) => (
-                        <li key={e.id} className="border-b border-white/5 py-2.5">
-                          <Link href={`/events/${e.id}`} className="font-medium hover:opacity-70">
-                            {e.name}
+                        <li key={e.id}>
+                          <Link href={`/events/${e.id}`} className="group block">
+                            <div className="aspect-video overflow-hidden rounded-md border border-white/10 bg-white/5">
+                              {e.imageUrl ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  src={e.imageUrl}
+                                  alt={e.name}
+                                  className="h-full w-full object-contain transition group-hover:opacity-80"
+                                />
+                              ) : (
+                                <div className="flex h-full w-full items-center justify-center text-2xl">🎪</div>
+                              )}
+                            </div>
+                            <p className="mt-2 truncate text-sm font-medium group-hover:opacity-70">{e.name}</p>
+                            <p className="text-xs text-white/40">
+                              {e.event_type ? EVENT_TYPE_LABEL[e.event_type] ?? e.event_type : ''}
+                              {e.founded_year ? ` · ${e.founded_year}年〜` : ''}
+                            </p>
                           </Link>
-                          <p className="mt-0.5 text-xs text-white/40">
-                            {e.event_type ? EVENT_TYPE_LABEL[e.event_type] ?? e.event_type : ''}
-                            {e.founded_year ? ` · ${e.founded_year}年〜` : ''}
-                          </p>
                         </li>
                       ))}
                     </ul>
