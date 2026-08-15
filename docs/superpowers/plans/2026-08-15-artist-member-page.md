@@ -119,34 +119,26 @@ git commit -m "feat: add artist/member page kind resolution helper"
 - Modify: `app/artists/[id]/page.tsx`
 
 **Interfaces:**
-- Consumes: `resolveArtistPageKind`(Task 1、`@/utils/artistPageKind`)、`CREDIT_ROLE_LABEL`・`CREDIT_ROLE_COLOR`(既存、`@/utils/format`)
+- Consumes: `resolveArtistPageKind`(Task 1、`@/utils/artistPageKind`)
+
+**注記(設計時の訂正)**: 当初`artist_credit`テーブルを`artist_id`=このメンバーのidで引く想定だったが、`artist_credit.artist_id`は「クレジットされた作品を持つアーティスト(album/trackの主アーティスト)」を指す列であり、クレジット対象人物(プロデューサー等)のIDではない。`utils/creditImport.ts:93-128`(`writeAlbumCredits`)を確認した結果、クレジット対象人物が既存の`artist`行と一致する場合(`artistMatchColumn`でMBID/Discogs IDが一致)は、`artist_credit`ではなく`artist_relation`(`relation_type='production'`)に書き込まれる。したがって、メンバー本人が誰かの作品のプロデュース等に関わった実績は`artist_relation`側から取得する必要がある。`artist_id_a`/`artist_id_b`は`[matchedArtist.id, artistId].sort()`でアルファベット順に格納されており(`creditImport.ts:105`)、どちら側が「クレジット対象人物」かを列だけから判別することはできない。ただし本セクションは`kind === 'member'`(=本人名義のalbum/trackを持たない)の場合にのみ表示するため、このメンバーが`relation_type='production'`の関係に登場する時点で「作品を所有する側」ではあり得ず、必ず「クレジット対象人物側」であることが論理的に保証される。そのため、`artist_id_a`/`artist_id_b`のどちらがこのメンバーのidかを判定し、常に「もう一方」を実績の対象アーティストとして扱えばよい。
 
 - [ ] **Step 1: importを変更する**
 
-現在の4〜10行目:
+現在の11〜13行目:
 
 ```tsx
-import {
-  formatDate,
-  extractYoutubeVideoId,
-  ARTIST_STREAMING_STATUS_LABEL,
-  ARTIST_TYPE_LABEL,
-  STREAMING_STATUS_LABEL,
-} from '@/utils/format'
+import RelationGraph from '@/app/components/RelationGraph'
+import { buildArtistRelationGraph } from '@/utils/relationGraphData'
+import ArtistLinkIcons from '@/app/components/ArtistLinkIcons'
 ```
 
 これを次のように変更する:
 
 ```tsx
-import {
-  formatDate,
-  extractYoutubeVideoId,
-  ARTIST_STREAMING_STATUS_LABEL,
-  ARTIST_TYPE_LABEL,
-  STREAMING_STATUS_LABEL,
-  CREDIT_ROLE_LABEL,
-  CREDIT_ROLE_COLOR,
-} from '@/utils/format'
+import RelationGraph from '@/app/components/RelationGraph'
+import { buildArtistRelationGraph } from '@/utils/relationGraphData'
+import ArtistLinkIcons from '@/app/components/ArtistLinkIcons'
 import { resolveArtistPageKind } from '@/utils/artistPageKind'
 ```
 
@@ -269,24 +261,29 @@ import { resolveArtistPageKind } from '@/utils/artistPageKind'
   const kind = resolveArtistPageKind(artist.page_override, hasOwnRelease)
 ```
 
-- [ ] **Step 3: メンバー用のクレジット取得ロジックを追加する**
+- [ ] **Step 3: メンバー用の制作クレジット取得ロジックを追加する**
 
 現在の86〜100行目(`mvVideoId`の宣言と`members`/`belongsToBands`の計算)の直後、`appearances`の計算(現在102〜115行目)の前に、次のブロックを追加する:
 
 ```tsx
 
-  const creditsByRole = new Map<string, { id: string; role: string; albumTitle: string | null }[]>()
+  // kind==='member'の場合、本人名義のalbum/trackが無いため、
+  // production関係に登場する時点で必ず「クレジット対象人物側」である
+  // (album/trackを所有する側になることがない)。そのため相手側を
+  // 常に「実績の対象アーティスト」として扱ってよい(詳細はTask 2の注記を参照)
+  const productionCredits: { id: string; artistId: string; artistName: string; description: string | null }[] = []
   if (kind === 'member') {
-    const { data: credits } = await supabase
-      .from('artist_credit')
-      .select('id, role, album:album_id(title)')
-      .eq('artist_id', id)
-      .order('role')
-    for (const c of credits ?? []) {
-      const album = Array.isArray(c.album) ? c.album[0] : c.album
-      const list = creditsByRole.get(c.role) ?? []
-      list.push({ id: c.id, role: c.role, albumTitle: album?.title ?? null })
-      creditsByRole.set(c.role, list)
+    const { data: productionRows } = await supabase
+      .from('artist_relation')
+      .select('id, description, artist_a:artist_id_a(id, name), artist_b:artist_id_b(id, name)')
+      .eq('relation_type', 'production')
+      .or(`artist_id_a.eq.${id},artist_id_b.eq.${id}`)
+    for (const row of productionRows ?? []) {
+      const a = Array.isArray(row.artist_a) ? row.artist_a[0] : row.artist_a
+      const b = Array.isArray(row.artist_b) ? row.artist_b[0] : row.artist_b
+      if (!a || !b) continue
+      const other = a.id === id ? b : a
+      productionCredits.push({ id: row.id, artistId: other.id, artistName: other.name, description: row.description })
     }
   }
 ```
@@ -333,32 +330,24 @@ import { resolveArtistPageKind } from '@/utils/artistPageKind'
 
 ```tsx
 
-      {kind === 'member' && creditsByRole.size > 0 && (
+      {kind === 'member' && productionCredits.length > 0 && (
         <>
           <SectionDivider label="Credits" />
-          <div className="mt-4 flex flex-wrap gap-2">
-            {Array.from(creditsByRole.keys()).map((role) => (
-              <span
-                key={role}
-                className={`rounded-full border px-2.5 py-0.5 text-xs ${CREDIT_ROLE_COLOR[role] ?? 'border-white/15 text-white/60'}`}
-              >
-                {CREDIT_ROLE_LABEL[role] ?? role}
-              </span>
+          <ul className="mt-4 space-y-2 text-sm">
+            {productionCredits.map((credit) => (
+              <li key={credit.id}>
+                <Link href={`/artists/${credit.artistId}`} className="hover:text-white/70">
+                  {credit.artistName}
+                </Link>
+                {credit.description && <span className="text-white/40"> ・ {credit.description}</span>}
+              </li>
             ))}
-          </div>
-          {Array.from(creditsByRole.entries()).map(([role, items]) => (
-            <div key={role} className="mt-6">
-              <p className="text-xs uppercase tracking-wide text-white/40">{CREDIT_ROLE_LABEL[role] ?? role}</p>
-              <ul className="mt-3 space-y-2 text-sm">
-                {items.map((item) => (
-                  <li key={item.id}>{item.albumTitle ?? '—'}</li>
-                ))}
-              </ul>
-            </div>
-          ))}
+          </ul>
         </>
       )}
 ```
+
+(`Link`はファイル冒頭1行目で既にimport済みのため、新規importは不要)
 
 - [ ] **Step 7: Awardsセクションをkind==='artist'限定にする**
 
@@ -399,7 +388,13 @@ limit 3;
 ```
 
 1. 上記で見つかったリリース実績の無いバンドメンバーの`/artists/[id]`を開き、Live & Festivals/Discography/Awards/Latest MVセクションが表示されないこと、Biography・所属バンドバッジ・Relation Graphは表示されることを確認
-2. `artist_credit`に`artist_id`が一致する行があるメンバー(いなければ`credit_person`ではなく`artist_id`向けの行をSupabase MCPの`execute_sql`で1件`update`して用意してよい。実データとして残しても問題ない)のページで、Creditsセクションが役割ごとに表示されることを確認
+2. `relation_type='production'`の`artist_relation`行が無ければ、Supabase MCPの`execute_sql`で該当メンバーidを使い1件作成して用意する(実データとして残しても問題ない):
+   ```sql
+   insert into artist_relation (artist_id_a, artist_id_b, relation_type, relation_style, description)
+   values ('<このメンバーのid>', '<適当な既存artistのid>', 'production', 'solid', null)
+   on conflict (artist_id_a, artist_id_b, relation_type) do nothing;
+   ```
+   このメンバーのページを開き、Creditsセクションに相手アーティスト名がリンク付きで表示されることを確認
 3. リリース実績のある通常のアーティストページ(例: King Gnu)を開き、これまで通りDiscography等の全セクションが表示されることを確認(回帰確認)
 
 - [ ] **Step 11: コミット**
@@ -728,3 +723,4 @@ git commit -m "feat: add manual artist/member page override to admin edit form"
 - **Spec coverage:** ゴール5点(自動判定+手動上書き、メンバーページテンプレート、URL統一、一覧・検索からの除外、管理画面UI)をTask 1〜4で全てカバー。非ゴール(URL分離、既存データの手動バックフィル、クレジットを判定条件に含めること、`credit_person`との統合、自動昇格ロジック自体の変更)はいずれも実装していない。DBマイグレーションは適用済みとしてGlobal Constraintsに明記し、タスク化していない。
 - **Placeholder scan:** なし。全ステップに実コードを記載。
 - **Type consistency:** `resolveArtistPageKind(pageOverride: string | null, hasOwnRelease: boolean): ArtistPageKind`(Task 1)のシグネチャを、Task 2(`app/artists/[id]/page.tsx`)・Task 3(`filterPublicArtists`経由)で一貫して使用。`PAGE_OVERRIDE_LABEL`(Task 1で定義)のキー(`artist`/`member`)は`page_override`列のCHECK制約の許可値と一致し、Task 4の`<select>`が生成する値もこの2値のみ。`getReleaseArtistIdSet`/`filterPublicArtists`のシグネチャはTask 1で定義したものをTask 3でそのまま呼び出している。
+- **設計時の訂正(Task 2)**: 当初`artist_credit.artist_id`をメンバー本人のidで引く設計だったが、`utils/creditImport.ts`を実装コードで確認した結果、このカラムは「クレジットされた作品を持つアーティスト」を指し、クレジット対象人物ではないことが判明。クレジット対象人物が既存の`artist`行と一致する場合は`artist_relation`(`relation_type='production'`)に書き込まれる方式に合わせ、Task 2 Step 3・6・10を修正済み。
