@@ -108,15 +108,17 @@ export default async function ArtistDetailPage({
   if (pageKind === 'member') {
     const { data: productionRows } = await supabase
       .from('artist_relation')
-      .select('id, description, target:artist_id_b(id, name)')
-      .eq('artist_id_a', id)
+      .select('id, description, artist_a:artist_id_a(id, name), artist_b:artist_id_b(id, name)')
       .eq('relation_type', 'production')
+      .or(`artist_id_a.eq.${id},artist_id_b.eq.${id}`)
 
     const productions = (productionRows ?? [])
       .map((row) => {
-        const target = Array.isArray(row.target) ? row.target[0] : row.target
-        if (!target) return null
-        return { id: row.id, artistId: target.id, artistName: target.name, description: row.description }
+        const a = Array.isArray(row.artist_a) ? row.artist_a[0] : row.artist_a
+        const b = Array.isArray(row.artist_b) ? row.artist_b[0] : row.artist_b
+        if (!a || !b) return null
+        const other = a.id === id ? b : a
+        return { id: row.id, artistId: other.id, artistName: other.name, description: row.description }
       })
       .filter((row): row is { id: number; artistId: string; artistName: string; description: string | null } => row !== null)
 
