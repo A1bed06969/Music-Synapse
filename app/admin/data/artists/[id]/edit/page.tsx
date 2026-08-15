@@ -57,6 +57,13 @@ export default async function ArtistEditPage({
           >
             座標を検索(Wikidata/住所)
           </Link>
+          <Link
+            href={`/admin/data/artists/${artist.id}/itunes-merge`}
+            prefetch={false}
+            className="text-xs text-white/40 hover:text-white/70"
+          >
+            iTunesで統合
+          </Link>
         </div>
       </div>
 
