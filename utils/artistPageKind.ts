@@ -2,10 +2,15 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 
 export type ArtistPageKind = 'artist' | 'member'
 
-export function resolveArtistPageKind(pageOverride: string | null, ownsRelease: boolean): ArtistPageKind {
+export function resolveArtistPageKind(
+  pageOverride: string | null,
+  isMember: boolean,
+  ownsRelease: boolean
+): ArtistPageKind {
   if (pageOverride === 'artist' || pageOverride === 'member') {
     return pageOverride
   }
+  if (!isMember) return 'artist'
   return ownsRelease ? 'artist' : 'member'
 }
 
@@ -17,15 +22,19 @@ export async function hasOwnRelease(supabase: SupabaseClient, artistId: string):
   return (albumCount ?? 0) > 0 || (trackCount ?? 0) > 0
 }
 
-async function fetchAllArtistIds(supabase: SupabaseClient, table: 'album' | 'track'): Promise<string[]> {
-  const ids: string[] = []
+async function fetchAllArtistIds(supabase: SupabaseClient, table: 'album' | 'track'): Promise<Set<string>> {
+  const ids = new Set<string>()
   const pageSize = 1000
   let offset = 0
   while (true) {
-    const { data } = await supabase.from(table).select('artist_id').range(offset, offset + pageSize - 1)
+    const { data } = await supabase
+      .from(table)
+      .select('artist_id')
+      .order('id', { ascending: true })
+      .range(offset, offset + pageSize - 1)
     const rows = data ?? []
     for (const row of rows) {
-      if (row.artist_id) ids.push(row.artist_id)
+      if (row.artist_id) ids.add(row.artist_id)
     }
     if (rows.length < pageSize) break
     offset += pageSize
@@ -33,20 +42,64 @@ async function fetchAllArtistIds(supabase: SupabaseClient, table: 'album' | 'tra
   return ids
 }
 
+async function fetchMemberOfIds(supabase: SupabaseClient): Promise<Set<string>> {
+  const { data } = await supabase.from('artist_relation').select('artist_id_b').eq('relation_type', 'membership')
+  const ids = new Set<string>()
+  for (const row of data ?? []) {
+    if (row.artist_id_b) ids.add(row.artist_id_b)
+  }
+  return ids
+}
+
 export async function getMemberArtistIds(supabase: SupabaseClient): Promise<Set<string>> {
-  const [{ data: allArtists }, albumArtistIds, trackArtistIds] = await Promise.all([
+  const [{ data: allArtists }, albumArtistIds, trackArtistIds, memberOfIds] = await Promise.all([
     supabase.from('artist').select('id, page_override'),
     fetchAllArtistIds(supabase, 'album'),
     fetchAllArtistIds(supabase, 'track'),
+    fetchMemberOfIds(supabase),
   ])
 
   const releasedIds = new Set<string>([...albumArtistIds, ...trackArtistIds])
 
   const memberIds = new Set<string>()
   for (const artist of allArtists ?? []) {
-    if (resolveArtistPageKind(artist.page_override, releasedIds.has(artist.id)) === 'member') {
-      memberIds.add(artist.id)
-    }
+    const kind = resolveArtistPageKind(artist.page_override, memberOfIds.has(artist.id), releasedIds.has(artist.id))
+    if (kind === 'member') memberIds.add(artist.id)
+  }
+  return memberIds
+}
+
+export async function getMemberArtistIdsAmong(supabase: SupabaseClient, candidateIds: string[]): Promise<Set<string>> {
+  if (candidateIds.length === 0) return new Set()
+
+  const [{ data: candidates }, { data: albumRows }, { data: trackRows }, { data: membershipRows }] = await Promise.all([
+    supabase.from('artist').select('id, page_override').in('id', candidateIds),
+    supabase.from('album').select('artist_id').in('artist_id', candidateIds),
+    supabase.from('track').select('artist_id').in('artist_id', candidateIds),
+    supabase
+      .from('artist_relation')
+      .select('artist_id_b')
+      .eq('relation_type', 'membership')
+      .in('artist_id_b', candidateIds),
+  ])
+
+  const releasedIds = new Set<string>()
+  for (const row of albumRows ?? []) {
+    if (row.artist_id) releasedIds.add(row.artist_id)
+  }
+  for (const row of trackRows ?? []) {
+    if (row.artist_id) releasedIds.add(row.artist_id)
+  }
+
+  const memberOfIds = new Set<string>()
+  for (const row of membershipRows ?? []) {
+    if (row.artist_id_b) memberOfIds.add(row.artist_id_b)
+  }
+
+  const memberIds = new Set<string>()
+  for (const artist of candidates ?? []) {
+    const kind = resolveArtistPageKind(artist.page_override, memberOfIds.has(artist.id), releasedIds.has(artist.id))
+    if (kind === 'member') memberIds.add(artist.id)
   }
   return memberIds
 }
