@@ -4,6 +4,8 @@ import { createClient } from '@/utils/Supabase/server'
 import { formatDate, extractYoutubeVideoId } from '@/utils/format'
 import MapClientWrapper from '@/app/map/MapClientWrapper'
 import type { MapMarker } from '@/app/map/LeafletMap'
+import { NEWS_SOURCES } from '@/utils/newsFeeds'
+import { fetchAllNews, findRelatedNews, formatRelativeTime } from '@/utils/newsParser'
 
 const EVENT_TYPE_LABEL: Record<string, string> = {
   festival: 'フェス',
@@ -120,7 +122,7 @@ export default async function EventDetailPage({
   const { data: event, error } = await supabase
     .from('event')
     .select(
-      'id, name, event_type, founded_year, country, prefecture, description, official_youtube_url, official_site_url, image_url'
+      'id, name, name_ja, event_type, founded_year, country, prefecture, description, official_youtube_url, official_site_url, image_url'
     )
     .eq('id', id)
     .single()
@@ -128,6 +130,13 @@ export default async function EventDetailPage({
   if (error || !event) {
     notFound()
   }
+
+  // イベント名をタイトルに含む記事をRSS記事から拾う。既存の/media/newsページと
+  // 同じfetchAllNewsを再利用する(fetchはnext:{revalidate:1800}でキャッシュされるため、
+  // イベントページ側で毎回叩いても実質追加の外部通信は増えない)
+  const relatedNewsPromise = fetchAllNews(NEWS_SOURCES).then(({ items }) =>
+    findRelatedNews(items, [event.name, event.name_ja].filter((k): k is string => Boolean(k)), 3)
+  )
 
   const { data: editions } = await supabase
     .from('event_edition')
@@ -192,6 +201,8 @@ export default async function EventDetailPage({
       }
     }
   }
+
+  const relatedNews = await relatedNewsPromise
 
   const NO_DATE = '__no_date__'
   const dayGroups = new Map<string, Appearance[]>()
@@ -349,6 +360,46 @@ export default async function EventDetailPage({
             </div>
           )}
         </>
+      )}
+
+      {relatedNews.length > 0 && (
+        <div className="mt-10 max-w-xl">
+          <h2 className="text-lg font-semibold">関連ニュース</h2>
+          <div className="mt-3 space-y-2">
+            {relatedNews.map((item) => (
+              <a
+                key={item.id}
+                href={item.link}
+                target="_blank"
+                rel="noreferrer"
+                className="group flex items-center gap-3 rounded-md border border-white/10 bg-white/[0.03] p-2 transition hover:border-white/30"
+              >
+                <div className="h-12 w-16 shrink-0 overflow-hidden rounded bg-white/5">
+                  {item.thumbnailUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={item.thumbnailUrl}
+                      alt=""
+                      referrerPolicy="no-referrer"
+                      className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
+                    />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center text-[10px] text-white/20">
+                      No Image
+                    </div>
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="line-clamp-2 text-xs font-medium leading-snug">{item.title}</p>
+                  <div className="mt-1 flex items-center gap-2 text-[10px] text-white/40">
+                    <span>{item.source}</span>
+                    <span>{formatRelativeTime(item.publishedAt)}</span>
+                  </div>
+                </div>
+              </a>
+            ))}
+          </div>
+        </div>
       )}
     </div>
   )

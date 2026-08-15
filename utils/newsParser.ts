@@ -197,6 +197,15 @@ export async function fetchAllNews(sources: NewsSource[]): Promise<{ items: News
   return { items, failedSources }
 }
 
+/** タイトルにキーワード(いずれか)を含む記事を新着順に上位N件返す。
+ * イベント/アーティスト名などとの単純なタイトル一致による関連記事表示に使う
+ * (RSSタイトルには本文の要約が無いため、現状はタイトルのみが対象) */
+export function findRelatedNews(items: NewsItem[], keywords: string[], limit: number): NewsItem[] {
+  const validKeywords = keywords.map((k) => k.trim()).filter(Boolean)
+  if (validKeywords.length === 0) return []
+  return items.filter((item) => validKeywords.some((k) => item.title.includes(k))).slice(0, limit)
+}
+
 export function formatRelativeTime(isoDate: string): string {
   const diffMs = Date.now() - new Date(isoDate).getTime()
   const diffMinutes = Math.floor(diffMs / 60000)
