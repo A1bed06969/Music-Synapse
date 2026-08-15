@@ -89,7 +89,7 @@ export async function upsertArtistFromItunes(
 
 /** 画像が未設定のアーティストのみ、Apple Musicの公開ページからOGP画像を取得して登録する
  * (取得失敗はベストエフォートで無視し、呼び出し元の処理は継続させる) */
-async function fillMissingArtistImage(
+export async function fillMissingArtistImage(
   supabase: SupabaseClient,
   artistId: string,
   appleMusicArtistId: string

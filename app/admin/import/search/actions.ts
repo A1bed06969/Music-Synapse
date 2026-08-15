@@ -11,7 +11,13 @@ import {
   type ItunesAlbum,
   type ItunesTrackSearchResult,
 } from '@/utils/itunes'
-import { importArtistsFromItunes, upsertArtistFromItunes, registerSingleAlbum } from '@/app/admin/import/actions'
+import {
+  importArtistsFromItunes,
+  upsertArtistFromItunes,
+  registerSingleAlbum,
+  fillMissingArtistImage,
+} from '@/app/admin/import/actions'
+import { autoImportArtistProfileFromMusicBrainz } from '@/utils/artistProfileImport'
 
 export type SearchArtistItem = ItunesArtistSearchResult & { alreadyRegistered: boolean }
 export type SearchAlbumItem = ItunesAlbum & { alreadyRegistered: boolean }
@@ -132,7 +138,23 @@ export async function registerAlbumFromSearch(collectionId: number): Promise<Reg
     artistId = newArtistId
   }
 
+  // URL入力式(app/admin/import)の一括登録と同じく、アーティスト画像の補完と
+  // MusicBrainzプロフィール(公式サイト/SNS/ジャンル/メンバーシップ)の自動取込も
+  // あわせて行う。ベストエフォートなので失敗してもアルバム登録自体は成功扱いにする
+  try {
+    await fillMissingArtistImage(supabase, artistId, String(album.artistId))
+  } catch (err) {
+    console.error(`アーティスト画像の補完に失敗しました(${album.artistName}):`, err)
+  }
+
   const { trackCount } = await registerSingleAlbum(supabase, artistId, album.artistName, album)
+
+  try {
+    await autoImportArtistProfileFromMusicBrainz(supabase, artistId)
+  } catch (err) {
+    console.error(`MusicBrainzプロフィール取込に失敗しました(${album.artistName}):`, err)
+  }
+
   revalidatePath('/admin/import/search')
   revalidatePath(`/artists/${artistId}`)
   return { success: true, message: `「${album.collectionName}」を登録しました(トラック${trackCount}件)。` }
