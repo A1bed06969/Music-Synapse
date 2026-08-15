@@ -22,9 +22,7 @@ export default function SiteFooter() {
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/logo-icon.png" alt="Music Synapse" className="h-9 w-9 object-contain" />
             <p className="mt-3 text-sm font-semibold text-white">Music Synapse</p>
-            <p className="mt-2 max-w-xs text-xs leading-relaxed text-white/40">
-              世界中の音楽データ・メディア・文脈をシナプスのように結合する音楽データベース。
-            </p>
+            <p className="mt-2 max-w-xs text-xs leading-relaxed text-white/40">音楽をつなぎ、新しい発見へ。</p>
           </div>
 
           <div>
