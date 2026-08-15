@@ -17,18 +17,30 @@ export async function hasOwnRelease(supabase: SupabaseClient, artistId: string):
   return (albumCount ?? 0) > 0 || (trackCount ?? 0) > 0
 }
 
+async function fetchAllArtistIds(supabase: SupabaseClient, table: 'album' | 'track'): Promise<string[]> {
+  const ids: string[] = []
+  const pageSize = 1000
+  let offset = 0
+  while (true) {
+    const { data } = await supabase.from(table).select('artist_id').range(offset, offset + pageSize - 1)
+    const rows = data ?? []
+    for (const row of rows) {
+      if (row.artist_id) ids.push(row.artist_id)
+    }
+    if (rows.length < pageSize) break
+    offset += pageSize
+  }
+  return ids
+}
+
 export async function getMemberArtistIds(supabase: SupabaseClient): Promise<Set<string>> {
-  const [{ data: allArtists }, { data: albumRows }, { data: trackRows }] = await Promise.all([
+  const [{ data: allArtists }, albumArtistIds, trackArtistIds] = await Promise.all([
     supabase.from('artist').select('id, page_override'),
-    supabase.from('album').select('artist_id'),
-    supabase.from('track').select('artist_id'),
+    fetchAllArtistIds(supabase, 'album'),
+    fetchAllArtistIds(supabase, 'track'),
   ])
 
-  const releasedIds = new Set<string>()
-  for (const row of albumRows ?? []) releasedIds.add(row.artist_id)
-  for (const row of trackRows ?? []) {
-    if (row.artist_id) releasedIds.add(row.artist_id)
-  }
+  const releasedIds = new Set<string>([...albumArtistIds, ...trackArtistIds])
 
   const memberIds = new Set<string>()
   for (const artist of allArtists ?? []) {
