@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@/utils/Supabase/server'
+import { getMemberArtistIds } from '@/utils/artistPageKind'
 
 export async function search(query: string) {
   const trimmed = query.trim()
@@ -10,17 +11,18 @@ export async function search(query: string) {
 
   const supabase = await createClient()
 
-  const [artistResult, albumResult] = await Promise.all([
+  const [artistResult, albumResult, memberIds] = await Promise.all([
     supabase
       .from('artist')
       .select('id, name, name_kana, name_en')
       .ilike('name', `%${trimmed}%`)
-      .limit(20),
+      .limit(40),
     supabase
       .from('album')
       .select('id, title, title_kana, jacket_url, artist:artist_id(id, name)')
       .ilike('title', `%${trimmed}%`)
       .limit(20),
+    getMemberArtistIds(supabase),
   ])
 
   if (artistResult.error) {
@@ -30,5 +32,7 @@ export async function search(query: string) {
     return { artists: artistResult.data, albums: [], error: albumResult.error.message }
   }
 
-  return { artists: artistResult.data, albums: albumResult.data, error: null }
+  const artists = (artistResult.data ?? []).filter((a) => !memberIds.has(a.id)).slice(0, 20)
+
+  return { artists, albums: albumResult.data, error: null }
 }
