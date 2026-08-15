@@ -9,7 +9,7 @@
 ## ゴール
 
 - `artist`に本人名義のリリース有無に基づく自動判定＋管理者による手動上書きで「アーティスト/メンバー」を判定する仕組みを追加する
-- 判定が「メンバー」のartist行は、URLは変えずに（`/artists/[id]`のまま）軽量なメンバーページテンプレートで表示する。内容: 名前・写真・所属バンド一覧（複数対応）・bio（あれば）・本人名義のクレジット実績（producer/composer/lyricist等、実績があれば）
+- 判定が「メンバー」のartist行は、URLは変えずに（`/artists/[id]`のまま）軽量なメンバーページテンプレートで表示する。内容: 名前・写真・所属バンド一覧（複数対応）・bio（あれば）・プロデュース/楽曲提供実績（`artist_relation`の`production`関係から、対象アーティストの一覧として。役割[producer/composer/lyricist等]の内訳までは既存データモデル上表示できない — 詳細は「アーキテクチャ」参照）
 - 判定が「アーティスト」の場合は現状のフルアーティストページのまま変更しない
 - アーティスト一覧・検索から「メンバー」判定のartist行を除外する
 - 管理画面（`app/admin/data/artists/[id]/edit/page.tsx`）に、自動判定/アーティスト固定/メンバー固定の3択を設定できるUIを追加する
@@ -46,10 +46,21 @@ app/artists/[id]/page.tsx (既存に変更)
        - 現状のフル描画をスキップし、軽量なメンバー用セクションのみ描画
        - 所属バンド一覧: artist_relationのrelation_type='membership'から、
          このartistがartist_id_b側になっている行を全件取得(現状の単一バンド
-         バッジ表示を複数バンド対応に拡張)
-       - クレジット実績: artist_creditをartist_id=このidで取得し、
-         app/people/[id]/page.tsxと同じくrole別にグルーピングして表示。
-         0件ならセクションごと非表示
+         バッジ表示を複数バンド対応に拡張。この部分は既存実装で対応済み)
+       - プロデュース/楽曲提供実績: artist_relationのrelation_type='production'
+         から、このartistがartist_id_a側(=クレジット対象人物側)になっている
+         行を全件取得し、相手側(artist_id_b、実績の対象アーティスト)の名前と
+         descriptionを一覧表示する。0件ならセクションごと非表示
+         (**設計時の訂正**: 当初artist_creditテーブルをartist_id=このidで
+         引く想定だったが、artist_credit.artist_idは「クレジット対象の作品を
+         持つアーティスト」を指す列であり、メンバー本人のIDでは常に空になる
+         ため誤り。実際にはcredit_person経由ではなく、メンバー本人が既存の
+         artistレコードとしてMBID照合されるため、production系クレジットは
+         `utils/creditImport.ts`の該当ロジックにより`artist_relation`
+         [relation_type='production']へ書き込まれる。role別[プロデューサー/
+         作曲/作詞等]の粒度はこの経路では失われ、"production"に一括される
+         ため、メンバーページ側でも役割別の内訳は表示できない — アーティスト
+         単位の実績一覧にとどまる)
        - ディスコグラフィー/ライブ/受賞歴セクションは描画しない
   └─ kind='artist'の場合: 現状の描画のまま変更なし
 
