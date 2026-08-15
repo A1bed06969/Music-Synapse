@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { createClient } from '@/utils/Supabase/server'
 import { formatDate, STREAMING_STATUS_LABEL } from '@/utils/format'
+import CatalogSearchBox from '@/app/components/CatalogSearchBox'
 
 async function getLatestAlbums() {
   const supabase = await createClient()
@@ -74,20 +75,9 @@ export default async function Home() {
         </h1>
         <p className="mt-2 text-sm text-white/50">音楽をつなぎ、新しい発見へ。</p>
 
-        <form action="/search" className="mx-auto mt-8 flex max-w-xl gap-2">
-          <input
-            type="text"
-            name="q"
-            placeholder="アーティスト・アルバム・トラックを検索..."
-            className="flex-1 rounded-md border border-white/15 bg-white/5 px-4 py-2.5 text-sm text-white placeholder:text-white/30 focus:border-white/30 focus:outline-none"
-          />
-          <button
-            type="submit"
-            className="rounded-md bg-white px-5 py-2.5 text-sm font-medium text-black transition hover:bg-white/85"
-          >
-            検索
-          </button>
-        </form>
+        <div className="mx-auto mt-8 max-w-xl">
+          <CatalogSearchBox variant="overlay" />
+        </div>
       </section>
 
       <section className="mt-14 grid grid-cols-1 gap-4 sm:grid-cols-3">

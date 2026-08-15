@@ -23,6 +23,7 @@ const TOOL_LINKS = [
   { href: '/admin/data/artists/musicbrainz-queue', label: 'MusicBrainzプロフィール未解決アーティスト' },
   { href: '/admin/data/media/radio-pilot', label: 'ラジオ局PP収集(パイロット)' },
   { href: '/admin/import', label: 'iTunes一括登録へ →' },
+  { href: '/admin/import/search', label: '検索してアーティスト/アルバム/トラックを登録' },
 ]
 
 export default async function AdminDataPage({

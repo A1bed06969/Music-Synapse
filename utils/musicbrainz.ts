@@ -119,24 +119,53 @@ export function getLinkLabel(url: string, linkType: string): string {
   }
 }
 
+export type MusicBrainzMembership = {
+  mbid: string
+  name: string
+  /** true: このアーティスト(問い合わせ対象)がバンドで、相手が所属メンバー
+   *  false: このアーティストが個人で、相手が所属先バンド
+   *  (MusicBrainzの"member of band"は個人→バンド方向が正方向で、バンド側から見ると
+   *  direction: "backward" として返ってくるため、それを見て判定する) */
+  subjectIsBand: boolean
+  begin: string | null
+  end: string | null
+  ended: boolean
+  attributes: string[]
+}
+
 export type MusicBrainzArtistDetails = {
   officialHomepage: string | null
   twitterUrl: string | null
   instagramUrl: string | null
   links: { type: string; url: string }[]
   genres: string[]
+  memberships: MusicBrainzMembership[]
 }
 
 export async function fetchArtistDetails(mbid: string): Promise<MusicBrainzArtistDetails> {
-  const url = `${MUSICBRAINZ_BASE}/artist/${mbid}?inc=url-rels+genres&fmt=json`
+  const url = `${MUSICBRAINZ_BASE}/artist/${mbid}?inc=url-rels+genres+artist-rels&fmt=json`
   const data = await fetchMusicBrainz(url, 'artist detail')
 
   let officialHomepage: string | null = null
   let twitterUrl: string | null = null
   let instagramUrl: string | null = null
   const links: { type: string; url: string }[] = []
+  const memberships: MusicBrainzMembership[] = []
 
   for (const rel of data.relations ?? []) {
+    if (rel.type === 'member of band' && rel['target-type'] === 'artist' && rel.artist?.id) {
+      memberships.push({
+        mbid: rel.artist.id,
+        name: rel.artist.name,
+        subjectIsBand: rel.direction === 'backward',
+        begin: rel.begin ?? null,
+        end: rel.end ?? null,
+        ended: Boolean(rel.ended),
+        attributes: Array.isArray(rel.attributes) ? rel.attributes : [],
+      })
+      continue
+    }
+
     const relUrl: string | undefined = rel.url?.resource
     if (!rel.type || !relUrl) continue
 
@@ -171,7 +200,7 @@ export async function fetchArtistDetails(mbid: string): Promise<MusicBrainzArtis
     .map((g: any) => g.name)
     .filter((name: unknown): name is string => Boolean(name))
 
-  return { officialHomepage, twitterUrl, instagramUrl, links, genres }
+  return { officialHomepage, twitterUrl, instagramUrl, links, genres, memberships }
 }
 
 export type MusicBrainzReleaseSearchResult = {

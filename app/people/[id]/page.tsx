@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/utils/Supabase/server'
-import { CREDIT_ROLE_LABEL } from '@/utils/format'
+import { CREDIT_ROLE_LABEL, CREDIT_ROLE_COLOR } from '@/utils/format'
 
 export default async function PersonPage({
   params,
@@ -43,6 +43,19 @@ export default async function PersonPage({
       </Link>
 
       <h1 className="mt-4 text-2xl font-bold">{person.name}</h1>
+
+      {creditsByRole.size > 0 && (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {Array.from(creditsByRole.keys()).map((role) => (
+            <span
+              key={role}
+              className={`rounded-full border px-2.5 py-0.5 text-xs ${CREDIT_ROLE_COLOR[role] ?? 'border-white/15 text-white/60'}`}
+            >
+              {CREDIT_ROLE_LABEL[role] ?? role}
+            </span>
+          ))}
+        </div>
+      )}
 
       {creditsByRole.size === 0 ? (
         <p className="mt-8 text-sm text-white/40">クレジット情報がありません。</p>

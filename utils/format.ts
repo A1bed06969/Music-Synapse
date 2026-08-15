@@ -84,3 +84,15 @@ export const CREDIT_ROLE_LABEL: Record<string, string> = {
   artwork: 'アートワーク',
   musician: 'ミュージシャン',
 }
+
+// role別のバッジ色分け(ダーク背景向けに、枠線+文字色だけ変えた控えめな配色)
+export const CREDIT_ROLE_COLOR: Record<string, string> = {
+  producer: 'border-amber-400/40 text-amber-300',
+  mix: 'border-sky-400/40 text-sky-300',
+  mastering: 'border-violet-400/40 text-violet-300',
+  composer: 'border-emerald-400/40 text-emerald-300',
+  lyricist: 'border-rose-400/40 text-rose-300',
+  arranger: 'border-cyan-400/40 text-cyan-300',
+  artwork: 'border-orange-400/40 text-orange-300',
+  musician: 'border-indigo-400/40 text-indigo-300',
+}

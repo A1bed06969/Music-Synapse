@@ -38,6 +38,7 @@ export default async function ArtistDetailPage({
       { data: eventAppearances },
       { data: externalLinks },
       { data: awardEntries },
+      { data: membershipRows },
     ],
     relationGraph,
   ] = await Promise.all([
@@ -63,6 +64,13 @@ export default async function ArtistDetailPage({
         .select('id, year, category, result, award:award_id(name)')
         .eq('artist_id', id)
         .order('year', { ascending: false }),
+      supabase
+        .from('artist_relation')
+        .select(
+          'id, description, band:artist_id_a(id, name, image_url), member:artist_id_b(id, name, image_url)'
+        )
+        .eq('relation_type', 'membership')
+        .or(`artist_id_a.eq.${id},artist_id_b.eq.${id}`),
     ]),
     (async () => {
       const { data: nameRow } = await supabase.from('artist').select('name').eq('id', id).single()
@@ -75,6 +83,21 @@ export default async function ArtistDetailPage({
   }
 
   const mvVideoId = artist.url_latest_mv ? extractYoutubeVideoId(artist.url_latest_mv) : null
+
+  // membershipRows には自分がバンド側(artist_id_a)・メンバー側(artist_id_b)
+  // 両方のケースが混在するので、id基準でどちら向きかを判定して振り分ける
+  const members: { id: string; name: string; imageUrl: string | null; description: string | null }[] = []
+  const belongsToBands: { id: string; name: string; description: string | null }[] = []
+  for (const row of membershipRows ?? []) {
+    const band = Array.isArray(row.band) ? row.band[0] : row.band
+    const member = Array.isArray(row.member) ? row.member[0] : row.member
+    if (!band || !member) continue
+    if (band.id === id) {
+      members.push({ id: member.id, name: member.name, imageUrl: member.image_url, description: row.description })
+    } else if (member.id === id) {
+      belongsToBands.push({ id: band.id, name: band.name, description: row.description })
+    }
+  }
 
   const appearances = (eventAppearances ?? [])
     .map((row) => {
@@ -139,6 +162,15 @@ export default async function ArtistDetailPage({
                 配信: {ARTIST_STREAMING_STATUS_LABEL[artist.streaming_status]}
               </span>
             )}
+            {belongsToBands.map((band) => (
+              <Link
+                key={band.id}
+                href={`/artists/${band.id}`}
+                className="rounded-full border border-white/15 px-2.5 py-0.5 hover:bg-white/5"
+              >
+                🎤 {band.name} のメンバー
+              </Link>
+            ))}
           </div>
 
           <ArtistLinkIcons
@@ -242,6 +274,36 @@ export default async function ArtistDetailPage({
             )
           })}
         </div>
+      )}
+
+      {members.length > 0 && (
+        <>
+          <SectionDivider label="Members" />
+          <div className="mt-4 flex flex-wrap gap-4">
+            {members.map((member) => (
+              <Link
+                key={member.id}
+                href={`/artists/${member.id}`}
+                className="group flex w-32 flex-col items-center text-center"
+              >
+                {member.imageUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={member.imageUrl}
+                    alt={member.name}
+                    className="h-20 w-20 rounded-full object-cover transition group-hover:opacity-80"
+                  />
+                ) : (
+                  <div className="flex h-20 w-20 items-center justify-center rounded-full bg-white/5 text-2xl">
+                    🎤
+                  </div>
+                )}
+                <p className="mt-2 truncate text-sm font-medium">{member.name}</p>
+                {member.description && <p className="text-xs text-white/40">{member.description}</p>}
+              </Link>
+            ))}
+          </div>
+        </>
       )}
 
       {awardEntries && awardEntries.length > 0 && (

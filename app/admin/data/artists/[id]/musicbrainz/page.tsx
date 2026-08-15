@@ -156,6 +156,26 @@ async function MusicBrainzPreview({
           <p className="text-xs uppercase tracking-wide text-white/40">ジャンル</p>
           <p className="mt-1 text-white/70">{details.genres.length > 0 ? details.genres.join('、') : 'なし'}</p>
         </div>
+        <div>
+          <p className="text-xs uppercase tracking-wide text-white/40">
+            バンドメンバーシップ({details.memberships.length}件)
+          </p>
+          {details.memberships.length === 0 ? (
+            <p className="mt-1 text-white/40">なし</p>
+          ) : (
+            <ul className="mt-1 space-y-1 text-white/70">
+              {details.memberships.map((m, i) => (
+                <li key={i}>
+                  {m.subjectIsBand ? `メンバー: ${m.name}` : `所属バンド: ${m.name}`}
+                  {m.attributes.length > 0 && <span className="text-white/40"> ({m.attributes.join('・')})</span>}
+                  <span className="ml-1 text-xs text-white/30">
+                    ※このアプリのカタログに既にいる場合のみ取込時に紐付けられます
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </div>
 
       <form action={importMusicBrainzData} className="mt-6">

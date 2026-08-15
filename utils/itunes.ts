@@ -139,6 +139,69 @@ export type ItunesArtistSearchResult = {
 }
 
 /**
+ * 指定IDのアルバム単体を取得する(検索結果からの単一アルバム/トラック登録で、
+ * フィールドが揃った正規のアルバムオブジェクトを得るために使う)
+ */
+export async function fetchAlbumById(collectionId: number): Promise<ItunesAlbum | null> {
+  const url = `${ITUNES_LOOKUP_BASE}?id=${collectionId}&entity=album&country=JP`
+  const res = await fetch(url)
+  if (!res.ok) {
+    throw new Error(`iTunes API error (album lookup): ${res.status}`)
+  }
+  const data = await res.json()
+  return data.results.find((r: any) => r.wrapperType === 'collection') ?? null
+}
+
+/**
+ * キーワードでアルバムを検索する(entity=album)。管理画面の検索・選択式
+ * バルク登録UIで使う。iTunes Search APIの上限は200件だが、検索候補表示用に
+ * limitを絞って明示的に指定する
+ */
+export async function searchAlbums(term: string, limit = 10): Promise<ItunesAlbum[]> {
+  const url = `https://itunes.apple.com/search?term=${encodeURIComponent(term)}&entity=album&limit=${limit}&country=JP`
+  const res = await fetch(url)
+  if (!res.ok) {
+    throw new Error(`iTunes API error (album search): ${res.status}`)
+  }
+  const data = await res.json()
+  return (data.results ?? []).filter((r: any) => r.wrapperType === 'collection')
+}
+
+export type ItunesTrackSearchResult = {
+  trackId: number
+  trackName: string
+  artistId: number
+  artistName: string
+  collectionId: number
+  collectionName: string
+  artworkUrl100?: string
+}
+
+/**
+ * キーワードでトラックを検索する(entity=song)。管理画面の検索・選択式
+ * バルク登録UIで使う
+ */
+export async function searchTracks(term: string, limit = 10): Promise<ItunesTrackSearchResult[]> {
+  const url = `https://itunes.apple.com/search?term=${encodeURIComponent(term)}&entity=song&limit=${limit}&country=JP`
+  const res = await fetch(url)
+  if (!res.ok) {
+    throw new Error(`iTunes API error (track search): ${res.status}`)
+  }
+  const data = await res.json()
+  return (data.results ?? [])
+    .filter((r: any) => r.wrapperType === 'track')
+    .map((r: any) => ({
+      trackId: r.trackId,
+      trackName: r.trackName,
+      artistId: r.artistId,
+      artistName: r.artistName,
+      collectionId: r.collectionId,
+      collectionName: r.collectionName,
+      artworkUrl100: r.artworkUrl100,
+    }))
+}
+
+/**
  * アーティスト名でApple Musicを検索し、候補を返す(上位5件)。
  * 同名・類似名の別人がヒットすることがあるため、呼び出し側で必ず人間の確認を挟むこと。
  */

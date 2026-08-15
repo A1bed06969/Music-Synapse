@@ -71,7 +71,13 @@ export async function writeArtistProfileFromMusicBrainzDetails(
   artistId: string,
   mbid: string,
   details: MusicBrainzArtistDetails
-): Promise<{ profileFieldCount: number; linkCount: number; genresLinked: number }> {
+): Promise<{
+  profileFieldCount: number
+  linkCount: number
+  genresLinked: number
+  membershipsWritten: number
+  membershipsUnresolved: string[]
+}> {
   const { data: currentArtist } = await supabase
     .from('artist')
     .select('official_site_url, sns_x_url, sns_instagram_url, musicbrainz_id')
@@ -136,7 +142,61 @@ export async function writeArtistProfileFromMusicBrainzDetails(
     }
   }
 
-  return { profileFieldCount: Object.keys(fieldUpdate).length, linkCount: details.links.length, genresLinked }
+  // バンドメンバーシップ(relation_type='membership')。credit_person(artist行を
+  // 持たない人物)にはメンバーを登録しない方針のため、相手アーティストが既に
+  // カタログにいる(musicbrainz_idで確認できる)場合のみ関係を作る。
+  // 見つからなかった相手はcredit_personへの誤登録が無いか等の確認のため名前を返す
+  // (呼び出し側が /admin/data/artists/musicbrainz-queue 等でのフォローアップに使える)。
+  // artist_id_a=バンド、artist_id_b=メンバー、というのはこの関数だけが書き込む
+  // membership行の内部的な向きの取り決め(artist_relationテーブル自体には
+  // a/bの向きを示す列が無く、他のrelation_type(production等)は一貫していないため)
+  let membershipsWritten = 0
+  const membershipsUnresolved: string[] = []
+  for (const membership of details.memberships) {
+    const { data: otherArtist } = await supabase
+      .from('artist')
+      .select('id')
+      .eq('musicbrainz_id', membership.mbid)
+      .maybeSingle()
+
+    if (!otherArtist) {
+      membershipsUnresolved.push(membership.name)
+      continue
+    }
+
+    const bandId = membership.subjectIsBand ? artistId : otherArtist.id
+    const memberId = membership.subjectIsBand ? otherArtist.id : artistId
+
+    const descriptionParts: string[] = []
+    if (membership.attributes.length > 0) descriptionParts.push(membership.attributes.join('・'))
+    if (membership.begin || membership.end) {
+      descriptionParts.push(`${membership.begin ?? '?'}〜${membership.ended ? (membership.end ?? '?') : '現在'}`)
+    }
+
+    const { error: membershipError } = await supabase.from('artist_relation').upsert(
+      {
+        artist_id_a: bandId,
+        artist_id_b: memberId,
+        relation_type: 'membership',
+        relation_style: 'solid',
+        description: descriptionParts.length > 0 ? descriptionParts.join('、') : null,
+      },
+      { onConflict: 'artist_id_a,artist_id_b,relation_type', ignoreDuplicates: true }
+    )
+    if (membershipError) {
+      console.error(`メンバーシップ関係の保存に失敗しました(${artistId} <-> ${otherArtist.id}):`, membershipError.message)
+    } else {
+      membershipsWritten++
+    }
+  }
+
+  return {
+    profileFieldCount: Object.keys(fieldUpdate).length,
+    linkCount: details.links.length,
+    genresLinked,
+    membershipsWritten,
+    membershipsUnresolved,
+  }
 }
 
 /**
@@ -174,5 +234,7 @@ export async function autoImportArtistProfileFromMusicBrainz(
   }
 
   const result = await writeArtistProfileFromMusicBrainzDetails(supabase, artistId, mbid, details)
-  return `MBプロフィール取込: リンク${result.linkCount}件・ジャンル${result.genresLinked}件(プロフィール${result.profileFieldCount}件更新)`
+  const unresolvedNote =
+    result.membershipsUnresolved.length > 0 ? `・未解決メンバー${result.membershipsUnresolved.length}件` : ''
+  return `MBプロフィール取込: リンク${result.linkCount}件・ジャンル${result.genresLinked}件・メンバーシップ${result.membershipsWritten}件${unresolvedNote}(プロフィール${result.profileFieldCount}件更新)`
 }

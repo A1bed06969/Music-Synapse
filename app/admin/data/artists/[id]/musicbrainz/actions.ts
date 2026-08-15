@@ -28,19 +28,19 @@ export async function importMusicBrainzData(formData: FormData) {
 
   const supabase = createAdminClient()
 
-  const { profileFieldCount, linkCount, genresLinked } = await writeArtistProfileFromMusicBrainzDetails(
-    supabase,
-    artistId,
-    mbid,
-    details
-  )
+  const { profileFieldCount, linkCount, genresLinked, membershipsWritten, membershipsUnresolved } =
+    await writeArtistProfileFromMusicBrainzDetails(supabase, artistId, mbid, details)
 
   revalidatePath('/admin/data')
   revalidatePath(`/artists/${artistId}`)
 
+  const unresolvedNote =
+    membershipsUnresolved.length > 0
+      ? `(未登録メンバー: ${membershipsUnresolved.join('、')})`
+      : ''
   redirectWith(
     artistId,
     'success',
-    `外部リンク${linkCount}件・ジャンル${genresLinked}件を取り込みました(プロフィール${profileFieldCount}件を更新)`
+    `外部リンク${linkCount}件・ジャンル${genresLinked}件・メンバーシップ${membershipsWritten}件を取り込みました${unresolvedNote}(プロフィール${profileFieldCount}件を更新)`
   )
 }

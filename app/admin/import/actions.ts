@@ -223,6 +223,25 @@ async function syncOneAlbum(
   return trackCount
 }
 
+/** 検索・選択式の登録UI(app/admin/import/search)から、1件だけアルバムを
+ * 登録するための公開ラッパー。artist_idでの既存判定込みでsyncOneAlbumを呼ぶ */
+export async function registerSingleAlbum(
+  supabase: SupabaseClient,
+  artistId: string,
+  artistName: string,
+  itunesAlbum: ItunesAlbum
+): Promise<{ trackCount: number }> {
+  const { data: existingAlbum } = await supabase
+    .from('album')
+    .select('id')
+    .eq('apple_music_album_id', String(itunesAlbum.collectionId))
+    .eq('artist_id', artistId)
+    .maybeSingle()
+
+  const trackCount = await syncOneAlbum(supabase, artistId, artistName, itunesAlbum, existingAlbum?.id ?? null)
+  return { trackCount }
+}
+
 /** 配信停止検知: 今回のiTunes取得結果に含まれなかった既存アルバムは削除せず、
  * 「配信停止の可能性」としてステータスだけ更新する(定期的な再同期での運用を想定。
  * 既に/artists/unreleasedページ等で使われているstreaming_status='none'を流用する) */

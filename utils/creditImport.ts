@@ -148,24 +148,45 @@ export async function writeAlbumCredits(
       creditPersonId = createdPerson.id
     }
 
+    // artist_creditのユニーク制約は(artist_id, album_id, track_id, credit_person_id,
+    // role, source, instrument_id)だが、track_id/instrument_idがNULLの場合(アルバム単位の
+    // 作曲/作詞クレジット等)、PostgreSQLの仕様上NULL同士は一致とみなされずON CONFLICTが
+    // 発火しないため、upsertのignoreDuplicatesが実質無効化されて同じクレジットが
+    // 際限なく重複登録されてしまう。そのためNULLを明示的に扱えるSELECTで
+    // 事前に存在確認してから挿入する(この関数は1アルバムずつ直列に呼ばれるため
+    // 競合状態の心配はない)
+    let existingCreditQuery = supabase
+      .from('artist_credit')
+      .select('id')
+      .eq('artist_id', artistId)
+      .eq('album_id', albumId)
+      .eq('credit_person_id', creditPersonId)
+      .eq('role', role)
+      .eq('source', source)
+    existingCreditQuery = trackId
+      ? existingCreditQuery.eq('track_id', trackId)
+      : existingCreditQuery.is('track_id', null)
+    existingCreditQuery = instrumentId
+      ? existingCreditQuery.eq('instrument_id', instrumentId)
+      : existingCreditQuery.is('instrument_id', null)
+
+    const { data: existingCredit } = await existingCreditQuery.maybeSingle()
+    if (existingCredit) {
+      continue // 既に同じクレジットが登録済み
+    }
+
     const { data: creditData, error: creditError } = await supabase
       .from('artist_credit')
-      .upsert(
-        {
-          artist_id: artistId,
-          album_id: albumId,
-          track_id: trackId,
-          credit_person_id: creditPersonId,
-          role,
-          source,
-          source_url: sourceUrl || null,
-          instrument_id: instrumentId ?? null,
-        },
-        {
-          onConflict: 'artist_id,album_id,track_id,credit_person_id,role,source,instrument_id',
-          ignoreDuplicates: true,
-        }
-      )
+      .insert({
+        artist_id: artistId,
+        album_id: albumId,
+        track_id: trackId,
+        credit_person_id: creditPersonId,
+        role,
+        source,
+        source_url: sourceUrl || null,
+        instrument_id: instrumentId ?? null,
+      })
       .select()
     if (creditError) {
       console.error(`クレジット「${personName}」の保存に失敗しました:`, creditError)
