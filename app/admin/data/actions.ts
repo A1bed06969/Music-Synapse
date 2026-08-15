@@ -75,6 +75,8 @@ export async function updateArtist(formData: FormData) {
   const imageUrl = String(formData.get('image_url') ?? '').trim()
   const spotifyArtistId = String(formData.get('spotify_artist_id') ?? '').trim()
   const urlLatestMv = String(formData.get('url_latest_mv') ?? '').trim()
+  const pageOverrideRaw = String(formData.get('page_override') ?? '').trim()
+  const pageOverride = pageOverrideRaw === 'artist' || pageOverrideRaw === 'member' ? pageOverrideRaw : null
 
   const formedYearNum = Number(formedYearRaw)
   const formedYear = formedYearRaw && !Number.isNaN(formedYearNum) ? formedYearNum : null
@@ -97,6 +99,7 @@ export async function updateArtist(formData: FormData) {
       image_url: imageUrl || null,
       spotify_artist_id: spotifyArtistId || null,
       url_latest_mv: urlLatestMv || null,
+      page_override: pageOverride,
     })
     .eq('id', artistId)
 

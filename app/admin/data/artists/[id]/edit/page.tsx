@@ -111,6 +111,17 @@ export default async function ArtistEditPage({
         </div>
 
         <div className="flex flex-wrap gap-2">
+          <div className="max-w-[220px] flex-1">
+            <label className="mb-1 block text-xs text-white/40">ページ種別(バンドメンバー用)</label>
+            <select name="page_override" defaultValue={artist.page_override ?? ''} className={inputClass}>
+              <option value="">自動判定(本人名義のリリース有無で判定)</option>
+              <option value="artist">アーティストとして表示(強制)</option>
+              <option value="member">メンバーとして表示(強制)</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
           <div className="max-w-xs flex-1">
             <label className="mb-1 block text-xs text-white/40">出身地(都道府県・国など)</label>
             <input name="origin_prefecture" defaultValue={artist.origin_prefecture ?? ''} className={inputClass} />
