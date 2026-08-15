@@ -363,18 +363,18 @@ export default async function EventDetailPage({
       )}
 
       {relatedNews.length > 0 && (
-        <div className="mt-10 max-w-xl">
+        <div className="mt-10">
           <h2 className="text-lg font-semibold">関連ニュース</h2>
-          <div className="mt-3 space-y-2">
+          <div className="mt-3 space-y-2 sm:grid sm:grid-cols-3 sm:gap-4 sm:space-y-0">
             {relatedNews.map((item) => (
               <a
                 key={item.id}
                 href={item.link}
                 target="_blank"
                 rel="noreferrer"
-                className="group flex items-center gap-3 rounded-md border border-white/10 bg-white/[0.03] p-2 transition hover:border-white/30"
+                className="group flex items-center gap-3 rounded-md border border-white/10 bg-white/[0.03] p-2 transition hover:border-white/30 sm:block sm:overflow-hidden sm:rounded-lg sm:p-0"
               >
-                <div className="h-12 w-16 shrink-0 overflow-hidden rounded bg-white/5">
+                <div className="h-12 w-16 shrink-0 overflow-hidden rounded bg-white/5 sm:aspect-video sm:h-auto sm:w-full sm:rounded-none">
                   {item.thumbnailUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
@@ -384,14 +384,14 @@ export default async function EventDetailPage({
                       className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
                     />
                   ) : (
-                    <div className="flex h-full w-full items-center justify-center text-[10px] text-white/20">
+                    <div className="flex h-full w-full items-center justify-center text-[10px] text-white/20 sm:text-xs">
                       No Image
                     </div>
                   )}
                 </div>
-                <div className="min-w-0 flex-1">
-                  <p className="line-clamp-2 text-xs font-medium leading-snug">{item.title}</p>
-                  <div className="mt-1 flex items-center gap-2 text-[10px] text-white/40">
+                <div className="min-w-0 flex-1 sm:p-3">
+                  <p className="line-clamp-2 text-xs font-medium leading-snug sm:text-sm">{item.title}</p>
+                  <div className="mt-1 flex items-center gap-2 text-[10px] text-white/40 sm:mt-2 sm:justify-between sm:text-xs">
                     <span>{item.source}</span>
                     <span>{formatRelativeTime(item.publishedAt)}</span>
                   </div>
