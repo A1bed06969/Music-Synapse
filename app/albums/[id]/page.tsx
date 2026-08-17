@@ -30,7 +30,9 @@ export default async function AlbumDetailPage({
       .order('track_no', { ascending: true }),
     supabase
       .from('disc_guide_selection')
-      .select('id, note, disc_guide:disc_guide_id(id, title, publisher, published_year)')
+      .select(
+        'id, note, disc_guide:disc_guide_id(id, title, publisher, published_year, cover_image_url)'
+      )
       .eq('album_id', id),
   ])
 
@@ -146,7 +148,7 @@ export default async function AlbumDetailPage({
       {discGuideSelections && discGuideSelections.length > 0 && (
         <section className="mt-10">
           <h2 className="text-lg font-semibold">掲載ディスクガイド</h2>
-          <ul className="mt-4 space-y-1 text-sm text-white/60">
+          <ul className="mt-4 space-y-3 text-sm text-white/60">
             {discGuideSelections.map((row) => {
               const guide = Array.isArray(row.disc_guide) ? row.disc_guide[0] : row.disc_guide
               if (!guide) return null
@@ -154,10 +156,19 @@ export default async function AlbumDetailPage({
                 .filter(Boolean)
                 .join(' / ')
               return (
-                <li key={row.id}>
-                  {guide.title}
-                  {meta && <span className="text-white/40"> ({meta})</span>}
-                  {row.note && <span className="text-white/40"> ・ {row.note}</span>}
+                <li key={row.id} className="flex items-center gap-3">
+                  {guide.cover_image_url && (
+                    <img
+                      src={guide.cover_image_url}
+                      alt={guide.title}
+                      className="h-16 w-12 shrink-0 rounded object-cover"
+                    />
+                  )}
+                  <div className="min-w-0">
+                    <span className="text-white/80">{guide.title}</span>に掲載
+                    {meta && <span className="text-white/40"> ({meta})</span>}
+                    {row.note && <span className="text-white/40"> ・ {row.note}</span>}
+                  </div>
                 </li>
               )
             })}
