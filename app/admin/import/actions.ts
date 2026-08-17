@@ -70,6 +70,33 @@ export async function upsertArtistFromItunes(
     return { artistId: existingArtist.id, errorMessage: null }
   }
 
+  // apple_music_artist_idでは見つからなかった場合でも、完全一致する名前のartistが
+  // 既にapple_music_artist_id未設定で存在するなら(MusicBrainzのバンドメンバー
+  // 自動登録経由の空スタブ等)、新規作成せずそちらにapple_music_artist_idを補完して使う。
+  // 同名重複artist行の発生を防ぐ(utils/artistProfileImport.tsの同種の対策と対になる)
+  const { data: sameNameCandidates } = await supabase
+    .from('artist')
+    .select('id, official_site_url')
+    .eq('name', itunesArtist.artistName)
+    .is('apple_music_artist_id', null)
+    .limit(1)
+
+  if (sameNameCandidates && sameNameCandidates.length > 0) {
+    const sameNameArtist = sameNameCandidates[0]
+    const { error: linkError } = await supabase
+      .from('artist')
+      .update({
+        apple_music_artist_id: String(itunesArtist.artistId),
+        official_site_url: sameNameArtist.official_site_url ?? (itunesArtist.artistLinkUrl ?? null),
+        last_synced_at: new Date().toISOString(),
+      })
+      .eq('id', sameNameArtist.id)
+    if (linkError) {
+      return { artistId: null, errorMessage: linkError.message }
+    }
+    return { artistId: sameNameArtist.id, errorMessage: null }
+  }
+
   const { data: inserted, error: insertError } = await supabase
     .from('artist')
     .insert({
