@@ -16,17 +16,23 @@ export default async function VenuesPage({
   const { venue, address, success, error: errorMessage } = await searchParams
   const supabase = await createClient()
 
-  const [{ data: musicEvents }, { data: eventEditions }, { data: eventAppearances }, { data: existingLocations }] =
-    await Promise.all([
-      supabase.from('music_event').select('venue'),
-      supabase.from('event_edition').select('venue'),
-      supabase.from('event_appearance').select('venue'),
-      supabase.from('venue_location').select('venue_name'),
-    ])
+  const [
+    { data: musicEvents },
+    { data: eventEditions },
+    { data: eventEditionDates },
+    { data: eventAppearances },
+    { data: existingLocations },
+  ] = await Promise.all([
+    supabase.from('music_event').select('venue'),
+    supabase.from('event_edition').select('venue'),
+    supabase.from('event_edition_date').select('venue'),
+    supabase.from('event_appearance').select('venue'),
+    supabase.from('venue_location').select('venue_name'),
+  ])
 
   const knownNames = new Set((existingLocations ?? []).map((v) => v.venue_name))
   const allVenueNames = new Set<string>()
-  for (const rows of [musicEvents, eventEditions, eventAppearances]) {
+  for (const rows of [musicEvents, eventEditions, eventEditionDates, eventAppearances]) {
     for (const row of rows ?? []) {
       if (row.venue) allVenueNames.add(row.venue)
     }

@@ -1,7 +1,13 @@
 import Link from 'next/link'
 import { createClient } from '@/utils/Supabase/server'
 import { inputClass, buttonClass } from '../adminUi'
-import { createEvent, createEventEdition, createEventAppearance, createMusicEvent } from './actions'
+import {
+  createEvent,
+  createEventEdition,
+  createEventEditionDate,
+  createEventAppearance,
+  createMusicEvent,
+} from './actions'
 
 const EVENT_TYPE_OPTIONS = [
   { value: 'festival', label: 'フェス' },
@@ -28,6 +34,7 @@ export default async function EventsAdminPage({
     { data: genres },
     { data: events },
     { data: eventEditions },
+    { data: eventEditionDates },
     { data: eventAppearances },
     { data: musicEvents },
   ] = await Promise.all([
@@ -35,6 +42,10 @@ export default async function EventsAdminPage({
     supabase.from('genre').select('id, name').order('name'),
     supabase.from('event').select('id, name, event_type').order('name'),
     supabase.from('event_edition').select('id, year, event:event_id(name)').order('year', { ascending: false }),
+    supabase
+      .from('event_edition_date')
+      .select('id, date, venue, event_edition:event_edition_id(year, event:event_id(name))')
+      .order('date', { ascending: true }),
     supabase
       .from('event_appearance')
       .select(
@@ -144,6 +155,42 @@ export default async function EventsAdminPage({
             return (
               <li key={row.id}>
                 {event?.name}({row.year})
+              </li>
+            )
+          })}
+        </ul>
+      )}
+
+      <h2 className="mt-8 text-sm font-semibold text-white/70">開催日程・会場</h2>
+      <p className="mt-1 text-xs text-white/40">
+        サマーソニックのように日によって会場が異なるフェスや、複数都市を回るライブツアーなど、1つの開催回の中で日付・会場が複数ある場合にここで個別に登録する。アーティストの出演情報とは独立して登録できる。
+      </p>
+      <form action={createEventEditionDate} className="mt-3 flex flex-wrap gap-2">
+        <select name="event_edition_id" required className={`${inputClass} max-w-xs`} defaultValue="">
+          <option value="" disabled>
+            開催回を選択
+          </option>
+          {eventEditionOptions.map((row) => (
+            <option key={row.id} value={row.id}>
+              {row.label}
+            </option>
+          ))}
+        </select>
+        <input name="date" type="date" required className={`${inputClass} max-w-[160px]`} />
+        <input name="venue" placeholder="会場(例: 幕張メッセ)" required className={`${inputClass} max-w-xs`} />
+        <button type="submit" className={buttonClass}>
+          開催日程を追加
+        </button>
+      </form>
+
+      {eventEditionDates && eventEditionDates.length > 0 && (
+        <ul className="mt-4 space-y-1 text-sm text-white/60">
+          {eventEditionDates.map((row) => {
+            const edition = Array.isArray(row.event_edition) ? row.event_edition[0] : row.event_edition
+            const event = edition ? (Array.isArray(edition.event) ? edition.event[0] : edition.event) : null
+            return (
+              <li key={row.id}>
+                {event?.name}({edition?.year}) — {row.date} @ {row.venue}
               </li>
             )
           })}

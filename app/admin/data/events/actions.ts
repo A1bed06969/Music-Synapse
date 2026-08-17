@@ -70,6 +70,31 @@ export async function createEventEdition(formData: FormData) {
   redirectWith('success', '開催回を登録しました。')
 }
 
+export async function createEventEditionDate(formData: FormData) {
+  const eventEditionId = String(formData.get('event_edition_id') ?? '')
+  const date = String(formData.get('date') ?? '').trim()
+  const venue = String(formData.get('venue') ?? '').trim()
+
+  if (!eventEditionId || !date || !venue) {
+    redirectWith('error', '開催回・日付・会場を入力してください。')
+  }
+
+  const supabase = createAdminClient()
+  const { error } = await supabase.from('event_edition_date').insert({
+    event_edition_id: eventEditionId,
+    date,
+    venue,
+  })
+
+  if (error) {
+    redirectWith('error', `開催日程の登録に失敗しました: ${error.message}`)
+  }
+
+  revalidatePath('/admin/data/events')
+  revalidatePath('/albums/calendar')
+  redirectWith('success', '開催日程を登録しました。')
+}
+
 export async function createEventAppearance(formData: FormData) {
   const eventEditionId = String(formData.get('event_edition_id') ?? '')
   const artistId = String(formData.get('artist_id') ?? '')

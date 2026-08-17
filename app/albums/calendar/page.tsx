@@ -95,31 +95,65 @@ export default async function AlbumCalendarPage({
       }
     })
 
-  // フェス: event_edition(開催年ごとの日程)が月表示の範囲と重なるものを取得。
-  // 複数日開催なので、開始日<月末 かつ 終了日>=月初 で範囲重複判定する。
+  // フェス: event_edition_date(開催回内の個別日程+会場)があればそれを優先する。
+  // サマーソニックのように日によって会場が異なる場合でも正しく表示できる。
+  // 個別日程が1件も無い開催回(既存データ)は、従来通りevent_editionの
+  // start_date〜end_dateの範囲展開にフォールバックする。
+  const { data: editionDateRows } = await supabase
+    .from('event_edition_date')
+    .select(
+      'id, event_edition_id, date, venue, event_edition:event_edition_id(event:event_id(id, name, name_ja, image_url))'
+    )
+    .gte('date', start)
+    .lt('date', end)
+
+  const { data: allEditionDateRows } = await supabase.from('event_edition_date').select('event_edition_id')
+  const editionsWithDates = new Set((allEditionDateRows ?? []).map((r) => r.event_edition_id))
+
+  const festivalEventsFromDates: CalendarLiveEvent[] = (editionDateRows ?? []).map((row) => {
+    const edition = Array.isArray(row.event_edition) ? row.event_edition[0] : row.event_edition
+    const ev = edition ? (Array.isArray(edition.event) ? edition.event[0] : edition.event) : null
+    return {
+      id: row.id,
+      date: row.date,
+      kind: 'event' as const,
+      // event.nameが正式名称(例: "FUJI ROCK FESTIVAL")、name_jaは通称
+      // (例: "フジロック")。/events・/events/[id]と同じくnameを主表示にする。
+      title: ev?.name || ev?.name_ja || '(名称不明)',
+      imageUrl: ev?.image_url ?? null,
+      venue: row.venue,
+      artistName: null,
+      href: ev?.id ? `/events/${ev.id}` : null,
+    }
+  })
+
+  // フェス(フォールバック): 個別日程(event_edition_date)が無い開催回のみ、
+  // 開始日<月末 かつ 終了日>=月初 で範囲重複判定して期間全体を展開する。
   const { data: editionRows } = await supabase
     .from('event_edition')
     .select('id, start_date, end_date, venue, event:event_id(id, name, name_ja, image_url, event_type)')
     .lt('start_date', end)
     .gte('end_date', start)
 
-  const festivalEvents: CalendarLiveEvent[] = (editionRows ?? []).flatMap((edition) => {
-    if (!edition.start_date || !edition.end_date) return []
-    const ev = Array.isArray(edition.event) ? edition.event[0] : edition.event
-    const days = expandDateRange(edition.start_date, edition.end_date, start, end)
-    return days.map((date) => ({
-      id: `${edition.id}-${date}`,
-      date,
-      kind: 'event' as const,
-      // event.nameが正式名称(例: "FUJI ROCK FESTIVAL")、name_jaは通称
-      // (例: "フジロック")。/events・/events/[id]と同じくnameを主表示にする。
-      title: ev?.name || ev?.name_ja || '(名称不明)',
-      imageUrl: ev?.image_url ?? null,
-      venue: edition.venue,
-      artistName: null,
-      href: ev?.id ? `/events/${ev.id}` : null,
-    }))
-  })
+  const festivalEventsFromRange: CalendarLiveEvent[] = (editionRows ?? [])
+    .filter((edition) => !editionsWithDates.has(edition.id))
+    .flatMap((edition) => {
+      if (!edition.start_date || !edition.end_date) return []
+      const ev = Array.isArray(edition.event) ? edition.event[0] : edition.event
+      const days = expandDateRange(edition.start_date, edition.end_date, start, end)
+      return days.map((date) => ({
+        id: `${edition.id}-${date}`,
+        date,
+        kind: 'event' as const,
+        title: ev?.name || ev?.name_ja || '(名称不明)',
+        imageUrl: ev?.image_url ?? null,
+        venue: edition.venue,
+        artistName: null,
+        href: ev?.id ? `/events/${ev.id}` : null,
+      }))
+    })
+
+  const festivalEvents: CalendarLiveEvent[] = [...festivalEventsFromDates, ...festivalEventsFromRange]
 
   // ライブ: music_event(単発の開催日)を月表示の範囲で取得。
   const { data: liveRows } = await supabase
