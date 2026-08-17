@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useMemo, useState } from 'react'
+import { CREDIT_ROLE_LABEL } from '@/utils/format'
 
 type Artist = {
   id: string
@@ -13,7 +14,7 @@ type Artist = {
 
 type Member = Artist & { bandNames: string[] }
 
-type CreditPerson = { id: string; name: string }
+type CreditPerson = { id: string; name: string; roles: string[] }
 
 type Tab = 'artist' | 'member' | 'credit'
 
@@ -21,6 +22,11 @@ const TABS: { key: Tab; label: string }[] = [
   { key: 'artist', label: 'アーティスト' },
   { key: 'member', label: 'メンバー' },
   { key: 'credit', label: 'クレジット' },
+]
+
+const CREDIT_ROLE_TABS: { key: string; label: string }[] = [
+  { key: 'all', label: 'すべて' },
+  ...Object.entries(CREDIT_ROLE_LABEL).map(([key, label]) => ({ key, label })),
 ]
 
 function matchesQuery(q: string, ...fields: (string | null | undefined)[]): boolean {
@@ -37,6 +43,7 @@ export default function ArtistBrowseClient({
   credits: CreditPerson[]
 }) {
   const [tab, setTab] = useState<Tab>('artist')
+  const [creditRole, setCreditRole] = useState<string>('all')
   const [query, setQuery] = useState('')
 
   const q = query.trim().toLowerCase()
@@ -49,10 +56,10 @@ export default function ArtistBrowseClient({
     () => (q ? members.filter((m) => matchesQuery(q, m.name, m.name_kana, m.name_en)) : members),
     [members, q]
   )
-  const filteredCredits = useMemo(
-    () => (q ? credits.filter((c) => matchesQuery(q, c.name)) : credits),
-    [credits, q]
-  )
+  const filteredCredits = useMemo(() => {
+    const byRole = creditRole === 'all' ? credits : credits.filter((c) => c.roles.includes(creditRole))
+    return q ? byRole.filter((c) => matchesQuery(q, c.name)) : byRole
+  }, [credits, creditRole, q])
 
   const placeholder =
     tab === 'artist' ? 'アーティスト名で絞り込み...' : tab === 'member' ? 'メンバー名で絞り込み...' : 'クレジット人物名で絞り込み...'
@@ -86,6 +93,25 @@ export default function ArtistBrowseClient({
         className="mt-4 w-full max-w-md rounded-md border border-white/15 bg-white/5 px-4 py-2.5 text-sm text-white placeholder:text-white/30 focus:border-white/30 focus:outline-none"
         autoFocus
       />
+
+      {tab === 'credit' && (
+        <div className="mt-4 flex flex-wrap gap-1.5">
+          {CREDIT_ROLE_TABS.map((r) => (
+            <button
+              key={r.key}
+              type="button"
+              onClick={() => setCreditRole(r.key)}
+              className={`rounded-full border px-3 py-1 text-xs transition ${
+                creditRole === r.key
+                  ? 'border-white bg-white text-black font-medium'
+                  : 'border-white/15 bg-white/5 text-white/60 hover:border-white/30'
+              }`}
+            >
+              {r.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {tab === 'artist' && (
         <ArtistGrid
