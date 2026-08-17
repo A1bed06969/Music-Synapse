@@ -17,15 +17,17 @@ const CREDIT_QUADRANT_ROLES = ['lyricist', 'composer', 'arranger', 'mix', 'maste
 /** アーティストページの相関図用に、クレジット人物(プロデューサー/制作陣/
  * サポートミュージシャン)とコラボアーティスト(artist_relationのproduction)
  * を4象限に分けて集計する。バンドメンバー(membership)は別セクションで
- * 表示済みのためここには含めない。 */
+ * 表示済みのためここには含めない。バンドメンバーがcredit_person側にも
+ * 同名で別行として存在するケース(自分のバンドの曲へのクレジット)は、
+ * musicbrainz_idの一致で検出して除外する。 */
 export async function buildArtistCreditQuadrants(
   supabase: SupabaseClient,
   artistId: string
 ): Promise<ArtistCreditQuadrants> {
-  const [{ data: credits }, { data: relations }] = await Promise.all([
+  const [{ data: credits }, { data: relations }, { data: memberships }] = await Promise.all([
     supabase
       .from('artist_credit')
-      .select('role, credit_person:credit_person_id(id, name)')
+      .select('role, credit_person:credit_person_id(id, name, musicbrainz_id)')
       .eq('artist_id', artistId)
       .in('role', ['producer', 'musician', ...CREDIT_QUADRANT_ROLES]),
     supabase
@@ -35,7 +37,25 @@ export async function buildArtistCreditQuadrants(
       )
       .eq('relation_type', 'production')
       .or(`artist_id_a.eq.${artistId},artist_id_b.eq.${artistId}`),
+    supabase
+      .from('artist_relation')
+      .select(
+        'artist_id_a, artist_id_b, other_a:artist_id_a(id, musicbrainz_id), other_b:artist_id_b(id, musicbrainz_id)'
+      )
+      .eq('relation_type', 'membership')
+      .or(`artist_id_a.eq.${artistId},artist_id_b.eq.${artistId}`),
   ])
+
+  const memberArtistIds = new Set<string>()
+  const memberMbids = new Set<string>()
+  for (const row of memberships ?? []) {
+    const otherA = Array.isArray(row.other_a) ? row.other_a[0] : row.other_a
+    const otherB = Array.isArray(row.other_b) ? row.other_b[0] : row.other_b
+    const member = row.artist_id_a === artistId ? otherB : otherA
+    if (!member) continue
+    memberArtistIds.add(member.id)
+    if (member.musicbrainz_id) memberMbids.add(member.musicbrainz_id)
+  }
 
   const producers = new Map<string, QuadrantPerson>()
   const creditFolks = new Map<string, QuadrantPerson>()
@@ -44,6 +64,7 @@ export async function buildArtistCreditQuadrants(
   for (const row of credits ?? []) {
     const person = Array.isArray(row.credit_person) ? row.credit_person[0] : row.credit_person
     if (!person) continue
+    if (person.musicbrainz_id && memberMbids.has(person.musicbrainz_id)) continue
     if (row.role === 'producer') {
       producers.set(person.id, { id: person.id, name: person.name })
     } else if (row.role === 'musician') {
@@ -64,6 +85,7 @@ export async function buildArtistCreditQuadrants(
     const b = Array.isArray(row.artist_b) ? row.artist_b[0] : row.artist_b
     const other = row.artist_id_a === artistId ? b : a
     if (!other) continue
+    if (memberArtistIds.has(other.id)) continue
     collaborators.set(other.id, { id: other.id, name: other.name, imageUrl: other.image_url })
   }
 

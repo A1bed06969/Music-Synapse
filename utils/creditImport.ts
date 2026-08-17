@@ -103,6 +103,24 @@ export async function writeAlbumCredits(
 
     if (matchedArtist) {
       const [artist_id_a, artist_id_b] = [matchedArtist.id, artistId].sort()
+
+      // クレジット人物が既にこのアーティストのバンドメンバー(membership)である
+      // 場合、自分のバンドの曲へのクレジットを他アーティストとの「production」
+      // (共同制作)関係として記録しない(在籍情報と意味が重複してしまうため)。
+      // membership行はartist_id_a=バンド/artist_id_b=メンバーの向きで固定登録される
+      // (production等とは違いソートされない)ため、どちらの向きもチェックする
+      const { data: existingMembership } = await supabase
+        .from('artist_relation')
+        .select('id')
+        .eq('relation_type', 'membership')
+        .or(
+          `and(artist_id_a.eq.${matchedArtist.id},artist_id_b.eq.${artistId}),and(artist_id_a.eq.${artistId},artist_id_b.eq.${matchedArtist.id})`
+        )
+        .maybeSingle()
+      if (existingMembership) {
+        continue
+      }
+
       const { data: relationData, error: relationError } = await supabase
         .from('artist_relation')
         .upsert(
@@ -135,17 +153,39 @@ export async function writeAlbumCredits(
 
     let creditPersonId = existingPerson?.id as string | undefined
     if (!creditPersonId) {
-      const { data: createdPerson, error: createError } = await supabase
+      // MB/Discogsのどちらか一方から先に取り込まれ、もう一方のIDカラムが
+      // 空のまま同名の人物が既に存在する場合、新規作成せずそちらへ今回の
+      // ソースIDを補完する(片方のsource_idだけを持つ重複人物の発生を防ぐ)
+      const { data: sameNameCandidate } = await supabase
         .from('credit_person')
-        .insert({ name: personName, [personMatchColumn]: personSourceId })
         .select('id')
-        .single()
-      if (createError) {
-        console.error(`人物「${personName}」の作成に失敗しました:`, createError)
-        failureCount += 1
-        continue
+        .eq('name', personName)
+        .is(personMatchColumn, null)
+        .limit(1)
+        .maybeSingle()
+
+      if (sameNameCandidate) {
+        creditPersonId = sameNameCandidate.id
+        const { error: updateError } = await supabase
+          .from('credit_person')
+          .update({ [personMatchColumn]: personSourceId })
+          .eq('id', creditPersonId)
+        if (updateError) {
+          console.error(`人物「${personName}」のID補完に失敗しました:`, updateError)
+        }
+      } else {
+        const { data: createdPerson, error: createError } = await supabase
+          .from('credit_person')
+          .insert({ name: personName, [personMatchColumn]: personSourceId })
+          .select('id')
+          .single()
+        if (createError) {
+          console.error(`人物「${personName}」の作成に失敗しました:`, createError)
+          failureCount += 1
+          continue
+        }
+        creditPersonId = createdPerson.id
       }
-      creditPersonId = createdPerson.id
     }
 
     // artist_creditのユニーク制約は(artist_id, album_id, track_id, credit_person_id,
