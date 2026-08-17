@@ -201,7 +201,10 @@ export async function fetchAllNews(sources: NewsSource[]): Promise<{ items: News
  * イベント/アーティスト名などとの単純なタイトル一致による関連記事表示に使う
  * (RSSタイトルには本文の要約が無いため、現状はタイトルのみが対象) */
 export function findRelatedNews(items: NewsItem[], keywords: string[], limit: number): NewsItem[] {
-  const validKeywords = keywords.map((k) => k.trim()).filter(Boolean)
+  // 単純な部分一致のため、1〜2文字のキーワードは無関係な単語内の偶然の部分文字列
+  // (例: "AI" が "MUSIC FAIR" の "F-AI-R" に一致)を拾ってしまう。誤検知防止のため
+  // 3文字未満のキーワードは判定対象から除外する
+  const validKeywords = keywords.map((k) => k.trim()).filter((k) => k.length >= 3)
   if (validKeywords.length === 0) return []
   return items.filter((item) => validKeywords.some((k) => item.title.includes(k))).slice(0, limit)
 }
