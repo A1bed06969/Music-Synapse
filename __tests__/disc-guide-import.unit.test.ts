@@ -56,18 +56,49 @@ describe('parseOCRToAlbums', () => {
     assert.equal(albums[0].release_year, 1971)
   })
 
-  test('handles multiple album entries in sequence (no label line)', async () => {
-    // NOTE: a 3rd "label" line per entry (artist/title/label) is a pre-existing
-    // heuristic limitation unrelated to this change — see disc-guide-import.integration
-    // notes / Phase 1 report defect list. This test sticks to 2-line blocks so it
-    // exercises only the year-stripping and normalization behavior added here.
+  test('handles multiple 2-line entries in sequence (year on title line)', async () => {
     const albums = await parseOCRToAlbums(
       'DJ Takemura\nHoping For The Sun (1992)\nKool Jazz Productions\nPath Of Puppy (1993)'
     )
     assert.equal(albums.length, 2)
     assert.equal(albums[0].title, 'Hoping For The Sun')
+    assert.equal(albums[0].artist_name, 'DJ Takemura')
     assert.equal(albums[0].release_year, 1992)
     assert.equal(albums[1].title, 'Path Of Puppy')
+    assert.equal(albums[1].artist_name, 'Kool Jazz Productions')
     assert.equal(albums[1].release_year, 1993)
+  })
+
+  test('handles multiple 3-line entries without the label bleeding into the next artist', async () => {
+    // Real disc guide layout: artist / title / "label (year) format", i.e. the
+    // year appears on the label line, not the title line. Previously the label
+    // line ("Global Dept") was misread as the *next* entry's artist name,
+    // shifting every subsequent entry by one line.
+    const albums = await parseOCRToAlbums(
+      'DJ Takemura & Kool Jazz Productions\n' +
+        'Hoping For The Sun\n' +
+        'Global Dept (1992) 12inch\n' +
+        'Kool Jazz Productions\n' +
+        'Path Of Puppy\n' +
+        'Lollop (1993) 12inch'
+    )
+    assert.equal(albums.length, 2)
+    assert.equal(albums[0].artist_name, 'DJ Takemura & Kool Jazz Productions')
+    assert.equal(albums[0].title, 'Hoping For The Sun')
+    assert.equal(albums[0].release_year, 1992)
+    assert.match(albums[0].label ?? '', /Global Dept/)
+    assert.equal(albums[1].artist_name, 'Kool Jazz Productions')
+    assert.equal(albums[1].title, 'Path Of Puppy')
+    assert.equal(albums[1].release_year, 1993)
+    assert.match(albums[1].label ?? '', /Lollop/)
+  })
+
+  test('finalizes a 3-line entry with no year at all instead of dropping it', async () => {
+    const albums = await parseOCRToAlbums('Artist\nTitle\nSome Label')
+    assert.equal(albums.length, 1)
+    assert.equal(albums[0].artist_name, 'Artist')
+    assert.equal(albums[0].title, 'Title')
+    assert.equal(albums[0].label, 'Some Label')
+    assert.equal(albums[0].release_year, undefined)
   })
 })

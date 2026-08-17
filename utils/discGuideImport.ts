@@ -59,7 +59,16 @@ export function normalizeOcrText(raw: string): string {
 }
 
 export async function parseOCRToAlbums(text: string): Promise<AlbumExtract[]> {
-  // Simple heuristic parser: split by newlines and detect patterns
+  // Simple heuristic parser: split by newlines and detect patterns.
+  //
+  // ディスクガイドのレイアウトは版によって2行(アーティスト/「タイトル (年)」)と
+  // 3行(アーティスト/タイトル/「レーベル (年)」)の両方があり得る。タイトル行
+  // 自体に年号が付いているかどうかで、このエントリが2行と3行のどちらの形式か
+  // を判定する: 付いていれば2行形式としてその場で確定、付いていなければ
+  // 3行形式とみなして次の行(ラベル+年号)を読んでから確定する。以前は
+  // タイトルが確定した時点で無条件に確定していたため、3行形式のラベル行が
+  // 次エントリの「アーティスト名」として誤読され、以降のエントリが1行ずつ
+  // ずれていくバグがあった。
   const lines = text
     .split('\n')
     .map((l) => normalizeOcrText(l))
@@ -67,31 +76,9 @@ export async function parseOCRToAlbums(text: string): Promise<AlbumExtract[]> {
   const albums: AlbumExtract[] = [];
 
   let current: Partial<AlbumExtract> = {};
+  let awaitingLabel = false;
 
-  for (const line of lines) {
-    let working = line;
-
-    // Detect year pattern (YYYY) and strip it from the line so it doesn't
-    // end up baked into title/artist_name (e.g. "Solid State Survivor (1979)"
-    // would never match the DB title "Solid State Survivor" otherwise).
-    const yearMatch = working.match(/\((\d{4})\)/);
-    if (yearMatch) {
-      current.release_year = parseInt(yearMatch[1], 10);
-      working = working.replace(yearMatch[0], '').trim();
-    }
-
-    if (!working) continue; // line was only a year marker; nothing left to assign
-
-    // Detect artist pattern (usually before title, shorter line)
-    if (working.length < 50 && !current.artist_name && !current.title) {
-      current.artist_name = working;
-    } else if (!current.title && current.artist_name && working.length < 100) {
-      current.title = working;
-    } else if (working.length < 50) {
-      current.label = working;
-    }
-
-    // If we have title + artist, save as album
+  function finalize() {
     if (current.title && current.artist_name) {
       albums.push({
         title: current.title,
@@ -99,8 +86,52 @@ export async function parseOCRToAlbums(text: string): Promise<AlbumExtract[]> {
         label: current.label,
         release_year: current.release_year,
       });
-      current = {};
     }
+    current = {};
+    awaitingLabel = false;
+  }
+
+  for (const rawLine of lines) {
+    // Detect year pattern (YYYY) and strip it from the line so it doesn't
+    // end up baked into title/artist_name (e.g. "Solid State Survivor (1979)"
+    // would never match the DB title "Solid State Survivor" otherwise).
+    const yearMatch = rawLine.match(/\((\d{4})\)/);
+    const lineYear = yearMatch ? parseInt(yearMatch[1], 10) : undefined;
+    const working = yearMatch ? rawLine.replace(yearMatch[0], '').trim() : rawLine;
+
+    if (!working) continue; // line was only a year marker; nothing left to assign
+
+    if (!current.artist_name) {
+      current.artist_name = working;
+      continue;
+    }
+
+    if (!current.title) {
+      current.title = working;
+      if (lineYear !== undefined) {
+        current.release_year = lineYear;
+        finalize(); // 2行形式: タイトル行に年号があったので確定
+      } else {
+        awaitingLabel = true; // 3行形式: 次の行(ラベル+年号)を待つ
+      }
+      continue;
+    }
+
+    if (awaitingLabel) {
+      // レビュー文などの長文が続く場合はラベルとして採用しない(labelは
+      // マッチングに使わないフィールドなので、取りこぼしても実害は小さい)
+      if (working.length < 100) {
+        current.label = working;
+      }
+      if (lineYear !== undefined) current.release_year = lineYear;
+      finalize();
+      continue;
+    }
+
+    // artist_name・titleが揃っていてラベル待ちでもない場合、この行は
+    // 次のエントリの開始とみなす(通常はfinalize()で既にリセットされて
+    // いるはずだが、保険として)。
+    current = { artist_name: working };
   }
 
   return albums;
