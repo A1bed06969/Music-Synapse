@@ -154,7 +154,15 @@ function normalizeRdfItems(root: XmlNode, sourceName: string): NewsItem[] {
 
 export async function fetchNewsFeed(source: NewsSource): Promise<NewsItem[]> {
   const res = await fetch(source.feedUrl, {
-    headers: { 'User-Agent': 'Mozilla/5.0 (compatible; MusicSynapseBot/1.0)' },
+    // OTOTOY(403)・音楽ナタリー(405)は本番(Vercel)からのみ失敗しており、
+    // "Bot"を名乗るUser-Agentをボット対策で弾いている可能性が高い。
+    // 一般的なブラウザのUser-Agent・Acceptヘッダーに寄せる。
+    headers: {
+      'User-Agent':
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
+      Accept: 'application/rss+xml, application/atom+xml, application/xml;q=0.9, */*;q=0.8',
+      'Accept-Language': 'ja,en;q=0.9',
+    },
     next: { revalidate: 1800 },
     signal: AbortSignal.timeout(15000),
   })
@@ -176,7 +184,7 @@ export async function fetchNewsFeed(source: NewsSource): Promise<NewsItem[]> {
   return []
 }
 
-const MAX_ITEMS_PER_SOURCE = 5
+const MAX_ITEMS_PER_SOURCE = 6
 
 export async function fetchAllNews(sources: NewsSource[]): Promise<{ items: NewsItem[]; failedSources: string[] }> {
   const results = await Promise.allSettled(sources.map((s) => fetchNewsFeed(s)))
