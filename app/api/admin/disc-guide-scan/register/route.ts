@@ -60,11 +60,18 @@ export async function POST(req: NextRequest) {
 
         if (!existingArtist) {
           // Create new artist
-          const { data: newArtist } = await supabase
+          const { data: newArtist, error: artistError } = await supabase
             .from('artist')
             .insert({ name: albumData.artist_name })
             .select('id')
             .single();
+
+          if (artistError) {
+            console.error(
+              `Failed to create artist "${albumData.artist_name}":`,
+              artistError.message
+            );
+          }
 
           artistId = newArtist?.id || '';
           if (artistId) {
@@ -76,7 +83,10 @@ export async function POST(req: NextRequest) {
 
         // Create album (unregistered)
         if (artistId) {
-          const { data: newAlbum } = await supabase
+          // album_type は CHECK 制約付き
+          // ('Album' | 'EP' | 'Single' | 'Live' | 'Compilation' | 'Best')。
+          // ディスクガイド掲載作は原則アルバムなので 'Album' を既定にする。
+          const { data: newAlbum, error: albumError } = await supabase
             .from('album')
             .insert({
               artist_id: artistId,
@@ -84,10 +94,17 @@ export async function POST(req: NextRequest) {
               release_date: albumData.year
                 ? `${albumData.year}-01-01`
                 : null,
-              album_type: 'other',
+              album_type: 'Album',
             })
             .select('id')
             .single();
+
+          if (albumError) {
+            console.error(
+              `Failed to create album "${albumData.title}":`,
+              albumError.message
+            );
+          }
 
           albumId = newAlbum?.id;
         }
