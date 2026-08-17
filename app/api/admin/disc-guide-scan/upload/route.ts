@@ -5,6 +5,11 @@ import { after } from 'next/server';
 import { performOCR, parseOCRToAlbums, matchAlbumsWithCandidates } from '@/utils/discGuideImport';
 import { NextRequest, NextResponse } from 'next/server';
 
+// 複数画像のOCRをafter()内で順次処理するため、デフォルトの関数実行時間では
+// 足りない可能性がある。他の管理画面バックグラウンド処理(app/admin/import等)
+// と同じ規約に合わせる。
+export const maxDuration = 60;
+
 export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();

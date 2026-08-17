@@ -5,6 +5,11 @@ import { autoImportArtistProfileFromMusicBrainz } from '@/utils/artistProfileImp
 import { after } from 'next/server';
 import { NextRequest, NextResponse } from 'next/server';
 
+// after()内で新規アーティストごとにMusicBrainzプロフィール取込を行うため、
+// 1ページに新規アーティストが多いと時間がかかる。他の管理画面バックグラウンド
+// 処理と同じ規約に合わせる。
+export const maxDuration = 60;
+
 type ConfirmedAlbum = {
   extracted_index: number;
   title: string;
@@ -51,12 +56,16 @@ export async function POST(req: NextRequest) {
         // Get or create artist
         let artistId = albumData.artist_name; // Placeholder, should query
 
-        // Check if artist exists
+        // Check if artist exists. .single()は0件・2件以上の両方でエラーになり、
+        // dataがnullのまま握りつぶされるため、既に候補が複数ある場合も
+        // 「存在しない」扱いになって重複作成されてしまう。.limit(1).maybeSingle()
+        // なら該当が2件以上あっても先頭1件を安全に拾える。
         const { data: existingArtist } = await supabase
           .from('artist')
           .select('id')
           .ilike('name', `%${albumData.artist_name}%`)
-          .single();
+          .limit(1)
+          .maybeSingle();
 
         if (!existingArtist) {
           // Create new artist
@@ -110,14 +119,28 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // Register to disc_guide_selection
+      // Register to disc_guide_selection。upsert + onConflict ignoreDuplicatesで、
+      // (disc_guide_id, album_id)が既に登録済みなら何もしない(再試行時の冪等性)。
+      // エラーを確認せずにカウントしていた旧実装では、insert失敗時も
+      // registeredCountが実際の登録件数より多く報告されてしまっていた。
       if (albumId) {
-        await supabase.from('disc_guide_selection').insert({
-          disc_guide_id: pending.disc_guide_id,
-          album_id: albumId,
-          note: null,
-        });
-        registeredCount++;
+        const { error: selectionError } = await supabase.from('disc_guide_selection').upsert(
+          {
+            disc_guide_id: pending.disc_guide_id,
+            album_id: albumId,
+            note: null,
+          },
+          { onConflict: 'disc_guide_id,album_id', ignoreDuplicates: true }
+        );
+
+        if (selectionError) {
+          console.error(
+            `Failed to register album "${albumData.title}" (${albumId}) to disc guide selection:`,
+            selectionError.message
+          );
+        } else {
+          registeredCount++;
+        }
       }
     }
 

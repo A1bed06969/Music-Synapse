@@ -30,9 +30,12 @@ export default async function DiscGuideScanConfirmPage({
 
   let selectedPending = null
   if (pending_id) {
+    // image_urlはbase64エンコードされた画像そのもの(数MB)が入っており、
+    // ConfirmationClientは使わないため列指定から外す(select('*')だと
+    // 確認画面を開くたびに毎回これを読み込むことになる)。
     const { data: pending } = await supabase
       .from('disc_guide_scan_pending')
-      .select('*')
+      .select('id, extracted_data, matched_data')
       .eq('id', pending_id)
       .single()
     selectedPending = pending
