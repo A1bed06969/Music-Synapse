@@ -29,15 +29,21 @@ export default async function ArtistsPage() {
     return rows
   }
 
-  const [{ data: allArtists }, { data: membershipRows }, creditPersons, creditRoleRows] = await Promise.all([
-    supabase.from('artist').select('id, name, name_kana, name_en, image_url, page_override'),
-    supabase
-      .from('artist_relation')
-      .select('artist_id_a, artist_id_b, band:artist_id_a(name)')
-      .eq('relation_type', 'membership'),
-    fetchAllRows<{ id: string; name: string }>('credit_person', 'id, name', 'id'),
-    fetchAllRows<{ credit_person_id: string; role: string }>('artist_credit', 'credit_person_id, role', 'id'),
-  ])
+  const [{ data: allArtists }, { data: membershipRows }, { data: instruments }, creditPersons, creditRoleRows] =
+    await Promise.all([
+      supabase.from('artist').select('id, name, name_kana, name_en, image_url, page_override'),
+      supabase
+        .from('artist_relation')
+        .select('artist_id_a, artist_id_b, band:artist_id_a(name)')
+        .eq('relation_type', 'membership'),
+      supabase.from('instrument').select('id, name'),
+      fetchAllRows<{ id: string; name: string }>('credit_person', 'id, name', 'id'),
+      fetchAllRows<{ credit_person_id: string; role: string; instrument_id: string | null }>(
+        'artist_credit',
+        'credit_person_id, role, instrument_id',
+        'id'
+      ),
+    ])
 
   // 本人名義のリリース(album/track)有無を判定するため、全件をページングで取得する
   // (PostgRESTの1リクエストあたり行数上限を超えないよう分割)
@@ -63,12 +69,29 @@ export default async function ArtistsPage() {
   ])
   const releasedIds = new Set<string>([...releasedByAlbum, ...releasedByTrack])
 
+  const instrumentNameById = new Map((instruments ?? []).map((i) => [i.id, i.name]))
+
   const rolesByPerson = new Map<string, Set<string>>()
+  const instrumentsByPerson = new Map<string, Set<string>>()
+  const instrumentCounts = new Map<string, number>()
   for (const row of creditRoleRows) {
-    const set = rolesByPerson.get(row.credit_person_id) ?? new Set<string>()
-    set.add(row.role)
-    rolesByPerson.set(row.credit_person_id, set)
+    const roleSet = rolesByPerson.get(row.credit_person_id) ?? new Set<string>()
+    roleSet.add(row.role)
+    rolesByPerson.set(row.credit_person_id, roleSet)
+
+    if (row.role === 'musician' && row.instrument_id) {
+      const instrumentName = instrumentNameById.get(row.instrument_id)
+      if (instrumentName) {
+        const instrumentSet = instrumentsByPerson.get(row.credit_person_id) ?? new Set<string>()
+        instrumentSet.add(instrumentName)
+        instrumentsByPerson.set(row.credit_person_id, instrumentSet)
+        instrumentCounts.set(instrumentName, (instrumentCounts.get(instrumentName) ?? 0) + 1)
+      }
+    }
   }
+  const allInstruments = Array.from(instrumentCounts.entries())
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'ja'))
+    .map(([name]) => name)
 
   const memberOfIds = new Map<string, string[]>() // memberId -> band names
   for (const row of membershipRows ?? []) {
@@ -122,8 +145,13 @@ export default async function ArtistsPage() {
   artists.sort((a, b) => (a.name_kana ?? a.name).localeCompare(b.name_kana ?? b.name, 'ja'))
   members.sort((a, b) => (a.name_kana ?? a.name).localeCompare(b.name_kana ?? b.name, 'ja'))
   const credits = creditPersons
-    .map((p) => ({ id: p.id, name: p.name, roles: Array.from(rolesByPerson.get(p.id) ?? []) }))
+    .map((p) => ({
+      id: p.id,
+      name: p.name,
+      roles: Array.from(rolesByPerson.get(p.id) ?? []),
+      instruments: Array.from(instrumentsByPerson.get(p.id) ?? []),
+    }))
     .sort((a, b) => a.name.localeCompare(b.name, 'ja'))
 
-  return <ArtistBrowseClient artists={artists} members={members} credits={credits} />
+  return <ArtistBrowseClient artists={artists} members={members} credits={credits} allInstruments={allInstruments} />
 }

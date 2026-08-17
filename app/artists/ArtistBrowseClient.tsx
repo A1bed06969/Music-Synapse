@@ -14,7 +14,7 @@ type Artist = {
 
 type Member = Artist & { bandNames: string[] }
 
-type CreditPerson = { id: string; name: string; roles: string[] }
+type CreditPerson = { id: string; name: string; roles: string[]; instruments: string[] }
 
 type Tab = 'artist' | 'member' | 'credit'
 
@@ -37,13 +37,16 @@ export default function ArtistBrowseClient({
   artists,
   members,
   credits,
+  allInstruments,
 }: {
   artists: Artist[]
   members: Member[]
   credits: CreditPerson[]
+  allInstruments: string[]
 }) {
   const [tab, setTab] = useState<Tab>('artist')
   const [creditRole, setCreditRole] = useState<string>('all')
+  const [instrument, setInstrument] = useState<string>('all')
   const [query, setQuery] = useState('')
 
   const q = query.trim().toLowerCase()
@@ -58,8 +61,12 @@ export default function ArtistBrowseClient({
   )
   const filteredCredits = useMemo(() => {
     const byRole = creditRole === 'all' ? credits : credits.filter((c) => c.roles.includes(creditRole))
-    return q ? byRole.filter((c) => matchesQuery(q, c.name)) : byRole
-  }, [credits, creditRole, q])
+    const byInstrument =
+      creditRole === 'musician' && instrument !== 'all'
+        ? byRole.filter((c) => c.instruments.includes(instrument))
+        : byRole
+    return q ? byInstrument.filter((c) => matchesQuery(q, c.name)) : byInstrument
+  }, [credits, creditRole, instrument, q])
 
   const placeholder =
     tab === 'artist' ? 'アーティスト名で絞り込み...' : tab === 'member' ? 'メンバー名で絞り込み...' : 'クレジット人物名で絞り込み...'
@@ -95,7 +102,7 @@ export default function ArtistBrowseClient({
       />
 
       {tab === 'credit' && (
-        <div className="mt-4 flex flex-wrap gap-1.5">
+        <div className="mt-4 flex flex-wrap items-center gap-1.5">
           {CREDIT_ROLE_TABS.map((r) => (
             <button
               key={r.key}
@@ -110,6 +117,20 @@ export default function ArtistBrowseClient({
               {r.label}
             </button>
           ))}
+          {creditRole === 'musician' && allInstruments.length > 0 && (
+            <select
+              value={instrument}
+              onChange={(e) => setInstrument(e.target.value)}
+              className="ml-2 rounded-md border border-white/15 bg-white/5 px-2.5 py-1 text-xs text-white focus:border-white/30 focus:outline-none"
+            >
+              <option value="all">楽器: すべて</option>
+              {allInstruments.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
       )}
 
