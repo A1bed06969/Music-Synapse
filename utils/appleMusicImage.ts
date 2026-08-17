@@ -1,3 +1,5 @@
+import { searchArtist } from '@/utils/itunes'
+
 const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36'
 
@@ -51,4 +53,26 @@ export async function fetchAppleMusicArtistImage(appleMusicArtistId: string): Pr
   } catch {
     return null
   }
+}
+
+/**
+ * apple_music_artist_idを持たないアーティスト(MusicBrainzの"member of band"経由で
+ * 名前だけ登録されたバンドメンバー等)向けに、名前でiTunesを検索して画像を解決する。
+ * 同名・類似名の別人を拾うリスクがあるため、検索結果の中に正規化後の名前が完全一致する
+ * 候補がちょうど1件だけある場合のみ採用する(それ以外は誤爆防止のためnullを返す)
+ */
+export async function resolveArtistImageByName(artistName: string): Promise<string | null> {
+  const normalize = (s: string) => s.trim().toLowerCase()
+
+  let candidates
+  try {
+    candidates = await searchArtist(artistName)
+  } catch {
+    return null
+  }
+
+  const exactMatches = candidates.filter((c) => normalize(c.artistName) === normalize(artistName))
+  if (exactMatches.length !== 1) return null
+
+  return fetchAppleMusicArtistImage(String(exactMatches[0].artistId))
 }

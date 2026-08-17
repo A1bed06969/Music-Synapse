@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { searchReleaseByTitle, fetchArtistDetails, type MusicBrainzArtistDetails } from '@/utils/musicbrainz'
 import { normalizeAlbumTitle } from '@/utils/creditImport'
+import { resolveArtistImageByName } from '@/utils/appleMusicImage'
 
 export type ResolveArtistMbidResult =
   | { matched: true; mbid: string; matchedTitles: string[] }
@@ -198,6 +199,21 @@ export async function writeArtistProfileFromMusicBrainzDetails(
           continue
         }
         otherArtistId = createdArtist.id
+      }
+    }
+
+    // MusicBrainz経由で名前だけ作成/再利用されたメンバーはapple_music_artist_idを
+    // 持たないため画像が空になりがち。名前検索で確度の高い(完全一致1件のみ)候補が
+    // 見つかった場合に限り画像を補完する(ベストエフォート、失敗しても処理は続行)
+    const { data: otherArtistRow } = await supabase.from('artist').select('name, image_url').eq('id', otherArtistId).single()
+    if (otherArtistRow && !otherArtistRow.image_url) {
+      try {
+        const imageUrl = await resolveArtistImageByName(otherArtistRow.name)
+        if (imageUrl) {
+          await supabase.from('artist').update({ image_url: imageUrl }).eq('id', otherArtistId)
+        }
+      } catch (err) {
+        console.error(`メンバー「${otherArtistRow.name}」の画像取得に失敗しました:`, err)
       }
     }
 
