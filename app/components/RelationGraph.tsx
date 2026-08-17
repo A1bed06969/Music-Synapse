@@ -67,13 +67,13 @@ function highwayMidpoint(sx: number, tx: number, laneY: number, gutterOffset: nu
   return { x: (sx + gutterOffset + tx + gutterOffset) / 2, y: laneY }
 }
 
-// 1アーティストあたり概ね200×200pxの表示領域を確保する
-const NODE_R = 55
-const NODE_R_ROOT = 65
-const ROW_HEIGHT = 210
-const LABEL_GAP = 26
-const NAME_FONT_SIZE = 15
-const HEADER_FONT_SIZE = 16
+// 1アーティストあたりの表示領域(以前より一回り小さくして密度を上げている)
+const NODE_R = 42
+const NODE_R_ROOT = 50
+const ROW_HEIGHT = 155
+const LABEL_GAP = 20
+const NAME_FONT_SIZE = 13
+const HEADER_FONT_SIZE = 14
 
 function initial(name: string) {
   return name.trim().charAt(0).toUpperCase() || '?'
@@ -230,9 +230,9 @@ function EgoTree({
   const children = nodes.filter((n) => n.id !== centerId)
   const groups = groupByCategory(children)
 
-  const rootX = 150
-  const childX = 760
-  const width = 1180
+  const rootX = 115
+  const childX = 580
+  const width = 900
 
   let y = 50
   const positioned: { node: RelationNode; cy: number }[] = []
@@ -332,26 +332,59 @@ type NodePos = { x: number; cy: number; category: string }
 /** 中心の無い全体ハブ用: グループ(ジャンル、または接続成分)ごとに列を
  * 固定し、列内に縦一列で並べる。同じ列/違う列をまたぐ線は、それぞれ列の
  * 外側や上部の専用レーンを経由させ、無関係なノードの真上を通らないように
- * する。ノードをクリックすると、そのノードと繋がっている相手だけが浮かび
- * 上がり、それ以外は薄くなる。 */
+ * する。ノードをクリックすると、そのアーティストと直接つながる相手だけに
+ * 絞り込んで再レイアウトする(アーティスト軸表示)。もう一度同じノードを
+ * クリックするか「全体表示に戻す」で全件表示に戻る。 */
 function ColumnLayout({
   nodes,
   edges,
-  groups,
+  hubMode,
 }: {
   nodes: RelationNode[]
   edges: RelationEdge[]
-  groups: [string, RelationNode[]][]
+  hubMode: HubMode
 }) {
   const router = useRouter()
   const [focusedId, setFocusedId] = useState<string | null>(null)
 
-  const colWidth = 360
-  const colPadX = 180
-  const width = Math.max(groups.length * colWidth + colPadX, 480)
-  const boxHalfWidth = 110
-  const bumpOffset = 90
-  const gutterOffset = 145
+  // フォーカス中は「選択アーティスト+直接つながる相手」だけに絞り込む。
+  // 隣接判定は絞り込み前の全ノード/全エッジを基準に行う必要があるため、
+  // displayNodes確定前にfocusedNeighborsを計算する
+  const focusedNeighbors = useMemo(() => {
+    const set = new Set<string>()
+    if (!focusedId) return set
+    for (const e of edges) {
+      if (e.source === focusedId) set.add(e.target)
+      if (e.target === focusedId) set.add(e.source)
+    }
+    return set
+  }, [focusedId, edges])
+
+  const focusedNode = focusedId ? (nodes.find((n) => n.id === focusedId) ?? null) : null
+
+  const displayNodes = useMemo(() => {
+    if (!focusedId) return nodes
+    return nodes.filter((n) => n.id === focusedId || focusedNeighbors.has(n.id))
+  }, [nodes, focusedId, focusedNeighbors])
+
+  const displayNodeIds = useMemo(() => new Set(displayNodes.map((n) => n.id)), [displayNodes])
+
+  const displayEdges = useMemo(
+    () => edges.filter((e) => displayNodeIds.has(e.source) && displayNodeIds.has(e.target)),
+    [edges, displayNodeIds]
+  )
+
+  const groups = useMemo(
+    () => (hubMode === 'genre' ? groupByCategory(displayNodes) : groupByConnection(displayNodes, displayEdges)),
+    [hubMode, displayNodes, displayEdges]
+  )
+
+  const colWidth = 270
+  const colPadX = 140
+  const width = Math.max(groups.length * colWidth + colPadX, 400)
+  const boxHalfWidth = 85
+  const bumpOffset = 68
+  const gutterOffset = 105
 
   // まずxとカテゴリだけ確定させる(yは後で決める。列をまたぐ線の本数が
   // 分かってから、上部の迂回レーン分だけノード行を下にずらす必要があるため)
@@ -363,7 +396,7 @@ function ColumnLayout({
     groupNodes.forEach((node) => columnXById.set(node.id, x))
   })
 
-  const validEdges = edges.filter(
+  const validEdges = displayEdges.filter(
     (e) => columnXById.has(e.source) && columnXById.has(e.target) && e.source !== e.target
   )
   const crossColumnEdges = validEdges.filter((e) => columnXById.get(e.source) !== columnXById.get(e.target))
@@ -384,19 +417,6 @@ function ColumnLayout({
   const maxRows = Math.max(...groupInfo.map((g) => g.count), 1)
   const height = Math.max(rowsTop + (maxRows - 1) * ROW_HEIGHT + NODE_R + 60, 260)
 
-  const focusedNeighbors = useMemo(() => {
-    const set = new Set<string>()
-    if (!focusedId) return set
-    for (const e of edges) {
-      if (e.source === focusedId) set.add(e.target)
-      if (e.target === focusedId) set.add(e.source)
-    }
-    return set
-  }, [focusedId, edges])
-
-  function isNodeDimmed(id: string) {
-    return focusedId !== null && id !== focusedId && !focusedNeighbors.has(id)
-  }
   function isEdgeActive(e: RelationEdge) {
     return focusedId === null || e.source === focusedId || e.target === focusedId
   }
@@ -410,6 +430,20 @@ function ColumnLayout({
 
   return (
     <div className="overflow-auto" style={{ maxHeight: 720 }}>
+      {focusedNode && (
+        <div className="flex items-center gap-2 border-b border-white/10 px-3 py-2 text-xs text-white/60">
+          <span>
+            🔍 <span className="text-white/85">{focusedNode.name}</span> の相関のみ表示中
+          </span>
+          <button
+            type="button"
+            onClick={() => setFocusedId(null)}
+            className="rounded border border-white/15 px-2 py-0.5 text-white/70 hover:bg-white/10"
+          >
+            ✕ 全体表示に戻す
+          </button>
+        </div>
+      )}
       <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="select-none">
         <ArrowDefs />
         <rect x={0} y={0} width={width} height={height} fill="transparent" onClick={() => setFocusedId(null)} />
@@ -486,13 +520,12 @@ function ColumnLayout({
           })}
         </g>
         <g>
-          {nodes.map((node) => {
+          {displayNodes.map((node) => {
             const pos = posById.get(node.id)
             if (!pos) return null
             const color = node.category ? colorForCategory(node.category) : 'rgba(255,255,255,0.6)'
-            const dimmed = isNodeDimmed(node.id)
             return (
-              <g key={node.id} opacity={dimmed ? 0.15 : 1}>
+              <g key={node.id}>
                 <g onClick={() => toggleFocus(node.id)} className="cursor-pointer">
                   <Avatar node={node} cx={pos.x} cy={pos.cy} r={NODE_R} strokeColor={color} />
                 </g>
@@ -534,8 +567,6 @@ export default function RelationGraph({
     return <p className="py-16 text-center text-sm text-white/40">まだ相関データがありません。</p>
   }
 
-  const hubGroups = hubMode === 'genre' ? groupByCategory(nodes) : groupByConnection(nodes, edges)
-
   return (
     <div>
       {!centerId && (
@@ -559,14 +590,14 @@ export default function RelationGraph({
               </button>
             ))}
           </div>
-          <p className="px-1 text-[11px] text-white/30">アイコンクリックで関係を強調 / 名前クリックで詳細へ</p>
+          <p className="px-1 text-[11px] text-white/30">アイコンクリックでアーティスト軸に絞り込み / 名前クリックで詳細へ</p>
         </div>
       )}
 
       {centerId ? (
         <EgoTree nodes={nodes} edges={edges} centerId={centerId} />
       ) : (
-        <ColumnLayout nodes={nodes} edges={edges} groups={hubGroups} />
+        <ColumnLayout nodes={nodes} edges={edges} hubMode={hubMode} />
       )}
 
       {categories.length > 0 && (
