@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "node --env-file-if-exists=.env.local --test \"__tests__/**/*.test.ts\""
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",

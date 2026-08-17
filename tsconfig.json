@@ -6,6 +6,9 @@
     "skipLibCheck": true,
     "strict": true,
     "noEmit": true,
+    // __tests__ は Node 24 のネイティブ TypeScript 実行で走らせるため、
+    // ESM の規約どおり相対 import に .ts 拡張子を書く必要がある。
+    "allowImportingTsExtensions": true,
     "esModuleInterop": true,
     "module": "esnext",
     "moduleResolution": "bundler",
