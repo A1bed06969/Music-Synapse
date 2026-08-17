@@ -10,6 +10,7 @@ export default function SearchableSelect({
   placeholder,
   multiple = false,
   defaultSelected = [],
+  onSelect,
 }: {
   searchAction: (query: string) => Promise<Item[]>
   name: string
@@ -19,6 +20,10 @@ export default function SearchableSelect({
   multiple?: boolean
   /** 編集画面で、既存データの選択状態を初期表示するために使う。 */
   defaultSelected?: Item[]
+  /** フォーム送信(hidden input)以外の方法で選択状態を使いたい呼び出し元向けの
+   * コールバック。選択時はitem、解除時(clearSelection/removeItem)はnullで呼ばれる。
+   * 省略可能・既存の呼び出し元の挙動は変えない。 */
+  onSelect?: (item: Item | null) => void
 }) {
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<Item[]>([])
@@ -62,15 +67,18 @@ export default function SearchableSelect({
       setResults([])
       setOpen(false)
     }
+    onSelect?.(item)
   }
 
   function removeItem(id: string) {
     setSelected((prev) => prev.filter((s) => s.id !== id))
+    onSelect?.(null)
   }
 
   function clearSelection() {
     setSelected([])
     setQuery('')
+    onSelect?.(null)
   }
 
   const visibleResults = multiple ? results.filter((r) => !selected.some((s) => s.id === r.id)) : results

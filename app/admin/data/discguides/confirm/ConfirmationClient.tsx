@@ -3,6 +3,8 @@
 'use client'
 
 import { useState } from 'react'
+import SearchableSelect from '../../SearchableSelect'
+import { searchAlbums } from '../../actions'
 
 type AlbumExtract = {
   title: string
@@ -39,6 +41,10 @@ export default function ConfirmationClient({ pending }: { pending: PendingRecord
   )
   const [selections, setSelections] = useState<Record<number, string>>(
     Object.fromEntries(matched.map((m) => [m.extracted_index, m.album_id || 'new']))
+  )
+  // 自動マッチング候補が0件の行(=要確認)はデフォルトで検索欄を開いておく。
+  const [manualSearchOpen, setManualSearchOpen] = useState<Record<number, boolean>>(
+    Object.fromEntries(matched.map((m) => [m.extracted_index, (m.candidates?.length ?? 0) === 0]))
   )
   const [loading, setLoading] = useState(false)
 
@@ -94,8 +100,20 @@ export default function ConfirmationClient({ pending }: { pending: PendingRecord
       <div className="mt-4 space-y-4">
         {extracted.map((album, i) => {
           const match = matched.find((m) => m.extracted_index === i) ?? matched[i]
+          const isSuspicious = (match?.candidates?.length ?? 0) === 0
+          const searchOpen = manualSearchOpen[i] ?? isSuspicious
           return (
-            <div key={i} className="rounded border border-white/10 p-4">
+            <div
+              key={i}
+              className={`rounded border p-4 ${
+                isSuspicious ? 'border-orange-500/40 bg-orange-500/5' : 'border-white/10'
+              }`}
+            >
+              {isSuspicious && (
+                <p className="mb-2 text-xs font-semibold text-orange-400">
+                  ⚠ 要確認 — 自動マッチング候補が見つかりませんでした。手動で検索してください。
+                </p>
+              )}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="text-xs text-white/40">タイトル</label>
@@ -138,6 +156,28 @@ export default function ConfirmationClient({ pending }: { pending: PendingRecord
                     </option>
                   ))}
                 </select>
+              </div>
+
+              <div className="mt-2">
+                <button
+                  type="button"
+                  onClick={() => setManualSearchOpen({ ...manualSearchOpen, [i]: !searchOpen })}
+                  className="text-xs text-blue-400 hover:text-blue-300"
+                >
+                  {searchOpen ? '手動検索を閉じる' : '他のアルバムを検索'}
+                </button>
+                {searchOpen && (
+                  <div className="mt-2">
+                    <SearchableSelect
+                      searchAction={searchAlbums}
+                      name={`manual_search_${i}`}
+                      placeholder="アルバム名で検索..."
+                      onSelect={(item) =>
+                        setSelections({ ...selections, [i]: item ? item.id : 'new' })
+                      }
+                    />
+                  </div>
+                )}
               </div>
             </div>
           )

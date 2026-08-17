@@ -43,29 +43,52 @@ export async function performOCR(imageUrl: string): Promise<{
   }
 }
 
+// CJK文字(ひらがな・カタカナ・漢字・半角カタカナ)の範囲。OCRがこの文字種の
+// 間に余計な空白を挿入することがあるため、正規化で除去する対象を判定するのに使う。
+const CJK_CHAR = '぀-ヿ㐀-鿿ｦ-ﾟ';
+const CJK_ADJACENT_SPACE = new RegExp(`([${CJK_CHAR}])\\s+(?=[${CJK_CHAR}])`, 'gu');
+
+// OCR出力のクリーンアップ。全角数字・全角括弧・全角英数字を半角に統一し(NFKC)、
+// CJK文字同士の間に挟まった空白(Tesseractが縦書き日本語で挿入しがち)を除去する。
+// 英単語間のスペース(例: "Solid State")はCJK文字が隣接しないため保持される。
+export function normalizeOcrText(raw: string): string {
+  let normalized = raw.normalize('NFKC');
+  normalized = normalized.replace(CJK_ADJACENT_SPACE, '$1');
+  normalized = normalized.replace(/[ \t]+/g, ' ').trim();
+  return normalized;
+}
+
 export async function parseOCRToAlbums(text: string): Promise<AlbumExtract[]> {
   // Simple heuristic parser: split by newlines and detect patterns
-  const lines = text.split('\n').filter((l) => l.trim());
+  const lines = text
+    .split('\n')
+    .map((l) => normalizeOcrText(l))
+    .filter((l) => l.length > 0);
   const albums: AlbumExtract[] = [];
 
   let current: Partial<AlbumExtract> = {};
 
   for (const line of lines) {
-    const trimmed = line.trim();
+    let working = line;
 
-    // Detect year pattern (YYYY)
-    const yearMatch = trimmed.match(/\((\d{4})\)/);
+    // Detect year pattern (YYYY) and strip it from the line so it doesn't
+    // end up baked into title/artist_name (e.g. "Solid State Survivor (1979)"
+    // would never match the DB title "Solid State Survivor" otherwise).
+    const yearMatch = working.match(/\((\d{4})\)/);
     if (yearMatch) {
       current.release_year = parseInt(yearMatch[1], 10);
+      working = working.replace(yearMatch[0], '').trim();
     }
 
+    if (!working) continue; // line was only a year marker; nothing left to assign
+
     // Detect artist pattern (usually before title, shorter line)
-    if (trimmed.length < 50 && !current.artist_name && !current.title) {
-      current.artist_name = trimmed;
-    } else if (!current.title && current.artist_name && trimmed.length < 100) {
-      current.title = trimmed;
-    } else if (trimmed.length < 50) {
-      current.label = trimmed;
+    if (working.length < 50 && !current.artist_name && !current.title) {
+      current.artist_name = working;
+    } else if (!current.title && current.artist_name && working.length < 100) {
+      current.title = working;
+    } else if (working.length < 50) {
+      current.label = working;
     }
 
     // If we have title + artist, save as album
