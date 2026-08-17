@@ -4,6 +4,7 @@ import { inputClass, buttonClass } from '../adminUi'
 import SearchableSelect from '../SearchableSelect'
 import { searchAlbums } from '../actions'
 import { createDiscGuide, createDiscGuideSelection } from './actions'
+import DiscGuideImageUpload from './DiscGuideImageUpload'
 
 export default async function DiscGuidesAdminPage({
   searchParams,
@@ -14,7 +15,10 @@ export default async function DiscGuidesAdminPage({
   const supabase = await createClient()
 
   const [{ data: discGuides }, { data: selections }] = await Promise.all([
-    supabase.from('disc_guide').select('id, title, publisher, published_year').order('title'),
+    supabase
+      .from('disc_guide')
+      .select('id, title, publisher, published_year, cover_image_url, isbn_lookup_error')
+      .order('title'),
     supabase
       .from('disc_guide_selection')
       .select('id, note, disc_guide:disc_guide_id(title), album:album_id(title)')
@@ -92,6 +96,54 @@ export default async function DiscGuidesAdminPage({
           })}
         </ul>
       )}
+
+      <div className="mt-10 space-y-6">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold">アルバム抽出</h2>
+          <Link
+            href="/admin/data/discguides/confirm"
+            className="text-xs text-blue-300 hover:text-blue-200"
+          >
+            スキャン確認へ →
+          </Link>
+        </div>
+
+        {discGuideOptions.length === 0 && (
+          <p className="text-sm text-white/30">まず書籍を追加してください。</p>
+        )}
+
+        {discGuideOptions.map((guide) => (
+          <div key={guide.id} className="rounded border border-white/10 p-4">
+            <div className="flex items-start gap-4">
+              {guide.cover_image_url ? (
+                <img
+                  src={guide.cover_image_url}
+                  alt={guide.title}
+                  className="h-32 w-24 shrink-0 rounded object-cover"
+                />
+              ) : (
+                <div className="flex h-32 w-24 shrink-0 items-center justify-center rounded bg-white/5 text-[10px] text-white/30">
+                  表紙なし
+                </div>
+              )}
+              <div className="min-w-0">
+                <h3 className="font-semibold">{guide.title}</h3>
+                <p className="mt-1 text-sm text-white/60">
+                  {guide.publisher}
+                  {guide.published_year ? ` (${guide.published_year})` : ''}
+                </p>
+                {guide.isbn_lookup_error && (
+                  <p className="mt-1 text-xs text-red-400">
+                    表紙取得エラー: {guide.isbn_lookup_error}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <DiscGuideImageUpload discGuideId={guide.id} />
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
