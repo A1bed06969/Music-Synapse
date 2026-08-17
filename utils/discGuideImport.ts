@@ -17,6 +17,10 @@ export type MatchResult = {
     id: string;
     title: string;
     artist_name: string;
+    // title_similarityとartist_similarityの平均(0-1)。実データでの実測:
+    // 正しいマッチ(表記ゆれ込み)は0.79〜1.0、無関係なマッチは0.15〜0.17前後
+    // まで下がるため、確認UI側で「要確認」判定のしきい値として使える。
+    similarity: number;
   }>;
 };
 
@@ -172,7 +176,12 @@ export async function matchAlbumsWithCandidates(
 
     const candidates = ((rows ?? []) as FuzzyAlbumRow[])
       .slice(0, 3)
-      .map((r) => ({ id: r.id, title: r.title, artist_name: r.artist_name }));
+      .map((r) => ({
+        id: r.id,
+        title: r.title,
+        artist_name: r.artist_name,
+        similarity: (r.title_similarity + r.artist_similarity) / 2,
+      }));
 
     // Primary match is the top-ranked candidate.
     const primaryRow = (rows as FuzzyAlbumRow[] | null)?.[0];

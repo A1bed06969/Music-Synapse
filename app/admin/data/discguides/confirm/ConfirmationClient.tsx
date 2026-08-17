@@ -17,6 +17,19 @@ type Candidate = {
   id: string
   title: string
   artist_name: string
+  // 既存の確認待ちレコード(similarity追加前に保存されたもの)には無い可能性が
+  // あるため任意。無い場合は未確認扱い(=要確認)にするのが安全なデフォルト。
+  similarity?: number
+}
+
+// 実データでの実測値: 正しいマッチ(表記ゆれ込み)は0.79〜1.0、無関係なマッチは
+// 0.15〜0.17前後まで下がる。0.5を「要確認」の境界にする。
+const CONFIDENCE_THRESHOLD = 0.5
+
+function isSuspiciousMatch(candidates: Candidate[] | undefined): boolean {
+  const top = candidates?.[0]
+  if (!top) return true
+  return (top.similarity ?? 0) < CONFIDENCE_THRESHOLD
 }
 
 type MatchResult = {
@@ -42,9 +55,12 @@ export default function ConfirmationClient({ pending }: { pending: PendingRecord
   const [selections, setSelections] = useState<Record<number, string>>(
     Object.fromEntries(matched.map((m) => [m.extracted_index, m.album_id || 'new']))
   )
-  // 自動マッチング候補が0件の行(=要確認)はデフォルトで検索欄を開いておく。
+  // 自動マッチング候補が0件、または最有力候補の類似度が低い行(=要確認)は
+  // デフォルトで検索欄を開いておく。
   const [manualSearchOpen, setManualSearchOpen] = useState<Record<number, boolean>>(
-    Object.fromEntries(matched.map((m) => [m.extracted_index, (m.candidates?.length ?? 0) === 0]))
+    Object.fromEntries(
+      matched.map((m) => [m.extracted_index, isSuspiciousMatch(m.candidates)])
+    )
   )
   const [loading, setLoading] = useState(false)
 
@@ -100,7 +116,8 @@ export default function ConfirmationClient({ pending }: { pending: PendingRecord
       <div className="mt-4 space-y-4">
         {extracted.map((album, i) => {
           const match = matched.find((m) => m.extracted_index === i) ?? matched[i]
-          const isSuspicious = (match?.candidates?.length ?? 0) === 0
+          const isSuspicious = isSuspiciousMatch(match?.candidates)
+          const hasWeakCandidates = isSuspicious && (match?.candidates?.length ?? 0) > 0
           const searchOpen = manualSearchOpen[i] ?? isSuspicious
           return (
             <div
@@ -111,7 +128,10 @@ export default function ConfirmationClient({ pending }: { pending: PendingRecord
             >
               {isSuspicious && (
                 <p className="mb-2 text-xs font-semibold text-orange-400">
-                  ⚠ 要確認 — 自動マッチング候補が見つかりませんでした。手動で検索してください。
+                  ⚠ 要確認 —{' '}
+                  {hasWeakCandidates
+                    ? '自動マッチング候補の確度が低いです。手動で検索してください。'
+                    : '自動マッチング候補が見つかりませんでした。手動で検索してください。'}
                 </p>
               )}
               <div className="grid grid-cols-2 gap-4">
@@ -153,6 +173,7 @@ export default function ConfirmationClient({ pending }: { pending: PendingRecord
                   {match?.candidates?.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.title} / {c.artist_name}
+                      {c.similarity !== undefined ? ` (一致度${Math.round(c.similarity * 100)}%)` : ''}
                     </option>
                   ))}
                 </select>

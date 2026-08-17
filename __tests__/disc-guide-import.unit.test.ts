@@ -200,4 +200,42 @@ describe('matchAlbumsWithCandidates (live DB, pg_trgm fuzzy search)', () => {
       )
     }
   })
+
+  test('reports a similarity score that separates confident matches from spurious ones', async () => {
+    const supabase = createAdminClient()
+    const { data: existing } = await supabase
+      .from('album')
+      .select('id')
+      .eq('title', 'The Vertigo of Bliss')
+      .limit(1)
+      .maybeSingle()
+    if (!existing) {
+      console.warn('[unit] "The Vertigo of Bliss" not found in DB; skipping similarity assertions')
+      return
+    }
+
+    // 確度の高いマッチ(表記ゆれ込み): Phase 2実データ検証で確認済みのしきい値
+    // 0.5を安全に上回るはず(実測: 0.79〜1.0)。
+    const [strong] = await matchAlbumsWithCandidates(supabase, [
+      { title: 'The Vertigo of Bl iss', artist_name: 'Biffy Clyro' },
+    ])
+    const strongTop = strong.candidates.find((c) => c.title === 'The Vertigo of Bliss')
+    assert.ok(strongTop, 'expected "The Vertigo of Bliss" among candidates')
+    assert.ok(
+      (strongTop!.similarity ?? 0) >= 0.5,
+      `expected similarity >= 0.5 for a near-exact match, got ${strongTop!.similarity}`
+    )
+
+    // 実在しない90年代マイナー作品(Phase 2で実際に0.15〜0.17を記録したケース):
+    // 候補が返ってきても、確度は0.5を大きく下回るはず。
+    const [weak] = await matchAlbumsWithCandidates(supabase, [
+      { title: 'Hoping For The Sun', artist_name: 'DJ Takemura & Kool Jazz Productions' },
+    ])
+    if (weak.candidates.length > 0) {
+      assert.ok(
+        (weak.candidates[0].similarity ?? 1) < 0.5,
+        `expected similarity < 0.5 for an unrelated album, got ${weak.candidates[0].similarity}`
+      )
+    }
+  })
 })
