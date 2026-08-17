@@ -1,7 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 
 export type RelationNode = {
   id: string
@@ -215,15 +215,20 @@ function groupByConnection(nodes: RelationNode[], edges: RelationEdge[]) {
   return groups
 }
 
-/** 中心アーティスト1人から右へ枝が伸びる木構造レイアウト。 */
+/** 中心アーティスト1人から右へ枝が伸びる木構造レイアウト。1行=1相手を厳守する
+ * ことで、相手が多くても線同士が重ならない。onAvatarClickを渡すと、アイコン
+ * クリック時にページ遷移の代わりにそのコールバックを呼ぶ(相関図内での
+ * 再フォーカスに使う)。名前クリックは常にページ遷移する。 */
 function EgoTree({
   nodes,
   edges,
   centerId,
+  onAvatarClick,
 }: {
   nodes: RelationNode[]
   edges: RelationEdge[]
   centerId: string
+  onAvatarClick?: (node: RelationNode) => void
 }) {
   const router = useRouter()
   const center = nodes.find((n) => n.id === centerId)
@@ -252,6 +257,23 @@ function EgoTree({
     router.push(`${node.type === 'person' ? '/people' : '/artists'}/${node.id}`)
   }
 
+  // 在籍期間が複数回に分かれている等、中心アーティストとの間に複数の
+  // リレーションが存在する場合は最初の1件だけでなく全て拾い、まとめて表示する
+  function relatedEdges(nodeId: string) {
+    return edges.filter(
+      (e) => (e.source === nodeId || e.target === nodeId) && (e.source === centerId || e.target === centerId)
+    )
+  }
+  function combinedLabel(nodeId: string): string | null {
+    const labels = relatedEdges(nodeId)
+      .map((e) => e.label)
+      .filter((l): l is string => Boolean(l))
+    return labels.length > 0 ? labels.join(' / ') : null
+  }
+  function primaryEdgeStyle(nodeId: string): 'solid' | 'dotted' | undefined {
+    return relatedEdges(nodeId)[0]?.style
+  }
+
   if (!center) return null
 
   return (
@@ -261,9 +283,6 @@ function EgoTree({
         <g>
           {positioned.map(({ node, cy }) => {
             const color = node.category ? colorForCategory(node.category) : 'rgba(255,255,255,0.4)'
-            const edge = edges.find(
-              (e) => (e.source === node.id || e.target === node.id) && (e.source === centerId || e.target === centerId)
-            )
             return (
               <path
                 key={`edge-${node.id}`}
@@ -272,7 +291,7 @@ function EgoTree({
                 stroke={color}
                 strokeOpacity={0.45}
                 strokeWidth={2}
-                markerEnd={edge?.style === 'solid' ? 'url(#rg-arrow)' : undefined}
+                markerEnd={primaryEdgeStyle(node.id) === 'solid' ? 'url(#rg-arrow)' : undefined}
               />
             )
           })}
@@ -294,28 +313,44 @@ function EgoTree({
           ))}
         </g>
 
-        <g onClick={() => go(center)} className="cursor-pointer">
+        <g onClick={() => (onAvatarClick ? onAvatarClick(center) : go(center))} className="cursor-pointer">
           <Avatar node={center} cx={rootX} cy={rootY} r={NODE_R_ROOT} strokeColor="#fff" />
-          <text x={rootX} y={rootY + NODE_R_ROOT + 24} textAnchor="middle" fill="#fff" fontSize={17} fontWeight={700}>
-            {center.name}
-          </text>
         </g>
+        <text
+          x={rootX}
+          y={rootY + NODE_R_ROOT + 24}
+          textAnchor="middle"
+          fill="#fff"
+          fontSize={17}
+          fontWeight={700}
+          onClick={() => go(center)}
+          className="cursor-pointer hover:underline"
+        >
+          {center.name}
+        </text>
 
         <g>
           {positioned.map(({ node, cy }) => {
             const color = node.category ? colorForCategory(node.category) : 'rgba(255,255,255,0.6)'
-            const edge = edges.find(
-              (e) => (e.source === node.id || e.target === node.id) && (e.source === centerId || e.target === centerId)
-            )
+            const label = combinedLabel(node.id)
             return (
-              <g key={node.id} onClick={() => go(node)} className="cursor-pointer">
-                <Avatar node={node} cx={childX} cy={cy} r={NODE_R} strokeColor={color} />
-                <text x={childX + NODE_R + 14} y={cy - 2} fill="rgba(255,255,255,0.85)" fontSize={NAME_FONT_SIZE}>
+              <g key={node.id}>
+                <g onClick={() => (onAvatarClick ? onAvatarClick(node) : go(node))} className="cursor-pointer">
+                  <Avatar node={node} cx={childX} cy={cy} r={NODE_R} strokeColor={color} />
+                </g>
+                <text
+                  x={childX + NODE_R + 14}
+                  y={cy - 2}
+                  fill="rgba(255,255,255,0.85)"
+                  fontSize={NAME_FONT_SIZE}
+                  onClick={() => go(node)}
+                  className="cursor-pointer hover:underline"
+                >
                   {node.name}
                 </text>
-                {edge?.label && (
+                {label && (
                   <text x={childX + NODE_R + 14} y={cy + 18} fill="rgba(255,255,255,0.4)" fontSize={12}>
-                    {edge.label}
+                    {label}
                   </text>
                 )}
               </g>
@@ -346,38 +381,36 @@ function ColumnLayout({
 }) {
   const router = useRouter()
   const [focusedId, setFocusedId] = useState<string | null>(null)
-
-  // フォーカス中は「選択アーティスト+直接つながる相手」だけに絞り込む。
-  // 隣接判定は絞り込み前の全ノード/全エッジを基準に行う必要があるため、
-  // displayNodes確定前にfocusedNeighborsを計算する
-  const focusedNeighbors = useMemo(() => {
-    const set = new Set<string>()
-    if (!focusedId) return set
-    for (const e of edges) {
-      if (e.source === focusedId) set.add(e.target)
-      if (e.target === focusedId) set.add(e.source)
-    }
-    return set
-  }, [focusedId, edges])
-
   const focusedNode = focusedId ? (nodes.find((n) => n.id === focusedId) ?? null) : null
 
-  const displayNodes = useMemo(() => {
-    if (!focusedId) return nodes
-    return nodes.filter((n) => n.id === focusedId || focusedNeighbors.has(n.id))
-  }, [nodes, focusedId, focusedNeighbors])
+  function toggleFocus(id: string) {
+    setFocusedId((prev) => (prev === id ? null : id))
+  }
 
-  const displayNodeIds = useMemo(() => new Set(displayNodes.map((n) => n.id)), [displayNodes])
+  // フォーカス中は「選択アーティスト+直接つながる相手」だけの木構造(EgoTree)に
+  // 切り替える。列をまたぐ線を1本の共有レーンに束ねる通常レイアウトは、
+  // 1つのハブから多方向へ線が伸びるこのケースだと重なって読めなくなるため。
+  if (focusedNode) {
+    return (
+      <div>
+        <div className="flex items-center gap-2 border-b border-white/10 px-3 py-2 text-xs text-white/60">
+          <span>
+            🔍 <span className="text-white/85">{focusedNode.name}</span> の相関のみ表示中
+          </span>
+          <button
+            type="button"
+            onClick={() => setFocusedId(null)}
+            className="rounded border border-white/15 px-2 py-0.5 text-white/70 hover:bg-white/10"
+          >
+            ✕ 全体表示に戻す
+          </button>
+        </div>
+        <EgoTree nodes={nodes} edges={edges} centerId={focusedNode.id} onAvatarClick={(n) => toggleFocus(n.id)} />
+      </div>
+    )
+  }
 
-  const displayEdges = useMemo(
-    () => edges.filter((e) => displayNodeIds.has(e.source) && displayNodeIds.has(e.target)),
-    [edges, displayNodeIds]
-  )
-
-  const groups = useMemo(
-    () => (hubMode === 'genre' ? groupByCategory(displayNodes) : groupByConnection(displayNodes, displayEdges)),
-    [hubMode, displayNodes, displayEdges]
-  )
+  const groups = hubMode === 'genre' ? groupByCategory(nodes) : groupByConnection(nodes, edges)
 
   const colWidth = 270
   const colPadX = 140
@@ -396,7 +429,7 @@ function ColumnLayout({
     groupNodes.forEach((node) => columnXById.set(node.id, x))
   })
 
-  const validEdges = displayEdges.filter(
+  const validEdges = edges.filter(
     (e) => columnXById.has(e.source) && columnXById.has(e.target) && e.source !== e.target
   )
   const crossColumnEdges = validEdges.filter((e) => columnXById.get(e.source) !== columnXById.get(e.target))
@@ -417,36 +450,14 @@ function ColumnLayout({
   const maxRows = Math.max(...groupInfo.map((g) => g.count), 1)
   const height = Math.max(rowsTop + (maxRows - 1) * ROW_HEIGHT + NODE_R + 60, 260)
 
-  function isEdgeActive(e: RelationEdge) {
-    return focusedId === null || e.source === focusedId || e.target === focusedId
-  }
-
   function go(node: RelationNode) {
     router.push(`${node.type === 'person' ? '/people' : '/artists'}/${node.id}`)
-  }
-  function toggleFocus(id: string) {
-    setFocusedId((prev) => (prev === id ? null : id))
   }
 
   return (
     <div className="overflow-auto" style={{ maxHeight: 720 }}>
-      {focusedNode && (
-        <div className="flex items-center gap-2 border-b border-white/10 px-3 py-2 text-xs text-white/60">
-          <span>
-            🔍 <span className="text-white/85">{focusedNode.name}</span> の相関のみ表示中
-          </span>
-          <button
-            type="button"
-            onClick={() => setFocusedId(null)}
-            className="rounded border border-white/15 px-2 py-0.5 text-white/70 hover:bg-white/10"
-          >
-            ✕ 全体表示に戻す
-          </button>
-        </div>
-      )}
       <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="select-none">
         <ArrowDefs />
-        <rect x={0} y={0} width={width} height={height} fill="transparent" onClick={() => setFocusedId(null)} />
         <g>
           {groupInfo.map((g) => (
             <rect
@@ -477,19 +488,18 @@ function ColumnLayout({
             if (!s || !t) return null
             if (s.x !== t.x) return null // 列またぎは下の専用レーンで描画
             // 経路が同じ列の他の無関係なノードの真上を通らないよう、列の外側へ迂回する
-            const active = isEdgeActive(e)
             const mid = sameColumnBumpMidpoint(s.x, s.cy, t.cy, bumpOffset)
             return (
-              <g key={i} opacity={active ? 1 : 0.12}>
+              <g key={i}>
                 <path
                   d={sameColumnBumpPath(s.x, s.cy, t.cy, bumpOffset)}
                   fill="none"
-                  stroke={active && focusedId ? '#fff' : 'rgba(255,255,255,0.25)'}
-                  strokeWidth={active && focusedId ? 2.5 : 1.75}
+                  stroke="rgba(255,255,255,0.25)"
+                  strokeWidth={1.75}
                   strokeDasharray={e.style === 'dotted' ? '5 5' : undefined}
-                  markerEnd={e.style === 'solid' ? `url(#${active && focusedId ? 'rg-arrow-active' : 'rg-arrow'})` : undefined}
+                  markerEnd={e.style === 'solid' ? 'url(#rg-arrow)' : undefined}
                 />
-                {e.label && <EdgeLabel x={mid.x} y={mid.y} text={e.label} active={Boolean(active && focusedId)} />}
+                {e.label && <EdgeLabel x={mid.x} y={mid.y} text={e.label} active={false} />}
               </g>
             )
           })}
@@ -502,25 +512,24 @@ function ColumnLayout({
             // 列をまたぐ経路は、途中の列のノードの上を通らないよう、
             // 全ノードより上の専用レーンを経由させる(線ごとに高さをずらす)
             const laneY = highwayTop + laneIndex * LANE_GAP
-            const active = isEdgeActive(e)
             const mid = highwayMidpoint(s.x, t.x, laneY, gutterOffset)
             return (
-              <g key={`cross-${laneIndex}`} opacity={active ? 1 : 0.1}>
+              <g key={`cross-${laneIndex}`}>
                 <path
                   d={highwayPath(s.x, s.cy, t.x, t.cy, laneY, gutterOffset)}
                   fill="none"
-                  stroke={active && focusedId ? '#fff' : 'rgba(255,255,255,0.25)'}
-                  strokeWidth={active && focusedId ? 2.5 : 1.75}
+                  stroke="rgba(255,255,255,0.25)"
+                  strokeWidth={1.75}
                   strokeDasharray={e.style === 'dotted' ? '5 5' : undefined}
-                  markerEnd={e.style === 'solid' ? `url(#${active && focusedId ? 'rg-arrow-active' : 'rg-arrow'})` : undefined}
+                  markerEnd={e.style === 'solid' ? 'url(#rg-arrow)' : undefined}
                 />
-                {e.label && <EdgeLabel x={mid.x} y={mid.y} text={e.label} active={Boolean(active && focusedId)} />}
+                {e.label && <EdgeLabel x={mid.x} y={mid.y} text={e.label} active={false} />}
               </g>
             )
           })}
         </g>
         <g>
-          {displayNodes.map((node) => {
+          {nodes.map((node) => {
             const pos = posById.get(node.id)
             if (!pos) return null
             const color = node.category ? colorForCategory(node.category) : 'rgba(255,255,255,0.6)'
