@@ -66,80 +66,68 @@ export function normalizeOcrText(raw: string): string {
   return normalized;
 }
 
-export async function parseOCRToAlbums(text: string): Promise<AlbumExtract[]> {
-  // Simple heuristic parser: split by newlines and detect patterns.
-  //
-  // ディスクガイドのレイアウトは版によって2行(アーティスト/「タイトル (年)」)と
-  // 3行(アーティスト/タイトル/「レーベル (年)」)の両方があり得る。タイトル行
-  // 自体に年号が付いているかどうかで、このエントリが2行と3行のどちらの形式か
-  // を判定する: 付いていれば2行形式としてその場で確定、付いていなければ
-  // 3行形式とみなして次の行(ラベル+年号)を読んでから確定する。以前は
-  // タイトルが確定した時点で無条件に確定していたため、3行形式のラベル行が
-  // 次エントリの「アーティスト名」として誤読され、以降のエントリが1行ずつ
-  // ずれていくバグがあった。
-  const lines = text
-    .split('\n')
-    .map((l) => normalizeOcrText(l))
-    .filter((l) => l.length > 0);
-  const albums: AlbumExtract[] = [];
+// 年号パターン(YYYY)を検出し、見つかった場合は年数とその部分を取り除いた
+// 文字列を返す。年号が無ければyearはundefined、workingは元の文字列のまま。
+function extractYear(line: string): { working: string; year: number | undefined } {
+  const yearMatch = line.match(/\((\d{4})\)/);
+  if (!yearMatch) return { working: line, year: undefined };
+  return { working: line.replace(yearMatch[0], '').trim(), year: parseInt(yearMatch[1], 10) };
+}
 
-  let current: Partial<AlbumExtract> = {};
-  let awaitingLabel = false;
+// 1エントリ分のブロック(空行区切り)から、先頭2〜3行(アーティスト/タイトル/
+// レーベル+年号)だけを読んでメタデータを組み立てる。ブロックにそれ以降の行
+// (段組みで折り返されたレビュー文)が続いていても無視する — これにより、
+// レビュー文の各行が次のエントリのメタデータとして誤読されるのを防ぐ。
+//
+// タイトル行自体に年号が付いているかどうかで2行形式/3行形式を判定する:
+// 付いていれば2行形式(アーティスト/「タイトル (年)」)としてその場で確定、
+// 付いていなければ3行形式(アーティスト/タイトル/「レーベル (年)」)とみなし
+// 3行目をレーベルとして読む。
+function parseEntryFromBlock(lines: string[]): AlbumExtract | null {
+  if (lines.length < 2) return null; // アーティスト名だけでは不完全
 
-  function finalize() {
-    if (current.title && current.artist_name) {
-      albums.push({
-        title: current.title,
-        artist_name: current.artist_name,
-        label: current.label,
-        release_year: current.release_year,
-      });
-    }
-    current = {};
-    awaitingLabel = false;
+  const artist_name = lines[0];
+  const { working: title, year: titleYear } = extractYear(lines[1]);
+  if (!title) return null;
+
+  if (titleYear !== undefined) {
+    return { artist_name, title, release_year: titleYear };
   }
 
-  for (const rawLine of lines) {
-    // Detect year pattern (YYYY) and strip it from the line so it doesn't
-    // end up baked into title/artist_name (e.g. "Solid State Survivor (1979)"
-    // would never match the DB title "Solid State Survivor" otherwise).
-    const yearMatch = rawLine.match(/\((\d{4})\)/);
-    const lineYear = yearMatch ? parseInt(yearMatch[1], 10) : undefined;
-    const working = yearMatch ? rawLine.replace(yearMatch[0], '').trim() : rawLine;
+  if (lines.length < 3) {
+    return { artist_name, title }; // レーベル行が無い(年号も無い)エントリ
+  }
 
-    if (!working) continue; // line was only a year marker; nothing left to assign
+  const { working: label, year: labelYear } = extractYear(lines[2]);
+  return {
+    artist_name,
+    title,
+    // レビュー文の書き出しがそのまま3行目に来ている場合はレーベルとして
+    // 採用しない(labelはマッチングに使わないフィールドなので実害は小さい)
+    label: label && label.length < 100 ? label : undefined,
+    release_year: labelYear,
+  };
+}
 
-    if (!current.artist_name) {
-      current.artist_name = working;
-      continue;
-    }
+export async function parseOCRToAlbums(text: string): Promise<AlbumExtract[]> {
+  // 実際の誌面では各エントリの前後に視覚的な余白があり、Tesseractのプレーン
+  // テキスト出力ではこれが空行として現れる。まず空行でブロックに分割し、
+  // 各ブロックを1エントリとして扱う(実データ検証: 空行を使わない行単位パーサー
+  // は、レビュー文が挟まる実際のページで23件中59件を誤抽出していた)。
+  const blocks = text
+    .split(/\n\s*\n/)
+    .map((block) =>
+      block
+        .split('\n')
+        .map((l) => normalizeOcrText(l))
+        .filter((l) => l.length > 0)
+    )
+    .filter((block) => block.length > 0);
 
-    if (!current.title) {
-      current.title = working;
-      if (lineYear !== undefined) {
-        current.release_year = lineYear;
-        finalize(); // 2行形式: タイトル行に年号があったので確定
-      } else {
-        awaitingLabel = true; // 3行形式: 次の行(ラベル+年号)を待つ
-      }
-      continue;
-    }
-
-    if (awaitingLabel) {
-      // レビュー文などの長文が続く場合はラベルとして採用しない(labelは
-      // マッチングに使わないフィールドなので、取りこぼしても実害は小さい)
-      if (working.length < 100) {
-        current.label = working;
-      }
-      if (lineYear !== undefined) current.release_year = lineYear;
-      finalize();
-      continue;
-    }
-
-    // artist_name・titleが揃っていてラベル待ちでもない場合、この行は
-    // 次のエントリの開始とみなす(通常はfinalize()で既にリセットされて
-    // いるはずだが、保険として)。
-    current = { artist_name: working };
+  const albums: AlbumExtract[] = [];
+  for (const block of blocks) {
+    const entry = parseEntryFromBlock(block);
+    if (entry) albums.push(entry);
   }
 
   return albums;
