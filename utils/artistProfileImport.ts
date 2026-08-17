@@ -161,17 +161,44 @@ export async function writeArtistProfileFromMusicBrainzDetails(
 
     let otherArtistId = existingOtherArtist?.id as string | undefined
     if (!otherArtistId) {
-      const { data: createdArtist, error: createArtistError } = await supabase
+      // musicbrainz_idでは見つからなかった場合でも、完全一致する名前のartistが
+      // 既に存在するなら(iTunes経由の本人名義登録等)、新規作成せずそちらに
+      // musicbrainz_idを補完して使う。同名重複artist行の発生を防ぐため
+      // (実例: 幾田りら/AAAMYYYがメンバー自動作成と本人名義登録の両方で
+      // それぞれ別行になっていた)。musicbrainz_idが既に別の値で設定されている
+      // 同名artistは別人の可能性があるため対象外とする
+      const { data: sameNameCandidates } = await supabase
         .from('artist')
-        .insert({ name: membership.name, musicbrainz_id: membership.mbid })
         .select('id')
-        .single()
-      if (createArtistError || !createdArtist) {
-        console.error(`メンバー「${membership.name}」のartist作成に失敗しました:`, createArtistError?.message)
-        membershipsUnresolved.push(membership.name)
-        continue
+        .eq('name', membership.name)
+        .is('musicbrainz_id', null)
+        .limit(1)
+
+      if (sameNameCandidates && sameNameCandidates.length > 0) {
+        const sameNameArtistId = sameNameCandidates[0].id
+        const { error: linkError } = await supabase
+          .from('artist')
+          .update({ musicbrainz_id: membership.mbid })
+          .eq('id', sameNameArtistId)
+        if (linkError) {
+          console.error(`メンバー「${membership.name}」への紐付けに失敗しました:`, linkError.message)
+          membershipsUnresolved.push(membership.name)
+          continue
+        }
+        otherArtistId = sameNameArtistId
+      } else {
+        const { data: createdArtist, error: createArtistError } = await supabase
+          .from('artist')
+          .insert({ name: membership.name, musicbrainz_id: membership.mbid })
+          .select('id')
+          .single()
+        if (createArtistError || !createdArtist) {
+          console.error(`メンバー「${membership.name}」のartist作成に失敗しました:`, createArtistError?.message)
+          membershipsUnresolved.push(membership.name)
+          continue
+        }
+        otherArtistId = createdArtist.id
       }
-      otherArtistId = createdArtist.id
     }
 
     const bandId = membership.subjectIsBand ? artistId : otherArtistId
