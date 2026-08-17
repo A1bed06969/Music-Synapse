@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { createClient } from '@/utils/Supabase/server'
-import CalendarView, { type CalendarAlbum } from './CalendarView'
+import CalendarView, { type CalendarAlbum, type CalendarLiveEvent } from './CalendarView'
 
 function monthRange(month: string) {
   const [y, m] = month.split('-').map(Number)
@@ -8,6 +8,27 @@ function monthRange(month: string) {
   const nextMonthDate = new Date(Date.UTC(y, m, 1))
   const end = nextMonthDate.toISOString().slice(0, 10)
   return { start, end }
+}
+
+function addOneDay(date: string): string {
+  const [y, m, d] = date.split('-').map(Number)
+  return new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10)
+}
+
+// フェスの開催期間(start_date〜end_date)を、月表示の範囲内に収まる日ごとに
+// 展開する。複数日開催のフェスは該当する日すべてにマーカーを付けるため。
+function expandDateRange(rangeStart: string, rangeEnd: string, monthStart: string, monthEndExclusive: string): string[] {
+  const clampedStart = rangeStart < monthStart ? monthStart : rangeStart
+  const rangeEndExclusive = addOneDay(rangeEnd)
+  const clampedEndExclusive = rangeEndExclusive > monthEndExclusive ? monthEndExclusive : rangeEndExclusive
+
+  const days: string[] = []
+  let cur = clampedStart
+  while (cur < clampedEndExclusive) {
+    days.push(cur)
+    cur = addOneDay(cur)
+  }
+  return days
 }
 
 function shiftMonth(month: string, delta: number) {
@@ -74,6 +95,56 @@ export default async function AlbumCalendarPage({
       }
     })
 
+  // フェス: event_edition(開催年ごとの日程)が月表示の範囲と重なるものを取得。
+  // 複数日開催なので、開始日<月末 かつ 終了日>=月初 で範囲重複判定する。
+  const { data: editionRows } = await supabase
+    .from('event_edition')
+    .select('id, start_date, end_date, venue, event:event_id(id, name, name_ja, image_url, event_type)')
+    .lt('start_date', end)
+    .gte('end_date', start)
+
+  const festivalEvents: CalendarLiveEvent[] = (editionRows ?? []).flatMap((edition) => {
+    if (!edition.start_date || !edition.end_date) return []
+    const ev = Array.isArray(edition.event) ? edition.event[0] : edition.event
+    const days = expandDateRange(edition.start_date, edition.end_date, start, end)
+    return days.map((date) => ({
+      id: `${edition.id}-${date}`,
+      date,
+      kind: 'event' as const,
+      title: ev?.name_ja || ev?.name || '(名称不明)',
+      imageUrl: ev?.image_url ?? null,
+      venue: edition.venue,
+      artistName: null,
+      href: ev?.id ? `/events/${ev.id}` : null,
+    }))
+  })
+
+  // ライブ: music_event(単発の開催日)を月表示の範囲で取得。
+  const { data: liveRows } = await supabase
+    .from('music_event')
+    .select('id, name, event_date, venue, artist:artist_id(id, name)')
+    .gte('event_date', start)
+    .lt('event_date', end)
+    .order('event_date', { ascending: true })
+
+  const liveEvents: CalendarLiveEvent[] = (liveRows ?? [])
+    .filter((l) => !!l.event_date)
+    .map((l) => {
+      const artist = Array.isArray(l.artist) ? l.artist[0] : l.artist
+      return {
+        id: l.id,
+        date: l.event_date as string,
+        kind: 'live' as const,
+        title: l.name ?? artist?.name ?? '(名称不明)',
+        imageUrl: null,
+        venue: l.venue,
+        artistName: artist?.name ?? null,
+        href: null,
+      }
+    })
+
+  const events: CalendarLiveEvent[] = [...festivalEvents, ...liveEvents]
+
   return (
     <div className="mx-auto max-w-[1600px] px-6 py-12">
       <div className="flex items-center justify-between">
@@ -94,6 +165,7 @@ export default async function AlbumCalendarPage({
         prevMonthHref={`/albums/calendar?month=${shiftMonth(currentMonth, -1)}`}
         nextMonthHref={`/albums/calendar?month=${shiftMonth(currentMonth, 1)}`}
         albums={albums}
+        events={events}
       />
     </div>
   )

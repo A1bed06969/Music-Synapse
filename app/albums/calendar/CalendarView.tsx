@@ -13,7 +13,25 @@ export type CalendarAlbum = {
   genres: string[]
 }
 
+// event_edition(フェスの開催年ごとの日程)由来はkind: 'event'、
+// music_event(単発ライブ)由来はkind: 'live'。複数日開催のフェスは
+// 該当する日ごとに別エントリとして展開済み(page.tsx側で展開)。
+export type CalendarLiveEvent = {
+  id: string
+  date: string
+  kind: 'event' | 'live'
+  title: string
+  imageUrl: string | null
+  venue: string | null
+  artistName: string | null
+  href: string | null
+}
+
+type Tab = 'album' | 'event'
+
 const WEEKDAY_LABEL_JA = ['日', '月', '火', '水', '木', '金', '土']
+const KIND_EMOJI: Record<CalendarLiveEvent['kind'], string> = { event: '🎪', live: '🎤' }
+const KIND_LABEL: Record<CalendarLiveEvent['kind'], string> = { event: 'フェス', live: 'ライブ' }
 
 export default function CalendarView({
   month,
@@ -21,14 +39,22 @@ export default function CalendarView({
   prevMonthHref,
   nextMonthHref,
   albums,
+  events,
 }: {
   month: string
   monthLabel: string
   prevMonthHref: string
   nextMonthHref: string
   albums: CalendarAlbum[]
+  events: CalendarLiveEvent[]
 }) {
+  const [activeTab, setActiveTab] = useState<Tab>('album')
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
+
+  function selectTab(tab: Tab) {
+    setActiveTab(tab)
+    setSelectedDate(null)
+  }
 
   const albumsByDate = useMemo(() => {
     const map = new Map<string, CalendarAlbum[]>()
@@ -39,6 +65,16 @@ export default function CalendarView({
     }
     return map
   }, [albums])
+
+  const eventsByDate = useMemo(() => {
+    const map = new Map<string, CalendarLiveEvent[]>()
+    for (const event of events) {
+      const list = map.get(event.date) ?? []
+      list.push(event)
+      map.set(event.date, list)
+    }
+    return map
+  }, [events])
 
   const cells = useMemo(() => {
     const [y, m] = month.split('-').map(Number)
@@ -53,127 +89,235 @@ export default function CalendarView({
   }, [month])
 
   const selectedAlbums = selectedDate ? (albumsByDate.get(selectedDate) ?? []) : []
+  const selectedEvents = selectedDate ? (eventsByDate.get(selectedDate) ?? []) : []
 
   return (
-    <div className="mt-8 flex flex-col gap-6 lg:flex-row">
-      <div className="lg:flex-1">
-        <div className="flex items-center justify-between">
-          <Link
-            href={prevMonthHref}
-            className="rounded-md border border-white/15 px-3 py-1.5 text-sm transition hover:bg-white/5"
-          >
-            ← 前月
-          </Link>
-          <h2 className="text-lg font-bold">{monthLabel}</h2>
-          <Link
-            href={nextMonthHref}
-            className="rounded-md border border-white/15 px-3 py-1.5 text-sm transition hover:bg-white/5"
-          >
-            翌月 →
-          </Link>
-        </div>
-
-        <div className="mt-4 grid grid-cols-7 gap-1.5 text-center text-xs text-white/40">
-          {WEEKDAY_LABEL_JA.map((w) => (
-            <div key={w} className="py-1">
-              {w}
-            </div>
-          ))}
-        </div>
-
-        <div className="grid grid-cols-7 gap-1.5">
-          {cells.map((cell, i) => {
-            if (!cell.date) return <div key={`blank-${i}`} />
-            const dayAlbums = albumsByDate.get(cell.date) ?? []
-            const first = dayAlbums[0]
-            const isSelected = selectedDate === cell.date
-
-            return (
-              <button
-                key={cell.date}
-                type="button"
-                disabled={dayAlbums.length === 0}
-                onClick={() => setSelectedDate(cell.date)}
-                className={`relative aspect-square overflow-hidden rounded-md border text-left transition ${
-                  isSelected ? 'border-white' : 'border-white/10'
-                } ${dayAlbums.length > 0 ? 'hover:border-white/40' : 'cursor-default'}`}
-              >
-                {first?.jacketUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={first.jacketUrl}
-                    alt=""
-                    className="absolute inset-0 h-full w-full object-cover opacity-50"
-                  />
-                ) : (
-                  <div className="absolute inset-0 bg-white/[0.03]" />
-                )}
-                <span className="absolute left-1 top-1 rounded bg-black/70 px-1 text-[10px] leading-tight text-white/80">
-                  {cell.day}
-                </span>
-                {dayAlbums.length > 1 && (
-                  <span className="absolute bottom-1 right-1 rounded-full bg-white px-1.5 py-0.5 text-[10px] font-bold leading-none text-black">
-                    {dayAlbums.length}
-                  </span>
-                )}
-              </button>
-            )
-          })}
-        </div>
+    <div className="mt-8">
+      <div className="flex gap-1 border-b border-white/10 pb-2">
+        <button
+          type="button"
+          onClick={() => selectTab('album')}
+          className={`rounded px-3 py-1.5 text-sm transition ${
+            activeTab === 'album' ? 'bg-white text-black' : 'text-white/60 hover:text-white'
+          }`}
+        >
+          新譜
+          <span className="ml-1.5 text-xs opacity-60">{albums.length}</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => selectTab('event')}
+          className={`rounded px-3 py-1.5 text-sm transition ${
+            activeTab === 'event' ? 'bg-white text-black' : 'text-white/60 hover:text-white'
+          }`}
+        >
+          ライブ・フェス
+          <span className="ml-1.5 text-xs opacity-60">{events.length}</span>
+        </button>
       </div>
 
-      {selectedDate && (
-        <div className="lg:w-80 lg:shrink-0">
-          <div className="rounded-lg border border-white/10 bg-white/[0.03]">
-            <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
-              <h3 className="text-sm font-medium">{formatDate(selectedDate)}の新譜</h3>
-              <button
-                type="button"
-                onClick={() => setSelectedDate(null)}
-                aria-label="閉じる"
-                className="text-lg leading-none text-white/40 transition hover:text-white"
-              >
-                ×
-              </button>
-            </div>
-            <ul className="max-h-[600px] divide-y divide-white/5 overflow-y-auto">
-              {selectedAlbums.map((album) => (
-                <li key={album.id}>
-                  <Link href={`/albums/${album.id}`} className="flex gap-3 p-3 transition hover:bg-white/5">
-                    <div className="h-14 w-14 shrink-0 overflow-hidden rounded bg-white/5">
-                      {album.jacketUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={album.jacketUrl} alt="" className="h-full w-full object-cover" />
-                      ) : (
-                        <div className="flex h-full w-full items-center justify-center text-[9px] text-white/20">
-                          No Art
-                        </div>
-                      )}
+      <div className="mt-6 flex flex-col gap-6 lg:flex-row">
+        <div className="lg:flex-1">
+          <div className="flex items-center justify-between">
+            <Link
+              href={prevMonthHref}
+              className="rounded-md border border-white/15 px-3 py-1.5 text-sm transition hover:bg-white/5"
+            >
+              ← 前月
+            </Link>
+            <h2 className="text-lg font-bold">{monthLabel}</h2>
+            <Link
+              href={nextMonthHref}
+              className="rounded-md border border-white/15 px-3 py-1.5 text-sm transition hover:bg-white/5"
+            >
+              翌月 →
+            </Link>
+          </div>
+
+          <div className="mt-4 grid grid-cols-7 gap-1.5 text-center text-xs text-white/40">
+            {WEEKDAY_LABEL_JA.map((w) => (
+              <div key={w} className="py-1">
+                {w}
+              </div>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-7 gap-1.5">
+            {cells.map((cell, i) => {
+              if (!cell.date) return <div key={`blank-${i}`} />
+              const isSelected = selectedDate === cell.date
+
+              if (activeTab === 'album') {
+                const dayAlbums = albumsByDate.get(cell.date) ?? []
+                const first = dayAlbums[0]
+                return (
+                  <button
+                    key={cell.date}
+                    type="button"
+                    disabled={dayAlbums.length === 0}
+                    onClick={() => setSelectedDate(cell.date)}
+                    className={`relative aspect-square overflow-hidden rounded-md border text-left transition ${
+                      isSelected ? 'border-white' : 'border-white/10'
+                    } ${dayAlbums.length > 0 ? 'hover:border-white/40' : 'cursor-default'}`}
+                  >
+                    {first?.jacketUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={first.jacketUrl}
+                        alt=""
+                        className="absolute inset-0 h-full w-full object-cover opacity-50"
+                      />
+                    ) : (
+                      <div className="absolute inset-0 bg-white/[0.03]" />
+                    )}
+                    <span className="absolute left-1 top-1 rounded bg-black/70 px-1 text-[10px] leading-tight text-white/80">
+                      {cell.day}
+                    </span>
+                    {dayAlbums.length > 1 && (
+                      <span className="absolute bottom-1 right-1 rounded-full bg-white px-1.5 py-0.5 text-[10px] font-bold leading-none text-black">
+                        {dayAlbums.length}
+                      </span>
+                    )}
+                  </button>
+                )
+              }
+
+              const dayEvents = eventsByDate.get(cell.date) ?? []
+              const first = dayEvents[0]
+              return (
+                <button
+                  key={cell.date}
+                  type="button"
+                  disabled={dayEvents.length === 0}
+                  onClick={() => setSelectedDate(cell.date)}
+                  className={`relative aspect-square overflow-hidden rounded-md border text-left transition ${
+                    isSelected ? 'border-white' : 'border-white/10'
+                  } ${dayEvents.length > 0 ? 'hover:border-white/40' : 'cursor-default'}`}
+                >
+                  {first?.imageUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={first.imageUrl}
+                      alt=""
+                      className="absolute inset-0 h-full w-full object-cover opacity-50"
+                    />
+                  ) : first ? (
+                    <div className="absolute inset-0 flex items-center justify-center bg-white/[0.03] text-lg">
+                      {KIND_EMOJI[first.kind]}
                     </div>
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium">{album.title}</p>
-                      <p className="truncate text-xs text-white/50">{album.artistName}</p>
-                      <p className="mt-0.5 text-xs text-white/30">{album.releaseDate.slice(0, 4)}年</p>
-                      {album.genres.length > 0 && (
-                        <div className="mt-1 flex flex-wrap gap-1">
-                          {album.genres.map((g) => (
-                            <span
-                              key={g}
-                              className="rounded-full bg-white/10 px-1.5 py-0.5 text-[10px] text-white/60"
-                            >
-                              {g}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </Link>
-                </li>
-              ))}
-            </ul>
+                  ) : (
+                    <div className="absolute inset-0 bg-white/[0.03]" />
+                  )}
+                  <span className="absolute left-1 top-1 rounded bg-black/70 px-1 text-[10px] leading-tight text-white/80">
+                    {cell.day}
+                  </span>
+                  {dayEvents.length > 1 && (
+                    <span className="absolute bottom-1 right-1 rounded-full bg-white px-1.5 py-0.5 text-[10px] font-bold leading-none text-black">
+                      {dayEvents.length}
+                    </span>
+                  )}
+                </button>
+              )
+            })}
           </div>
         </div>
-      )}
+
+        {selectedDate && (
+          <div className="lg:w-80 lg:shrink-0">
+            <div className="rounded-lg border border-white/10 bg-white/[0.03]">
+              <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+                <h3 className="text-sm font-medium">
+                  {formatDate(selectedDate)}{activeTab === 'album' ? 'の新譜' : 'のライブ・フェス'}
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setSelectedDate(null)}
+                  aria-label="閉じる"
+                  className="text-lg leading-none text-white/40 transition hover:text-white"
+                >
+                  ×
+                </button>
+              </div>
+
+              {activeTab === 'album' ? (
+                <ul className="max-h-[600px] divide-y divide-white/5 overflow-y-auto">
+                  {selectedAlbums.map((album) => (
+                    <li key={album.id}>
+                      <Link href={`/albums/${album.id}`} className="flex gap-3 p-3 transition hover:bg-white/5">
+                        <div className="h-14 w-14 shrink-0 overflow-hidden rounded bg-white/5">
+                          {album.jacketUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={album.jacketUrl} alt="" className="h-full w-full object-cover" />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center text-[9px] text-white/20">
+                              No Art
+                            </div>
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium">{album.title}</p>
+                          <p className="truncate text-xs text-white/50">{album.artistName}</p>
+                          <p className="mt-0.5 text-xs text-white/30">{album.releaseDate.slice(0, 4)}年</p>
+                          {album.genres.length > 0 && (
+                            <div className="mt-1 flex flex-wrap gap-1">
+                              {album.genres.map((g) => (
+                                <span
+                                  key={g}
+                                  className="rounded-full bg-white/10 px-1.5 py-0.5 text-[10px] text-white/60"
+                                >
+                                  {g}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <ul className="max-h-[600px] divide-y divide-white/5 overflow-y-auto">
+                  {selectedEvents.map((event) => {
+                    const content = (
+                      <div className="flex gap-3 p-3">
+                        <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded bg-white/5 text-xl">
+                          {event.imageUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={event.imageUrl} alt="" className="h-full w-full object-cover" />
+                          ) : (
+                            KIND_EMOJI[event.kind]
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <span className="rounded-full bg-white/10 px-1.5 py-0.5 text-[10px] text-white/60">
+                            {KIND_LABEL[event.kind]}
+                          </span>
+                          <p className="mt-1 truncate text-sm font-medium">{event.title}</p>
+                          {event.artistName && (
+                            <p className="truncate text-xs text-white/50">{event.artistName}</p>
+                          )}
+                          {event.venue && <p className="truncate text-xs text-white/30">{event.venue}</p>}
+                        </div>
+                      </div>
+                    )
+                    return (
+                      <li key={event.id}>
+                        {event.href ? (
+                          <Link href={event.href} className="block transition hover:bg-white/5">
+                            {content}
+                          </Link>
+                        ) : (
+                          content
+                        )}
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
