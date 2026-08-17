@@ -111,7 +111,9 @@ export default async function AlbumCalendarPage({
       id: `${edition.id}-${date}`,
       date,
       kind: 'event' as const,
-      title: ev?.name_ja || ev?.name || '(名称不明)',
+      // event.nameが正式名称(例: "FUJI ROCK FESTIVAL")、name_jaは通称
+      // (例: "フジロック")。/events・/events/[id]と同じくnameを主表示にする。
+      title: ev?.name || ev?.name_ja || '(名称不明)',
       imageUrl: ev?.image_url ?? null,
       venue: edition.venue,
       artistName: null,
