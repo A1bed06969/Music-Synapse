@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { searchReleaseByTitle, fetchArtistDetails, type MusicBrainzArtistDetails } from '@/utils/musicbrainz'
 import { normalizeAlbumTitle } from '@/utils/creditImport'
 import { resolveArtistImageByName } from '@/utils/appleMusicImage'
+import { fetchOriginCoordinates } from '@/utils/wikidata'
 
 export type ResolveArtistMbidResult =
   | { matched: true; mbid: string; matchedTitles: string[] }
@@ -78,10 +79,11 @@ export async function writeArtistProfileFromMusicBrainzDetails(
   genresLinked: number
   membershipsWritten: number
   membershipsUnresolved: string[]
+  originResolved: boolean
 }> {
   const { data: currentArtist } = await supabase
     .from('artist')
-    .select('official_site_url, sns_x_url, sns_instagram_url, musicbrainz_id')
+    .select('official_site_url, sns_x_url, sns_instagram_url, musicbrainz_id, origin_latitude')
     .eq('id', artistId)
     .single()
 
@@ -114,6 +116,33 @@ export async function writeArtistProfileFromMusicBrainzDetails(
       )
     if (error) {
       console.error(`外部リンクの保存に失敗しました(${artistId}):`, error.message)
+    }
+  }
+
+  // 出身地座標(app/admin/data/artists/geoの一括ツールと同じロジック)。
+  // MusicBrainzの外部リンクにWikidataがあれば、そのQIDから人間の確認無しで
+  // 自動取得する(既に設定済みなら上書きしない)
+  let originResolved = false
+  const wikidataLink = details.links.find((link) => link.type === 'wikidata')
+  if (wikidataLink && currentArtist?.origin_latitude == null) {
+    const qidMatch = wikidataLink.url.match(/\/(Q\d+)$/)
+    if (qidMatch) {
+      try {
+        const coords = await fetchOriginCoordinates(qidMatch[1])
+        if (coords) {
+          const { error } = await supabase
+            .from('artist')
+            .update({ origin_latitude: coords.latitude, origin_longitude: coords.longitude })
+            .eq('id', artistId)
+          if (error) {
+            console.error(`出身地座標の保存に失敗しました(${artistId}):`, error.message)
+          } else {
+            originResolved = true
+          }
+        }
+      } catch (err) {
+        console.error(`出身地座標の取得に失敗しました(${artistId}):`, err)
+      }
     }
   }
 
@@ -249,6 +278,7 @@ export async function writeArtistProfileFromMusicBrainzDetails(
     genresLinked,
     membershipsWritten,
     membershipsUnresolved,
+    originResolved,
   }
 }
 
@@ -289,5 +319,6 @@ export async function autoImportArtistProfileFromMusicBrainz(
   const result = await writeArtistProfileFromMusicBrainzDetails(supabase, artistId, mbid, details)
   const unresolvedNote =
     result.membershipsUnresolved.length > 0 ? `・未解決メンバー${result.membershipsUnresolved.length}件` : ''
-  return `MBプロフィール取込: リンク${result.linkCount}件・ジャンル${result.genresLinked}件・メンバーシップ${result.membershipsWritten}件${unresolvedNote}(プロフィール${result.profileFieldCount}件更新)`
+  const originNote = result.originResolved ? '・出身地座標取込' : ''
+  return `MBプロフィール取込: リンク${result.linkCount}件・ジャンル${result.genresLinked}件・メンバーシップ${result.membershipsWritten}件${unresolvedNote}${originNote}(プロフィール${result.profileFieldCount}件更新)`
 }

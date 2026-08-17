@@ -7,6 +7,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/utils/Supabase/admin'
 import { searchArtist, fetchArtistWithAlbums, type ItunesArtistSearchResult } from '@/utils/itunes'
 import { upsertArtistFromItunes, syncAlbumsAndTracksForArtist } from '@/app/admin/import/actions'
+import { autoImportArtistProfileFromMusicBrainz } from '@/utils/artistProfileImport'
 
 function redirectWith(result: 'success' | 'error', message: string): never {
   redirect(`/admin/data/events/festival-pilot?${result}=${encodeURIComponent(message)}`)
@@ -221,10 +222,21 @@ export async function importAndRegisterFestivalArtist(
         itunesAlbums,
         String(itunesArtist.artistId)
       )
-      revalidatePath(`/artists/${artistId}`)
     } catch (err) {
       console.error(`アルバム・トラック取込に失敗しました(${itunesArtist.artistName}):`, err)
     }
+
+    // URL入力式(app/admin/import)の一括登録と同じく、MusicBrainzプロフィール
+    // (公式サイト/SNS/ジャンル/メンバーシップ/出身地座標)の自動取込もあわせて行う。
+    // アルバム登録が先に済んでいる必要があるためsyncAlbumsAndTracksForArtistの後に実行する
+    try {
+      const result = await autoImportArtistProfileFromMusicBrainz(supabase, artistId)
+      console.log(`MusicBrainzプロフィール取込(${itunesArtist.artistName}): ${result}`)
+    } catch (err) {
+      console.error(`MusicBrainzプロフィール取込に失敗しました(${itunesArtist.artistName}):`, err)
+    }
+
+    revalidatePath(`/artists/${artistId}`)
   })
 
   revalidatePath('/admin/data/events/festival-pilot')
