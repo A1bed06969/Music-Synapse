@@ -8,8 +8,8 @@ import {
   ARTIST_TYPE_LABEL,
   STREAMING_STATUS_LABEL,
 } from '@/utils/format'
-import RelationGraph from '@/app/components/RelationGraph'
-import { buildArtistRelationGraph } from '@/utils/relationGraphData'
+import ArtistCreditQuadrantGraph from '@/app/components/ArtistCreditQuadrants'
+import { buildArtistCreditQuadrants } from '@/utils/relationGraphData'
 import ArtistLinkIcons from '@/app/components/ArtistLinkIcons'
 import { resolveArtistPageKind, hasOwnRelease } from '@/utils/artistPageKind'
 import MemberProfile from './MemberProfile'
@@ -49,7 +49,7 @@ export default async function ArtistDetailPage({
       { data: awardEntries },
       { data: membershipRows },
     ],
-    relationGraph,
+    creditQuadrants,
     ownsRelease,
   ] = await Promise.all([
     Promise.all([
@@ -82,10 +82,7 @@ export default async function ArtistDetailPage({
         .eq('relation_type', 'membership')
         .or(`artist_id_a.eq.${id},artist_id_b.eq.${id}`),
     ]),
-    (async () => {
-      const { data: nameRow } = await supabase.from('artist').select('name').eq('id', id).single()
-      return buildArtistRelationGraph(supabase, id, nameRow?.name ?? '')
-    })(),
+    buildArtistCreditQuadrants(supabase, id),
     hasOwnRelease(supabase, id),
   ])
 
@@ -101,6 +98,12 @@ export default async function ArtistDetailPage({
   )
 
   const mvVideoId = artist.url_latest_mv ? extractYoutubeVideoId(artist.url_latest_mv) : null
+
+  const hasCreditQuadrantData =
+    creditQuadrants.producers.length > 0 ||
+    creditQuadrants.credits.length > 0 ||
+    creditQuadrants.collaborators.length > 0 ||
+    creditQuadrants.musicians.length > 0
 
   // membershipRows には自分がバンド側(artist_id_a)・メンバー側(artist_id_b)
   // 両方のケースが混在するので、id基準でどちら向きかを判定して振り分ける
@@ -399,11 +402,15 @@ export default async function ArtistDetailPage({
       )}
 
       <SectionDivider label="Relation Graph" />
-      <div className="mt-4 max-w-md overflow-hidden rounded-lg border border-white/10 bg-white/[0.02]">
-        <RelationGraph nodes={relationGraph.nodes} edges={relationGraph.edges} centerId={artist.id} />
+      <div className="mt-4 overflow-hidden rounded-lg border border-white/10 bg-white/[0.02]">
+        <ArtistCreditQuadrantGraph
+          centerName={artist.name}
+          centerImageUrl={artist.image_url}
+          quadrants={creditQuadrants}
+        />
       </div>
-      {relationGraph.nodes.length > 0 && (
-        <div className="max-w-md">
+      {hasCreditQuadrantData && (
+        <div>
           <Link
             href={`/artists/${artist.id}/relations`}
             className="mt-2 block text-right text-xs text-white/40 hover:text-white/70"

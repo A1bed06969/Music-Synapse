@@ -1,98 +1,77 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { RelationNode, RelationEdge } from '@/app/components/RelationGraph'
 import { CREDIT_ROLE_LABEL } from '@/utils/format'
 
-export async function buildArtistRelationGraph(
+export type QuadrantPerson = { id: string; name: string; role?: string; roleLabel?: string }
+export type QuadrantArtist = { id: string; name: string; imageUrl: string | null }
+
+export type ArtistCreditQuadrants = {
+  producers: QuadrantPerson[]
+  credits: QuadrantPerson[]
+  collaborators: QuadrantArtist[]
+  musicians: QuadrantPerson[]
+}
+
+// 作詞・作曲・編曲・ミックス・マスタリング・アートワークをまとめて1象限にする
+const CREDIT_QUADRANT_ROLES = ['lyricist', 'composer', 'arranger', 'mix', 'mastering', 'artwork']
+
+/** アーティストページの相関図用に、クレジット人物(プロデューサー/制作陣/
+ * サポートミュージシャン)とコラボアーティスト(artist_relationのproduction)
+ * を4象限に分けて集計する。バンドメンバー(membership)は別セクションで
+ * 表示済みのためここには含めない。 */
+export async function buildArtistCreditQuadrants(
   supabase: SupabaseClient,
-  artistId: string,
-  artistName: string
-): Promise<{ nodes: RelationNode[]; edges: RelationEdge[] }> {
-  const { data: relations } = await supabase
-    .from('artist_relation')
-    .select('artist_id_a, artist_id_b, relation_type, relation_style, description')
-    .or(`artist_id_a.eq.${artistId},artist_id_b.eq.${artistId}`)
-
-  const otherIds = Array.from(
-    new Set((relations ?? []).map((r) => (r.artist_id_a === artistId ? r.artist_id_b : r.artist_id_a)))
-  )
-
-  const [{ data: others }, { data: artistGenres }, { data: artistCredits }, { data: centerArtist }] = await Promise.all([
-    otherIds.length
-      ? supabase.from('artist').select('id, name, image_url').in('id', otherIds)
-      : Promise.resolve({ data: [] as { id: string; name: string; image_url: string | null }[] }),
-    supabase
-      .from('artist_genre')
-      .select('artist_id, genre:genre_id(name)')
-      .in('artist_id', [artistId, ...otherIds]),
+  artistId: string
+): Promise<ArtistCreditQuadrants> {
+  const [{ data: credits }, { data: relations }] = await Promise.all([
     supabase
       .from('artist_credit')
-      .select('id, role, credit_person:credit_person_id(id, name)')
-      .eq('artist_id', artistId),
-    supabase.from('artist').select('image_url').eq('id', artistId).single(),
+      .select('role, credit_person:credit_person_id(id, name)')
+      .eq('artist_id', artistId)
+      .in('role', ['producer', 'musician', ...CREDIT_QUADRANT_ROLES]),
+    supabase
+      .from('artist_relation')
+      .select(
+        'artist_id_a, artist_id_b, artist_a:artist_id_a(id, name, image_url), artist_b:artist_id_b(id, name, image_url)'
+      )
+      .eq('relation_type', 'production')
+      .or(`artist_id_a.eq.${artistId},artist_id_b.eq.${artistId}`),
   ])
 
-  const categoryByArtist = new Map<string, string>()
-  for (const row of artistGenres ?? []) {
-    if (categoryByArtist.has(row.artist_id)) continue
-    const genre = Array.isArray(row.genre) ? row.genre[0] : row.genre
-    if (genre?.name) categoryByArtist.set(row.artist_id, genre.name)
-  }
+  const producers = new Map<string, QuadrantPerson>()
+  const creditFolks = new Map<string, QuadrantPerson>()
+  const musicians = new Map<string, QuadrantPerson>()
 
-  const personNodes: RelationNode[] = []
-  const personEdges: RelationEdge[] = []
-  const seenPersonIds = new Set<string>()
-  const seenPersonEdgeKeys = new Set<string>()
-  for (const credit of artistCredits ?? []) {
-    const person = Array.isArray(credit.credit_person) ? credit.credit_person[0] : credit.credit_person
+  for (const row of credits ?? []) {
+    const person = Array.isArray(row.credit_person) ? row.credit_person[0] : row.credit_person
     if (!person) continue
-    if (!seenPersonIds.has(person.id)) {
-      seenPersonIds.add(person.id)
-      personNodes.push({ id: person.id, name: person.name, category: null, type: 'person' })
+    if (row.role === 'producer') {
+      producers.set(person.id, { id: person.id, name: person.name })
+    } else if (row.role === 'musician') {
+      musicians.set(person.id, { id: person.id, name: person.name })
+    } else if (CREDIT_QUADRANT_ROLES.includes(row.role)) {
+      creditFolks.set(`${person.id}:${row.role}`, {
+        id: person.id,
+        name: person.name,
+        role: row.role,
+        roleLabel: CREDIT_ROLE_LABEL[row.role] ?? row.role,
+      })
     }
-    const edgeKey = `${person.id}|${credit.role}`
-    if (seenPersonEdgeKeys.has(edgeKey)) continue
-    seenPersonEdgeKeys.add(edgeKey)
-    personEdges.push({
-      source: artistId,
-      target: person.id,
-      style: 'dotted',
-      label: CREDIT_ROLE_LABEL[credit.role] ?? credit.role,
-    })
   }
 
-  const nodes: RelationNode[] =
-    otherIds.length > 0 || personNodes.length > 0
-      ? [
-          {
-            id: artistId,
-            name: artistName,
-            category: categoryByArtist.get(artistId) ?? null,
-            type: 'artist' as const,
-            imageUrl: centerArtist?.image_url ?? null,
-          },
-          ...(others ?? []).map((a) => ({
-            id: a.id,
-            name: a.name,
-            category: categoryByArtist.get(a.id) ?? null,
-            type: 'artist' as const,
-            imageUrl: a.image_url,
-          })),
-          ...personNodes,
-        ]
-      : []
+  const collaborators = new Map<string, QuadrantArtist>()
+  for (const row of relations ?? []) {
+    const a = Array.isArray(row.artist_a) ? row.artist_a[0] : row.artist_a
+    const b = Array.isArray(row.artist_b) ? row.artist_b[0] : row.artist_b
+    const other = row.artist_id_a === artistId ? b : a
+    if (!other) continue
+    collaborators.set(other.id, { id: other.id, name: other.name, imageUrl: other.image_url })
+  }
 
-  const nodeIds = new Set(nodes.map((n) => n.id))
-  const edges: RelationEdge[] = [
-    ...(relations ?? [])
-      .filter((r) => nodeIds.has(r.artist_id_a) && nodeIds.has(r.artist_id_b))
-      .map((r) => ({
-        source: r.artist_id_a,
-        target: r.artist_id_b,
-        style: (r.relation_style as 'solid' | 'dotted') ?? 'solid',
-        label: r.description ?? r.relation_type,
-      })),
-    ...personEdges.filter((e) => nodeIds.has(e.target)),
-  ]
-
-  return { nodes, edges }
+  const byName = (a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name, 'ja')
+  return {
+    producers: Array.from(producers.values()).sort(byName),
+    credits: Array.from(creditFolks.values()).sort(byName),
+    collaborators: Array.from(collaborators.values()).sort(byName),
+    musicians: Array.from(musicians.values()).sort(byName),
+  }
 }
