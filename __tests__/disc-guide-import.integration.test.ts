@@ -83,25 +83,23 @@ describe('Disc Guide Album Import - Integration', () => {
 
   // ---------------------------------------------------------------- test 1
   test('fetches a disc guide cover image from Google Books by ISBN', async (t) => {
-    // fetchGoogleBooksCover は非 2xx を握りつぶして null を返すため、
-    // レート制限 (429) と「表紙が無い」を区別できない。先に直接叩いて切り分ける。
-    const probe = await fetch(
-      'https://www.googleapis.com/books/v1/volumes?q=isbn:9784894444639&maxResults=1',
-      { headers: { 'User-Agent': 'MusicSynapse/1.0' }, signal: AbortSignal.timeout(10000) }
-    )
-    if (probe.status === 429) {
-      return t.skip('Google Books API rate limited (429)')
+    // fetchGoogleBooksCover は429(レート制限)を明示的な error: 'rate_limited' として
+    // 返すので、「表紙が無い」(not_found)と区別してここでskipできる。
+    const result = await fetchGoogleBooksCover('9784894444639')
+    if (result.error === 'rate_limited') {
+      return t.skip('Google Books API rate limited (429); set GOOGLE_BOOKS_API_KEY to avoid this')
     }
-
-    const coverUrl = await fetchGoogleBooksCover('9784894444639')
-    assert.ok(coverUrl, 'expected a cover URL for a known ISBN')
-    assert.match(coverUrl, /^https?:\/\//)
+    assert.ok(result.coverUrl, 'expected a cover URL for a known ISBN')
+    assert.match(result.coverUrl, /^https?:\/\//)
   })
 
-  test('returns null for an ISBN with no Google Books match', async () => {
-    // 429 でも null になるが、いずれにせよ「表紙 URL を返さない」ことの確認で足りる。
-    const coverUrl = await fetchGoogleBooksCover('0000000000000')
-    assert.equal(coverUrl, null)
+  test('reports not_found for an ISBN with no Google Books match', async (t) => {
+    const result = await fetchGoogleBooksCover('0000000000000')
+    if (result.error === 'rate_limited') {
+      return t.skip('Google Books API rate limited (429); set GOOGLE_BOOKS_API_KEY to avoid this')
+    }
+    assert.equal(result.coverUrl, null)
+    assert.equal(result.error, 'not_found')
   })
 
   // ---------------------------------------------------------------- test 2

@@ -1,4 +1,5 @@
 import Tesseract from 'tesseract.js';
+import os from 'node:os';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 export type AlbumExtract = {
@@ -25,6 +26,13 @@ export async function performOCR(imageUrl: string): Promise<{
 }> {
   try {
     const result = await Tesseract.recognize(imageUrl, 'jpn+eng', {
+      // Vercelのサーバーレス関数はcwd(デプロイパッケージ)が読み取り専用で、
+      // 書き込めるのは/tmpのみ。cachePath未指定だと言語データのキャッシュ書き込みが
+      // 毎回失敗し(tesseract.js側では握りつぶされるため落ちはしないが)、
+      // 呼び出しのたびに数MBの言語データをCDNから再ダウンロードすることになる。
+      // os.tmpdir()を指定してウォーム状態のインスタンス内でキャッシュが効くようにする
+      // (実測: キャッシュ無し1017ms → キャッシュあり146ms)。
+      cachePath: os.tmpdir(),
       logger: (m: any) => {
         if (m.status === 'recognizing text') {
           console.log(`OCR progress: ${Math.round(m.progress * 100)}%`);

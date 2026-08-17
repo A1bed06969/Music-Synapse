@@ -43,20 +43,28 @@ export async function createDiscGuide(formData: FormData) {
   if (isbn && discGuideId) {
     after(async () => {
       try {
-        const coverUrl = await fetchGoogleBooksCover(isbn)
-        if (coverUrl) {
+        const result = await fetchGoogleBooksCover(isbn)
+        if (result.coverUrl) {
           await supabase
             .from('disc_guide')
             .update({
-              cover_image_url: coverUrl,
+              cover_image_url: result.coverUrl,
               cover_image_fetched_at: new Date().toISOString(),
               isbn_lookup_error: null,
             })
             .eq('id', discGuideId)
         } else {
+          // レート制限は一時的な状態であり「この本には表紙が無い」とは異なるため、
+          // 管理画面で区別できるようメッセージを分ける。
+          const message =
+            result.error === 'rate_limited'
+              ? 'Google Books APIのレート制限に達しました(後で再試行してください)'
+              : result.error === 'network_error'
+                ? 'Google Books APIへの接続に失敗しました'
+                : '表紙画像が見つかりませんでした'
           await supabase
             .from('disc_guide')
-            .update({ isbn_lookup_error: 'No cover found' })
+            .update({ isbn_lookup_error: message })
             .eq('id', discGuideId)
         }
       } catch (err) {
