@@ -1,4 +1,5 @@
 import type { ItunesAlbum } from '@/utils/itunes'
+import { internalApiBaseUrl } from '@/utils/internalApiBaseUrl'
 
 // アルバム・トラック同期を、呼び出し元のafter()ブロックとは別のサーバー関数呼び出しへ
 // 切り離してディスパッチする(utils/musicbrainzImportDispatch.tsと同じ理由)。
@@ -14,7 +15,7 @@ export async function dispatchAlbumSync(
   albums: ItunesAlbum[],
   startIndex = 0
 ): Promise<void> {
-  const baseUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000'
+  const baseUrl = internalApiBaseUrl()
   const authHeader =
     'Basic ' + Buffer.from(`${process.env.BASIC_AUTH_USER}:${process.env.BASIC_AUTH_PASSWORD}`).toString('base64')
 

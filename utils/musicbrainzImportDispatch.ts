@@ -7,8 +7,10 @@
 // 前段の処理で予算を使い切ってVercelに関数を強制終了され、MusicBrainz取込だけが
 // 例外も出さずに静かに中断される事例が確認された。
 // 専用のAPIルートへ自己fetchすることで、MusicBrainz取込に独立したmaxDuration予算を持たせる。
+import { internalApiBaseUrl } from '@/utils/internalApiBaseUrl'
+
 export async function dispatchMusicBrainzImport(artistId: string): Promise<void> {
-  const baseUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000'
+  const baseUrl = internalApiBaseUrl()
   const authHeader =
     'Basic ' + Buffer.from(`${process.env.BASIC_AUTH_USER}:${process.env.BASIC_AUTH_PASSWORD}`).toString('base64')
 
