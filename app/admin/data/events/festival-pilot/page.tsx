@@ -1,4 +1,6 @@
 import Link from 'next/link'
+import fs from 'fs'
+import path from 'path'
 import { createClient } from '@/utils/Supabase/server'
 import { fetchGlastonburyLineup, type FestivalPick } from '@/utils/festivalScrape'
 import { registerFestivalAppearance } from './actions'
@@ -7,24 +9,38 @@ import UnmatchedArtistTag from './UnmatchedArtistTag'
 
 export const maxDuration = 60
 
-type DisplayPick = FestivalPick & {
+type StaticFestivalPick = FestivalPick & { suspicious?: boolean }
+type DisplayPick = StaticFestivalPick & {
   matchedArtistId: string | null
   matchedArtistName: string | null
   alreadyRegistered: boolean
 }
 
+const FESTIVALS = [
+  { key: 'glastonbury', label: 'Glastonbury', dataFile: null },
+  { key: 'fujirock', label: 'フジロック', dataFile: 'fujirock-2026.json' },
+  { key: 'summersonic', label: 'サマーソニック', dataFile: 'summersonic-2026.json' },
+  { key: 'risingsun', label: 'ライジングサン', dataFile: 'risingsun-2026.json' },
+] as const
+
+function loadStaticPicks(dataFile: string): FestivalPick[] {
+  const filePath = path.join(process.cwd(), 'app/admin/data/events/festival-pilot/data', dataFile)
+  return JSON.parse(fs.readFileSync(filePath, 'utf-8'))
+}
+
 export default async function FestivalPilotPage({
   searchParams,
 }: {
-  searchParams: Promise<{ success?: string; error?: string }>
+  searchParams: Promise<{ success?: string; error?: string; festival?: string }>
 }) {
-  const { success, error: errorMessage } = await searchParams
+  const { success, error: errorMessage, festival: festivalParam } = await searchParams
+  const activeFestival = FESTIVALS.find((f) => f.key === festivalParam) ?? FESTIVALS[0]
   const supabase = await createClient()
 
-  let picks: FestivalPick[] = []
+  let picks: StaticFestivalPick[] = []
   let fetchError: string | null = null
   try {
-    picks = await fetchGlastonburyLineup()
+    picks = activeFestival.dataFile ? loadStaticPicks(activeFestival.dataFile) : await fetchGlastonburyLineup()
   } catch (err) {
     fetchError = err instanceof Error ? err.message : '取得に失敗しました。'
   }
@@ -32,13 +48,14 @@ export default async function FestivalPilotPage({
   const { data: artists } = await supabase.from('artist').select('id, name')
   const artistByName = new Map((artists ?? []).map((a) => [a.name.trim().toUpperCase(), a]))
 
+  const festivalName = picks[0]?.festivalName ?? null
   const editionYear = picks[0]?.editionYear ?? null
   let registeredArtistIds = new Set<string>()
-  if (editionYear) {
+  if (festivalName && editionYear) {
     const { data: existingEvent } = await supabase
       .from('event')
       .select('id')
-      .eq('name', 'Glastonbury Festival')
+      .eq('name', festivalName)
       .maybeSingle()
     if (existingEvent) {
       const { data: existingEdition } = await supabase
@@ -82,12 +99,29 @@ export default async function FestivalPilotPage({
         ← イベント管理に戻る
       </Link>
 
-      <h1 className="mt-4 text-2xl font-bold">世界のフェス出演者収集(パイロット: Glastonbury)</h1>
+      <h1 className="mt-4 text-2xl font-bold">世界のフェス出演者収集</h1>
       <p className="mt-2 text-sm text-white/50">
-        Glastonbury Festivalの公式ラインナップページから最新開催回の出演者を取得します。
         カタログに既にいるアーティストはそのまま登録できます。薄く表示されている未一致のアーティストは、
         クリックするとApple Musicを検索して候補を表示します。人物が合っていれば「この人で登録」でカタログへの取込と出演登録を同時に行います(自動では確定しません)。
+        <span className="text-amber-400">⚠</span>
+        が付いているものは一回限りのコラボ企画・セッション名などアーティスト本体ではない可能性がある表記です。判断のうえ選んでください。
       </p>
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        {FESTIVALS.map((f) => (
+          <Link
+            key={f.key}
+            href={`/admin/data/events/festival-pilot?festival=${f.key}`}
+            className={`rounded-md border px-3 py-1.5 text-xs transition ${
+              f.key === activeFestival.key
+                ? 'border-white/40 bg-white/10 text-white'
+                : 'border-white/15 text-white/50 hover:border-white/30 hover:text-white/80'
+            }`}
+          >
+            {f.label}
+          </Link>
+        ))}
+      </div>
 
       {success && (
         <div className="mt-4 rounded-md border border-green-500/30 bg-green-500/5 px-4 py-3 text-sm">{success}</div>
@@ -101,7 +135,7 @@ export default async function FestivalPilotPage({
 
       {picks.length > 0 && (
         <p className="mt-6 text-xs text-white/40">
-          {picks[0].editionYear}年開催分を取得: 出演{picks.length}件中、カタログに一致{matchedCount}件
+          {picks[0].festivalName} {picks[0].editionYear}年開催分: 出演{picks.length}件中、カタログに一致{matchedCount}件
           (一致しなかった{picks.length - matchedCount}件も下に薄く表示しています)
         </p>
       )}
@@ -110,7 +144,9 @@ export default async function FestivalPilotPage({
         ? !fetchError && <p className="mt-8 text-sm text-white/40">出演者情報が取得できませんでした。</p>
         : Array.from(byStage.entries()).map(([stage, picksForStage]) => {
             const matchedRows = picksForStage.filter((p) => p.matchedArtistId)
-            const unmatchedRows = picksForStage.filter((p) => !p.matchedArtistId)
+            const unmatchedRows = picksForStage
+              .filter((p) => !p.matchedArtistId)
+              .sort((a, b) => Number(a.suspicious ?? false) - Number(b.suspicious ?? false))
             return (
               <section key={stage} className="mt-8">
                 <h2 className="text-sm font-semibold">
@@ -171,6 +207,7 @@ export default async function FestivalPilotPage({
                           startAt: p.startAt,
                           endAt: p.endAt,
                           day: p.day,
+                          suspicious: p.suspicious,
                         }}
                       />
                     ))}

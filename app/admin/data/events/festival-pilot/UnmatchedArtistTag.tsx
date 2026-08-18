@@ -15,6 +15,7 @@ type PickInput = {
   startAt: string | null
   endAt: string | null
   day: string | null
+  suspicious?: boolean
 }
 
 export default function UnmatchedArtistTag({ pick }: { pick: PickInput }) {
@@ -77,9 +78,16 @@ export default function UnmatchedArtistTag({ pick }: { pick: PickInput }) {
         onClick={handleToggle}
         title={pick.day ?? undefined}
         className={`rounded-full border px-2 py-0.5 text-xs transition ${
-          expanded ? 'border-white/30 text-white/70' : 'border-white/5 text-white/25 hover:border-white/20 hover:text-white/50'
+          pick.suspicious
+            ? expanded
+              ? 'border-amber-400/60 text-amber-300'
+              : 'border-amber-400/30 text-amber-400/60 hover:border-amber-400/60 hover:text-amber-300'
+            : expanded
+              ? 'border-white/30 text-white/70'
+              : 'border-white/5 text-white/25 hover:border-white/20 hover:text-white/50'
         }`}
       >
+        {pick.suspicious && '⚠ '}
         {pick.artistName}
       </button>
 
