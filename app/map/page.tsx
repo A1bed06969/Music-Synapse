@@ -83,13 +83,17 @@ export default async function MapPage() {
 
   const { data: venueLocations } = await supabase.from('venue_location').select('id, venue_name, latitude, longitude')
 
-  const [{ data: musicEvents }, { data: eventEditions }, { data: eventAppearances }] = await Promise.all([
-    supabase.from('music_event').select('id, name, venue, artist_id'),
-    supabase.from('event_edition').select('id, event_id, year, venue, event:event_id(name)'),
-    supabase
-      .from('event_appearance')
-      .select('id, venue, event_edition:event_edition_id(id, event_id, year, event:event_id(name))'),
-  ])
+  const [{ data: musicEvents }, { data: eventEditions }, { data: eventEditionDates }, { data: eventAppearances }] =
+    await Promise.all([
+      supabase.from('music_event').select('id, name, venue, artist_id'),
+      supabase.from('event_edition').select('id, event_id, year, venue, event:event_id(name)'),
+      supabase
+        .from('event_edition_date')
+        .select('id, venue, event_edition:event_edition_id(event_id, event:event_id(name))'),
+      supabase
+        .from('event_appearance')
+        .select('id, venue, event_edition:event_edition_id(id, event_id, year, event:event_id(name))'),
+    ])
 
   type VenueEventLink = { label: string; href: string }
 
@@ -109,6 +113,14 @@ export default async function MapPage() {
       if (!row.venue || normalizeVenueName(row.venue) !== normalizedName) continue
       const event = Array.isArray(row.event) ? row.event[0] : row.event
       linksByKey.set(`event-${row.event_id}`, { label: event?.name ?? '?', href: `/events/${row.event_id}` })
+    }
+
+    for (const row of eventEditionDates ?? []) {
+      if (!row.venue || normalizeVenueName(row.venue) !== normalizedName) continue
+      const edition = Array.isArray(row.event_edition) ? row.event_edition[0] : row.event_edition
+      if (!edition) continue
+      const event = Array.isArray(edition.event) ? edition.event[0] : edition.event
+      linksByKey.set(`event-${edition.event_id}`, { label: event?.name ?? '?', href: `/events/${edition.event_id}` })
     }
 
     for (const row of eventAppearances ?? []) {
