@@ -15,7 +15,6 @@ type TieUpRow = {
   sync_work: { title: string; work_type: string; year: number | null } | { title: string; work_type: string; year: number | null }[] | null
   track: { title: string; album_id: string | null } | { title: string; album_id: string | null }[] | null
 }
-
 function firstOf<T>(value: T | T[] | null | undefined): T | null {
   if (Array.isArray(value)) return value[0] ?? null
   return value ?? null
@@ -26,6 +25,8 @@ const KIND_ICON: Record<string, string> = {
   live: '🎤',
   festival: '🎪',
   tieup: '📺',
+  media: '📻',
+  award: '🏆',
 }
 
 const KIND_LABEL: Record<string, string> = {
@@ -33,23 +34,29 @@ const KIND_LABEL: Record<string, string> = {
   live: 'ライブ',
   festival: 'フェス',
   tieup: 'タイアップ',
+  media: 'メディア選出',
+  award: '受賞',
 }
 
 /** アーティストの年表を文章メインの行リストとして表示する。ディスコグラフィー欄と
- * 見た目が近くなりすぎないよう、横スクロールのジャケット一覧ではなく小さな
- * サムネイル+日付+出来事のテキストを縦に並べる形式にしている。
- * groupByYearを立てると年が変わるたびに小さな年見出しを挟む(詳細表示用)。 */
+ * 見た目が近くなりすぎないよう、横スクロールのジャケット一覧ではなく
+ * 「日付・種別・[サムネイル]タイトル」を1行に収めた縦のリストにしている。
+ * groupByYearを立てると年が変わるたびに大きめの年見出し+区切り線を挟む(詳細表示用)。 */
 export default function ArtistTimeline({
   albums,
   musicEvents,
   eventAppearances,
   tieUps,
+  mediaSelections,
+  awards,
   groupByYear = false,
 }: {
   albums: AlbumRow[]
   musicEvents: MusicEventRow[]
   eventAppearances: EventAppearanceRow[]
   tieUps: TieUpRow[]
+  mediaSelections: ArtistTimelineInput['mediaSelections']
+  awards: ArtistTimelineInput['awards']
   groupByYear?: boolean
 }) {
   const input: ArtistTimelineInput = {
@@ -82,6 +89,8 @@ export default function ArtistTimeline({
           : null
       })
       .filter((t): t is NonNullable<typeof t> => t !== null),
+    mediaSelections,
+    awards,
   }
 
   const entries = buildArtistTimeline(input)
@@ -107,30 +116,28 @@ export default function ArtistTimeline({
                 <span className="h-px flex-1 bg-white/15" />
               </div>
             )}
-            <div className="flex items-center gap-2.5 py-1.5">
-              <div className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded bg-white/5 text-xs">
+            <p className="truncate py-1.5 text-sm">
+              <span className="text-xs text-white/40">{entry.date}</span>
+              <span className="mx-1.5 text-white/20">・</span>
+              <span className="text-[10px] text-white/40">{KIND_LABEL[entry.kind]}</span>
+              <span className="mx-1.5 text-white/20">・</span>
+              <span className="mr-1.5 inline-flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded bg-white/5 align-middle text-[10px]">
                 {entry.imageUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={entry.imageUrl} alt={entry.title} className="h-full w-full object-cover" />
                 ) : (
                   <span>{KIND_ICON[entry.kind]}</span>
                 )}
-              </div>
-              <p className="min-w-0 flex-1 truncate text-sm">
-                <span className="text-xs text-white/40">{entry.date}</span>
-                <span className="mx-1.5 text-white/20">・</span>
-                <span className="text-[10px] text-white/40">{KIND_LABEL[entry.kind]}</span>
-                <span className="mx-1.5 text-white/20">・</span>
-                {entry.href ? (
-                  <Link href={entry.href} className="font-medium hover:underline">
-                    {entry.title}
-                  </Link>
-                ) : (
-                  <span className="font-medium">{entry.title}</span>
-                )}
-                {entry.subtitle && <span className="ml-1.5 text-xs text-white/40">({entry.subtitle})</span>}
-              </p>
-            </div>
+              </span>
+              {entry.href ? (
+                <Link href={entry.href} className="font-medium hover:underline">
+                  {entry.title}
+                </Link>
+              ) : (
+                <span className="font-medium">{entry.title}</span>
+              )}
+              {entry.subtitle && <span className="ml-1.5 text-xs text-white/40">({entry.subtitle})</span>}
+            </p>
           </div>
         )
       })}

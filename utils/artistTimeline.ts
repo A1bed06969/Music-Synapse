@@ -52,7 +52,7 @@ function groupLivesByName(
 
 export type ArtistTimelineEntry = {
   date: string
-  kind: 'release' | 'live' | 'festival' | 'tieup'
+  kind: 'release' | 'live' | 'festival' | 'tieup' | 'media' | 'award'
   title: string
   subtitle: string | null
   href: string | null
@@ -64,6 +64,8 @@ export type ArtistTimelineInput = {
   lives: { id: string; name: string; eventDate: string | null; venue: string | null }[]
   festivals: { appearanceId: number; eventName: string; startTime: string | null; venue: string | null }[]
   tieUps: { id: number; trackTitle: string; workType: string; workTitle: string; year: number | null; usageDetail: string | null; albumId: string | null }[]
+  mediaSelections: { id: string; date: string | null; trackTitle: string | null; mediaName: string | null; programName: string | null }[]
+  awards: { id: number; year: number | null; awardName: string; category: string | null; result: string | null }[]
 }
 
 /** アーティストページが既に取得済みのデータを、日付が分かる出来事だけ時系列1本の
@@ -119,6 +121,32 @@ export function buildArtistTimeline(input: ArtistTimelineInput): ArtistTimelineE
       title: tieUp.trackTitle,
       subtitle,
       href: tieUp.albumId ? `/albums/${tieUp.albumId}` : null,
+      imageUrl: null,
+    })
+  }
+
+  for (const media of input.mediaSelections) {
+    if (!media.date) continue
+    entries.push({
+      date: media.date,
+      kind: 'media',
+      title: media.trackTitle ?? '—',
+      subtitle: [media.mediaName, media.programName].filter(Boolean).join(' ') || null,
+      href: null,
+      imageUrl: null,
+    })
+  }
+
+  for (const award of input.awards) {
+    if (!award.year) continue
+    const namePart = [award.awardName, award.category].filter(Boolean).join(' ')
+    const resultPart = award.result ? `(${award.result})` : ''
+    entries.push({
+      date: `${award.year}-01-01`,
+      kind: 'award',
+      title: `${namePart}${resultPart}`,
+      subtitle: null,
+      href: null,
       imageUrl: null,
     })
   }

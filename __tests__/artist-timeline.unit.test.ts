@@ -15,6 +15,8 @@ describe('buildArtistTimeline', () => {
       lives: [{ id: 'ev1', name: 'ワンマンライブ', eventDate: '2020-06-15', venue: '渋谷クラブクアトロ' }],
       festivals: [{ appearanceId: 1, eventName: 'SUMMER SONIC', startTime: '2021-08-14T12:00:00+09:00', venue: 'ZOZOマリンスタジアム' }],
       tieUps: [{ id: 1, trackTitle: 'テーマ曲', workType: 'anime', workTitle: '鬼滅の刃', year: 2019, usageDetail: null, albumId: 'al1' }],
+      mediaSelections: [],
+      awards: [],
     })
 
     assert.deepEqual(
@@ -44,6 +46,8 @@ describe('buildArtistTimeline', () => {
       lives: [{ id: 'ev1', name: 'No Date Live', eventDate: null, venue: null }],
       festivals: [{ appearanceId: 1, eventName: 'No Date Fes', startTime: null, venue: null }],
       tieUps: [{ id: 1, trackTitle: 'No Year', workType: 'cm', workTitle: 'XYZ', year: null, usageDetail: null, albumId: null }],
+      mediaSelections: [{ id: 'rr1', date: null, trackTitle: 'No Date Media', mediaName: null, programName: null }],
+      awards: [{ id: 1, year: null, awardName: 'No Year Award', category: null, result: null }],
     })
     assert.deepEqual(entries, [])
   })
@@ -54,6 +58,8 @@ describe('buildArtistTimeline', () => {
       lives: [],
       festivals: [],
       tieUps: [{ id: 1, trackTitle: 'テーマ曲', workType: 'tv_program', workTitle: 'XYZ', year: 2022, usageDetail: null, albumId: null }],
+      mediaSelections: [],
+      awards: [],
     })
     assert.equal(entries[0].href, null)
   })
@@ -64,6 +70,8 @@ describe('buildArtistTimeline', () => {
       lives: [],
       festivals: [{ appearanceId: 1, eventName: 'FUJI ROCK', startTime: '2026-07-24T15:30:00+00:00', venue: null }],
       tieUps: [],
+      mediaSelections: [],
+      awards: [],
     })
     assert.equal(entries[0].date, '2026-07-25')
   })
@@ -78,6 +86,8 @@ describe('buildArtistTimeline', () => {
       ],
       festivals: [],
       tieUps: [],
+      mediaSelections: [],
+      awards: [],
     })
     assert.equal(entries.length, 1)
     assert.equal(entries[0].date, '2021-05-10')
@@ -91,6 +101,8 @@ describe('buildArtistTimeline', () => {
       lives: [{ id: 'ev1', name: 'ワンマンライブ', eventDate: '2020-06-15', venue: '渋谷クラブクアトロ' }],
       festivals: [],
       tieUps: [],
+      mediaSelections: [],
+      awards: [],
     })
     assert.equal(entries[0].subtitle, '渋谷クラブクアトロ')
   })
@@ -104,8 +116,43 @@ describe('buildArtistTimeline', () => {
       ],
       festivals: [],
       tieUps: [],
+      mediaSelections: [],
+      awards: [],
     })
     assert.equal(entries.length, 2)
     assert.deepEqual(entries.map((e) => e.title).sort(), ['ツアーA', 'ツアーB'])
+  })
+
+  test('media selection (radio power play etc.) shows media/program name as subtitle', () => {
+    const entries = buildArtistTimeline({
+      releases: [],
+      lives: [],
+      festivals: [],
+      tieUps: [],
+      mediaSelections: [
+        { id: 'rr1', date: '2026-07-01', trackTitle: '新女神', mediaName: 'エフエム北海道', programName: 'POWER PLAY' },
+      ],
+      awards: [],
+    })
+    assert.equal(entries.length, 1)
+    assert.equal(entries[0].date, '2026-07-01')
+    assert.equal(entries[0].kind, 'media')
+    assert.equal(entries[0].title, '新女神')
+    assert.equal(entries[0].subtitle, 'エフエム北海道 POWER PLAY')
+  })
+
+  test('award entry synthesizes a date from year and combines name/category/result into the title', () => {
+    const entries = buildArtistTimeline({
+      releases: [],
+      lives: [],
+      festivals: [],
+      tieUps: [],
+      mediaSelections: [],
+      awards: [{ id: 1, year: 2021, awardName: '日本レコード大賞', category: '最優秀新人賞', result: '受賞' }],
+    })
+    assert.equal(entries.length, 1)
+    assert.equal(entries[0].date, '2021-01-01')
+    assert.equal(entries[0].kind, 'award')
+    assert.equal(entries[0].title, '日本レコード大賞 最優秀新人賞(受賞)')
   })
 })

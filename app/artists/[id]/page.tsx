@@ -16,6 +16,7 @@ import MemberProfile from './MemberProfile'
 import { NEWS_SOURCES } from '@/utils/newsFeeds'
 import { fetchAllNews, findRelatedNews, formatRelativeTime } from '@/utils/newsParser'
 import { ALBUM_TYPE_LABEL_JA, ALBUM_TYPE_ORDER, type AlbumType } from '@/utils/albumType'
+import { fetchArtistMediaSelections } from '@/utils/fetchArtistMediaSelections'
 import ArtistTimeline from './ArtistTimeline'
 
 function SectionDivider({ label }: { label: string }) {
@@ -54,6 +55,7 @@ export default async function ArtistDetailPage({
     ],
     creditQuadrants,
     ownsRelease,
+    mediaSelections,
   ] = await Promise.all([
     Promise.all([
       supabase.from('artist').select('*').eq('id', id).single(),
@@ -91,6 +93,7 @@ export default async function ArtistDetailPage({
     ]),
     buildArtistCreditQuadrants(supabase, id),
     hasOwnRelease(supabase, id),
+    fetchArtistMediaSelections(supabase, id),
   ])
 
   if (error || !artist) {
@@ -355,6 +358,17 @@ export default async function ArtistDetailPage({
         musicEvents={musicEvents ?? []}
         eventAppearances={eventAppearances ?? []}
         tieUps={tieUps ?? []}
+        mediaSelections={mediaSelections}
+        awards={(awardEntries ?? []).map((row) => {
+          const award = Array.isArray(row.award) ? row.award[0] : row.award
+          return {
+            id: row.id,
+            year: row.year,
+            awardName: award?.name ?? '',
+            category: row.category,
+            result: row.result === 'winner' ? '受賞' : 'ノミネート',
+          }
+        })}
       />
       <Link href={`/artists/${id}/timeline`} className="mt-3 inline-block text-xs text-white/40 hover:text-white/70">
         年表をすべて見る(シングル・EPを含む全リリース) →
