@@ -63,11 +63,12 @@ export function buildLabelTimeline(input: LabelTimelineInput): LabelTimelineEntr
   }
 
   for (const award of input.awards) {
-    const parts = [award.awardName, award.category, award.result ? `(${award.result})` : null].filter(Boolean)
+    const awardTitle = [award.awardName, award.category].filter(Boolean).join(' ')
+    const resultSuffix = award.result ? `(${award.result})` : ''
     entries.push({
       date: `${award.year}-01-01`,
       kind: 'award',
-      title: `${award.subjectName} ${parts.join(' ').replace(' (', '(')} 受賞`,
+      title: `${award.subjectName} ${awardTitle}${resultSuffix} 受賞`,
       href: null,
     })
   }

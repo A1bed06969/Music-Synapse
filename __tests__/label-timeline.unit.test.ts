@@ -77,4 +77,17 @@ describe('buildLabelTimeline', () => {
     })
     assert.equal(entries[1].title, 'Anonymousが設立')
   })
+
+  test('award title keeps a parenthetical inside category intact when appending the result', () => {
+    const entries = buildLabelTimeline({
+      foundedYear: null,
+      founders: [],
+      roster: [],
+      catalog: [],
+      awards: [
+        { year: 1966, awardName: 'Grammy', category: 'Best Album (Rock)', result: 'Won', subjectName: 'The Supremes' },
+      ],
+    })
+    assert.equal(entries[0].title, 'The Supremes Grammy Best Album (Rock)(Won) 受賞')
+  })
 })
