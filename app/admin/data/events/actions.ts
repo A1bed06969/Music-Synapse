@@ -159,3 +159,267 @@ export async function createMusicEvent(formData: FormData) {
   revalidatePath(`/artists/${artistId}`)
   redirectWith('success', `単独公演「${name}」を登録しました。`)
 }
+
+export async function updateEvent(formData: FormData) {
+  const id = String(formData.get('id') ?? '')
+  const name = String(formData.get('name') ?? '').trim()
+  const eventType = String(formData.get('event_type') ?? '').trim()
+  const foundedYearRaw = String(formData.get('founded_year') ?? '').trim()
+  const country = String(formData.get('country') ?? '').trim()
+  const prefecture = String(formData.get('prefecture') ?? '').trim()
+  const description = String(formData.get('description') ?? '').trim()
+  const genreId = String(formData.get('genre_id') ?? '').trim()
+
+  if (!id || !name) {
+    redirectWith('error', 'イベント名を入力してください。')
+  }
+
+  const supabase = createAdminClient()
+  const { error } = await supabase
+    .from('event')
+    .update({
+      name,
+      event_type: eventType || null,
+      founded_year: foundedYearRaw ? Number(foundedYearRaw) : null,
+      country: country || null,
+      prefecture: prefecture || null,
+      description: description || null,
+      genre_id: genreId || null,
+    })
+    .eq('id', id)
+
+  if (error) {
+    redirectWith('error', `イベントの更新に失敗しました: ${error.message}`)
+  }
+
+  revalidatePath('/admin/data/events')
+  redirectWith('success', `イベント「${name}」を更新しました。`)
+}
+
+export async function deleteEvent(formData: FormData) {
+  const id = String(formData.get('id') ?? '')
+
+  if (!id) {
+    redirectWith('error', '不正なリクエストです。')
+  }
+
+  const supabase = createAdminClient()
+  const { error } = await supabase.from('event').delete().eq('id', id)
+
+  if (error) {
+    redirectWith('error', `削除に失敗しました: ${error.message}`)
+  }
+
+  revalidatePath('/admin/data/events')
+  redirectWith('success', 'イベントを削除しました。')
+}
+
+export async function updateEventEdition(formData: FormData) {
+  const id = String(formData.get('id') ?? '')
+  const eventId = String(formData.get('event_id') ?? '')
+  const yearRaw = String(formData.get('year') ?? '').trim()
+  const startDate = String(formData.get('start_date') ?? '').trim()
+  const endDate = String(formData.get('end_date') ?? '').trim()
+  const venue = String(formData.get('venue') ?? '').trim()
+  const description = String(formData.get('description') ?? '').trim()
+
+  if (!id || !eventId || !yearRaw) {
+    redirectWith('error', 'イベントと年を入力してください。')
+  }
+
+  const supabase = createAdminClient()
+  const { error } = await supabase
+    .from('event_edition')
+    .update({
+      event_id: eventId,
+      year: Number(yearRaw),
+      start_date: startDate || null,
+      end_date: endDate || null,
+      venue: venue || null,
+      description: description || null,
+    })
+    .eq('id', id)
+
+  if (error) {
+    redirectWith('error', `開催回の更新に失敗しました: ${error.message}`)
+  }
+
+  revalidatePath('/admin/data/events')
+  revalidatePath('/albums/calendar')
+  redirectWith('success', '開催回を更新しました。')
+}
+
+export async function deleteEventEdition(formData: FormData) {
+  const id = String(formData.get('id') ?? '')
+
+  if (!id) {
+    redirectWith('error', '不正なリクエストです。')
+  }
+
+  const supabase = createAdminClient()
+  const { error } = await supabase.from('event_edition').delete().eq('id', id)
+
+  if (error) {
+    redirectWith('error', `削除に失敗しました: ${error.message}`)
+  }
+
+  revalidatePath('/admin/data/events')
+  revalidatePath('/albums/calendar')
+  redirectWith('success', '開催回を削除しました。')
+}
+
+export async function updateEventEditionDate(formData: FormData) {
+  const id = String(formData.get('id') ?? '')
+  const eventEditionId = String(formData.get('event_edition_id') ?? '')
+  const date = String(formData.get('date') ?? '').trim()
+  const venue = String(formData.get('venue') ?? '').trim()
+
+  if (!id || !eventEditionId || !date || !venue) {
+    redirectWith('error', '開催回・日付・会場を入力してください。')
+  }
+
+  const supabase = createAdminClient()
+  const { error } = await supabase
+    .from('event_edition_date')
+    .update({ event_edition_id: eventEditionId, date, venue })
+    .eq('id', id)
+
+  if (error) {
+    redirectWith('error', `開催日程の更新に失敗しました: ${error.message}`)
+  }
+
+  revalidatePath('/admin/data/events')
+  revalidatePath('/albums/calendar')
+  redirectWith('success', '開催日程を更新しました。')
+}
+
+export async function deleteEventEditionDate(formData: FormData) {
+  const id = String(formData.get('id') ?? '')
+
+  if (!id) {
+    redirectWith('error', '不正なリクエストです。')
+  }
+
+  const supabase = createAdminClient()
+  const { error } = await supabase.from('event_edition_date').delete().eq('id', id)
+
+  if (error) {
+    redirectWith('error', `削除に失敗しました: ${error.message}`)
+  }
+
+  revalidatePath('/admin/data/events')
+  revalidatePath('/albums/calendar')
+  redirectWith('success', '開催日程を削除しました。')
+}
+
+export async function updateEventAppearance(formData: FormData) {
+  const id = String(formData.get('id') ?? '')
+  const eventEditionId = String(formData.get('event_edition_id') ?? '')
+  const artistId = String(formData.get('artist_id') ?? '')
+  const stage = String(formData.get('stage') ?? '').trim()
+  const venue = String(formData.get('venue') ?? '').trim()
+  const startTime = String(formData.get('start_time') ?? '').trim()
+  const endTime = String(formData.get('end_time') ?? '').trim()
+  const isHeadliner = formData.get('is_headliner') === 'on'
+
+  if (!id || !eventEditionId || !artistId) {
+    redirectWith('error', '開催回とアーティストを選択してください。')
+  }
+
+  const supabase = createAdminClient()
+  const { error } = await supabase
+    .from('event_appearance')
+    .update({
+      event_edition_id: eventEditionId,
+      artist_id: artistId,
+      stage: stage || null,
+      venue: venue || null,
+      start_time: startTime ? `${startTime}:00+09:00` : null,
+      end_time: endTime ? `${endTime}:00+09:00` : null,
+      is_headliner: isHeadliner,
+    })
+    .eq('id', id)
+
+  if (error) {
+    redirectWith('error', `出演情報の更新に失敗しました: ${error.message}`)
+  }
+
+  revalidatePath('/admin/data/events')
+  revalidatePath(`/artists/${artistId}`)
+  redirectWith('success', '出演情報を更新しました。')
+}
+
+export async function deleteEventAppearance(formData: FormData) {
+  const id = String(formData.get('id') ?? '')
+  const artistId = String(formData.get('artist_id') ?? '')
+
+  if (!id) {
+    redirectWith('error', '不正なリクエストです。')
+  }
+
+  const supabase = createAdminClient()
+  const { error } = await supabase.from('event_appearance').delete().eq('id', id)
+
+  if (error) {
+    redirectWith('error', `削除に失敗しました: ${error.message}`)
+  }
+
+  revalidatePath('/admin/data/events')
+  if (artistId) revalidatePath(`/artists/${artistId}`)
+  redirectWith('success', '出演情報を削除しました。')
+}
+
+export async function updateMusicEvent(formData: FormData) {
+  const id = String(formData.get('id') ?? '')
+  const artistId = String(formData.get('artist_id') ?? '')
+  const name = String(formData.get('name') ?? '').trim()
+  const eventDate = String(formData.get('event_date') ?? '').trim()
+  const venue = String(formData.get('venue') ?? '').trim()
+  const prefecture = String(formData.get('prefecture') ?? '').trim()
+  const description = String(formData.get('description') ?? '').trim()
+
+  if (!id || !artistId || !name) {
+    redirectWith('error', 'アーティストと公演名を入力してください。')
+  }
+
+  const supabase = createAdminClient()
+  const { error } = await supabase
+    .from('music_event')
+    .update({
+      artist_id: artistId,
+      name,
+      event_date: eventDate || null,
+      venue: venue || null,
+      prefecture: prefecture || null,
+      description: description || null,
+    })
+    .eq('id', id)
+
+  if (error) {
+    redirectWith('error', `単独公演の更新に失敗しました: ${error.message}`)
+  }
+
+  revalidatePath('/admin/data/events')
+  revalidatePath(`/artists/${artistId}`)
+  redirectWith('success', `単独公演「${name}」を更新しました。`)
+}
+
+export async function deleteMusicEvent(formData: FormData) {
+  const id = String(formData.get('id') ?? '')
+  const artistId = String(formData.get('artist_id') ?? '')
+
+  if (!id) {
+    redirectWith('error', '不正なリクエストです。')
+  }
+
+  const supabase = createAdminClient()
+  const { error } = await supabase.from('music_event').delete().eq('id', id)
+
+  if (error) {
+    redirectWith('error', `削除に失敗しました: ${error.message}`)
+  }
+
+  revalidatePath('/admin/data/events')
+  if (artistId) revalidatePath(`/artists/${artistId}`)
+  redirectWith('success', '単独公演を削除しました。')
+}

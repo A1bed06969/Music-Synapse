@@ -120,9 +120,14 @@ export default async function EventsAdminPage({
       {events && events.length > 0 && (
         <ul className="mt-4 space-y-1 text-sm text-white/60">
           {events.map((e) => (
-            <li key={e.id}>
-              {e.name}
-              {e.event_type && <span className="text-white/30"> ({EVENT_TYPE_LABEL[e.event_type] ?? e.event_type})</span>}
+            <li key={e.id} className="flex items-center justify-between gap-2">
+              <span>
+                {e.name}
+                {e.event_type && <span className="text-white/30"> ({EVENT_TYPE_LABEL[e.event_type] ?? e.event_type})</span>}
+              </span>
+              <Link href={`/admin/data/events/event/${e.id}/edit`} className="shrink-0 text-xs text-white/40 hover:text-white/70">
+                編集 →
+              </Link>
             </li>
           ))}
         </ul>
@@ -153,8 +158,16 @@ export default async function EventsAdminPage({
           {eventEditions.map((row) => {
             const event = Array.isArray(row.event) ? row.event[0] : row.event
             return (
-              <li key={row.id}>
-                {event?.name}({row.year})
+              <li key={row.id} className="flex items-center justify-between gap-2">
+                <span>
+                  {event?.name}({row.year})
+                </span>
+                <Link
+                  href={`/admin/data/events/edition/${row.id}/edit`}
+                  className="shrink-0 text-xs text-white/40 hover:text-white/70"
+                >
+                  編集 →
+                </Link>
               </li>
             )
           })}
@@ -189,8 +202,16 @@ export default async function EventsAdminPage({
             const edition = Array.isArray(row.event_edition) ? row.event_edition[0] : row.event_edition
             const event = edition ? (Array.isArray(edition.event) ? edition.event[0] : edition.event) : null
             return (
-              <li key={row.id}>
-                {event?.name}({edition?.year}) — {row.date} @ {row.venue}
+              <li key={row.id} className="flex items-center justify-between gap-2">
+                <span>
+                  {event?.name}({edition?.year}) — {row.date} @ {row.venue}
+                </span>
+                <Link
+                  href={`/admin/data/events/edition-date/${row.id}/edit`}
+                  className="shrink-0 text-xs text-white/40 hover:text-white/70"
+                >
+                  編集 →
+                </Link>
               </li>
             )
           })}
@@ -240,11 +261,19 @@ export default async function EventsAdminPage({
             const edition = Array.isArray(row.event_edition) ? row.event_edition[0] : row.event_edition
             const event = edition ? (Array.isArray(edition.event) ? edition.event[0] : edition.event) : null
             return (
-              <li key={row.id}>
-                {artist?.name} — {event?.name}({edition?.year})
-                {row.stage ? ` / ${row.stage}` : ''}
-                {row.venue ? ` @ ${row.venue}` : ''}
-                {row.is_headliner && <span className="text-white/30"> ★ヘッドライナー</span>}
+              <li key={row.id} className="flex items-center justify-between gap-2">
+                <span>
+                  {artist?.name} — {event?.name}({edition?.year})
+                  {row.stage ? ` / ${row.stage}` : ''}
+                  {row.venue ? ` @ ${row.venue}` : ''}
+                  {row.is_headliner && <span className="text-white/30"> ★ヘッドライナー</span>}
+                </span>
+                <Link
+                  href={`/admin/data/events/appearance/${row.id}/edit`}
+                  className="shrink-0 text-xs text-white/40 hover:text-white/70"
+                >
+                  編集 →
+                </Link>
               </li>
             )
           })}
@@ -276,9 +305,17 @@ export default async function EventsAdminPage({
           {musicEvents.map((row) => {
             const artist = Array.isArray(row.artist) ? row.artist[0] : row.artist
             return (
-              <li key={row.id}>
-                {artist?.name} — {row.name}
-                {row.event_date ? `(${row.event_date})` : ''}
+              <li key={row.id} className="flex items-center justify-between gap-2">
+                <span>
+                  {artist?.name} — {row.name}
+                  {row.event_date ? `(${row.event_date})` : ''}
+                </span>
+                <Link
+                  href={`/admin/data/events/music-event/${row.id}/edit`}
+                  className="shrink-0 text-xs text-white/40 hover:text-white/70"
+                >
+                  編集 →
+                </Link>
               </li>
             )
           })}
