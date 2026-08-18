@@ -21,7 +21,6 @@ type LinkItem = {
 
 const LISTEN_TYPES = new Set(['streaming', 'free streaming', 'youtube', 'youtube music'])
 const SOCIAL_TYPE = 'social network'
-const INFO_TYPES = new Set(['other databases', 'allmusic', 'discogs', 'wikidata', 'IMDb'])
 
 /**
  * 同じサービスを指す重複リンクを除外する。ホスト名(大文字小文字を無視)
@@ -58,7 +57,7 @@ function IconBadge({ item }: { item: LinkItem }) {
         rel="noreferrer"
         title={item.label}
         aria-label={item.label}
-        className="flex h-9 w-9 items-center justify-center rounded-full transition hover:opacity-80"
+        className="flex h-9 w-9 items-center justify-center rounded-xl transition hover:opacity-80"
         style={{ backgroundColor: `#${item.icon.hex}` }}
       >
         <svg viewBox="0 0 24 24" className="h-5 w-5" fill="#fff">
@@ -74,7 +73,7 @@ function IconBadge({ item }: { item: LinkItem }) {
       rel="noreferrer"
       title={item.label}
       aria-label={item.label}
-      className="flex h-9 w-9 items-center justify-center rounded-full border border-white/15 bg-white/5 text-white/60 transition hover:bg-white/10"
+      className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/15 bg-white/5 text-white/60 transition hover:bg-white/10"
     >
       <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor">
         <path d={GENERIC_LINK_ICON_PATH} />
@@ -123,11 +122,16 @@ export default function ArtistLinkIcons({
       label: 'Spotify',
     })
   }
+  // ブランドアイコンが無い(=マイナーで見分けが付かない)サービスは、主要な
+  // サブスク・SNSに絞るという方針上ここでは表示しない(getServiceIconが
+  // nullを返すもの)。公式サイトはブランドアイコンを持たないが例外的に残す。
   for (const link of externalLinks) {
     if (!LISTEN_TYPES.has(link.link_type)) continue
+    const icon = getServiceIcon(link.url)
+    if (!icon) continue
     listenItems.push({
       key: link.id,
-      icon: getServiceIcon(link.url),
+      icon,
       href: link.url,
       label: getLinkLabel(link.url, link.link_type),
     })
@@ -145,26 +149,17 @@ export default function ArtistLinkIcons({
   }
   for (const link of externalLinks) {
     if (link.link_type !== SOCIAL_TYPE) continue
+    const icon = getServiceIcon(link.url)
+    if (!icon) continue
     officialSnsItems.push({
       key: link.id,
-      icon: getServiceIcon(link.url),
+      icon,
       href: link.url,
       label: getLinkLabel(link.url, link.link_type),
     })
   }
 
-  const infoItems: LinkItem[] = []
-  for (const link of externalLinks) {
-    if (!INFO_TYPES.has(link.link_type)) continue
-    infoItems.push({
-      key: link.id,
-      icon: getServiceIcon(link.url),
-      href: link.url,
-      label: getLinkLabel(link.url, link.link_type),
-    })
-  }
-
-  if (listenItems.length === 0 && officialSnsItems.length === 0 && infoItems.length === 0) {
+  if (listenItems.length === 0 && officialSnsItems.length === 0) {
     return null
   }
 
@@ -172,7 +167,6 @@ export default function ArtistLinkIcons({
     <div>
       <CategoryRow label="視聴" items={dedupeByUrl(listenItems)} />
       <CategoryRow label="公式・SNS" items={dedupeByUrl(officialSnsItems)} />
-      <CategoryRow label="情報" items={dedupeByUrl(infoItems)} />
     </div>
   )
 }
