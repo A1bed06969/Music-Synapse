@@ -155,11 +155,11 @@ export default async function MapPage() {
         ? links
             .map(
               (l) =>
-                `<div style="margin-top:4px;font-size:12px;"><a href="${escapeHtml(l.href)}" style="color:inherit;">${
+                `<div style="margin-top:6px;"><a href="${escapeHtml(l.href)}" style="color:inherit;display:block;">${
                   l.imageUrl
-                    ? `<img src="${escapeHtml(l.imageUrl)}" alt="" style="width:32px;height:32px;object-fit:cover;border-radius:4px;vertical-align:middle;margin-right:4px;" />`
+                    ? `<img src="${escapeHtml(l.imageUrl)}" alt="" style="width:100%;height:auto;max-height:160px;object-fit:cover;border-radius:4px;display:block;" />`
                     : ''
-                }${escapeHtml(l.label)}</a></div>`
+                }<div style="margin-top:4px;font-size:12px;">${escapeHtml(l.label)}</div></a></div>`
             )
             .join('')
         : '<div style="margin-top:4px;font-size:12px;color:#888;">開催イベント情報なし</div>'
@@ -170,7 +170,7 @@ export default async function MapPage() {
       color: '#5aa9e6',
       category: 'venue' as const,
       label: v.venue_name,
-      popupHtml: `<div style="min-width:160px;"><div style="font-weight:bold;">${escapeHtml(
+      popupHtml: `<div style="width:220px;"><div style="font-weight:bold;">${escapeHtml(
         v.venue_name
       )}</div>${linksHtml}</div>`,
     }
