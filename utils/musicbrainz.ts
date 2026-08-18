@@ -50,6 +50,28 @@ export async function searchArtist(name: string): Promise<MusicBrainzSearchResul
   }))
 }
 
+export type MusicBrainzLabelSearchResult = {
+  mbid: string
+  name: string
+  type: string | null
+  country: string | null
+  areaName: string | null
+  foundedYear: number | null
+}
+
+export async function searchLabel(name: string): Promise<MusicBrainzLabelSearchResult[]> {
+  const url = `${MUSICBRAINZ_BASE}/label?query=${encodeURIComponent(name)}&fmt=json&limit=5`
+  const data = await fetchMusicBrainz(url, 'label search')
+  return (data.labels ?? []).map((l: any) => ({
+    mbid: l.id,
+    name: l.name,
+    type: l.type ?? null,
+    country: l.country ?? null,
+    areaName: l.area?.name ?? null,
+    foundedYear: l['life-span']?.begin ? Number(String(l['life-span'].begin).slice(0, 4)) : null,
+  }))
+}
+
 const ALLOWED_LINK_TYPES = new Set([
   'streaming',
   'free streaming',
