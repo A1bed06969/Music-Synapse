@@ -86,16 +86,16 @@ export default async function MapPage() {
   const [{ data: musicEvents }, { data: eventEditions }, { data: eventEditionDates }, { data: eventAppearances }] =
     await Promise.all([
       supabase.from('music_event').select('id, name, venue, artist_id'),
-      supabase.from('event_edition').select('id, event_id, year, venue, event:event_id(name)'),
+      supabase.from('event_edition').select('id, event_id, year, venue, event:event_id(name, image_url)'),
       supabase
         .from('event_edition_date')
-        .select('id, venue, event_edition:event_edition_id(event_id, event:event_id(name))'),
+        .select('id, venue, event_edition:event_edition_id(event_id, event:event_id(name, image_url))'),
       supabase
         .from('event_appearance')
-        .select('id, venue, event_edition:event_edition_id(id, event_id, year, event:event_id(name))'),
+        .select('id, venue, event_edition:event_edition_id(id, event_id, year, event:event_id(name, image_url))'),
     ])
 
-  type VenueEventLink = { label: string; href: string }
+  type VenueEventLink = { label: string; href: string; imageUrl: string | null }
 
   // 同じ会場で開催され続けているイベントは、開催年ごとにリンクを分けると
   // 「年によって会場が違うのでは」という誤解を招くため、イベント単位で1本に
@@ -106,13 +106,18 @@ export default async function MapPage() {
     for (const row of musicEvents ?? []) {
       if (!row.venue || normalizeVenueName(row.venue) !== normalizedName) continue
       if (!row.artist_id) continue
-      linksByKey.set(`artist-${row.artist_id}`, { label: row.name, href: `/artists/${row.artist_id}` })
+      // music_eventはevent行を持たない(アーティスト単独公演)ため画像なし
+      linksByKey.set(`artist-${row.artist_id}`, { label: row.name, href: `/artists/${row.artist_id}`, imageUrl: null })
     }
 
     for (const row of eventEditions ?? []) {
       if (!row.venue || normalizeVenueName(row.venue) !== normalizedName) continue
       const event = Array.isArray(row.event) ? row.event[0] : row.event
-      linksByKey.set(`event-${row.event_id}`, { label: event?.name ?? '?', href: `/events/${row.event_id}` })
+      linksByKey.set(`event-${row.event_id}`, {
+        label: event?.name ?? '?',
+        href: `/events/${row.event_id}`,
+        imageUrl: event?.image_url ?? null,
+      })
     }
 
     for (const row of eventEditionDates ?? []) {
@@ -120,7 +125,11 @@ export default async function MapPage() {
       const edition = Array.isArray(row.event_edition) ? row.event_edition[0] : row.event_edition
       if (!edition) continue
       const event = Array.isArray(edition.event) ? edition.event[0] : edition.event
-      linksByKey.set(`event-${edition.event_id}`, { label: event?.name ?? '?', href: `/events/${edition.event_id}` })
+      linksByKey.set(`event-${edition.event_id}`, {
+        label: event?.name ?? '?',
+        href: `/events/${edition.event_id}`,
+        imageUrl: event?.image_url ?? null,
+      })
     }
 
     for (const row of eventAppearances ?? []) {
@@ -128,7 +137,11 @@ export default async function MapPage() {
       const edition = Array.isArray(row.event_edition) ? row.event_edition[0] : row.event_edition
       if (!edition) continue
       const event = Array.isArray(edition.event) ? edition.event[0] : edition.event
-      linksByKey.set(`event-${edition.event_id}`, { label: event?.name ?? '?', href: `/events/${edition.event_id}` })
+      linksByKey.set(`event-${edition.event_id}`, {
+        label: event?.name ?? '?',
+        href: `/events/${edition.event_id}`,
+        imageUrl: event?.image_url ?? null,
+      })
     }
 
     return Array.from(linksByKey.values())
@@ -142,9 +155,11 @@ export default async function MapPage() {
         ? links
             .map(
               (l) =>
-                `<div style="margin-top:4px;font-size:12px;"><a href="${escapeHtml(l.href)}">${escapeHtml(
-                  l.label
-                )}</a></div>`
+                `<div style="margin-top:4px;font-size:12px;"><a href="${escapeHtml(l.href)}" style="color:inherit;">${
+                  l.imageUrl
+                    ? `<img src="${escapeHtml(l.imageUrl)}" alt="" style="width:32px;height:32px;object-fit:cover;border-radius:4px;vertical-align:middle;margin-right:4px;" />`
+                    : ''
+                }${escapeHtml(l.label)}</a></div>`
             )
             .join('')
         : '<div style="margin-top:4px;font-size:12px;color:#888;">開催イベント情報なし</div>'
