@@ -5,8 +5,7 @@ import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/utils/Supabase/admin'
 import { fetchArtistWithAlbums } from '@/utils/itunes'
-import { syncAlbumsAndTracksForArtist } from '@/app/admin/import/actions'
-import { dispatchMusicBrainzImport } from '@/utils/musicbrainzImportDispatch'
+import { dispatchAlbumSync } from '@/utils/albumSyncDispatch'
 
 function redirectWith(artistId: string, result: 'success' | 'error', message: string): never {
   redirect(`/admin/data/artists/${artistId}/itunes-merge?${result}=${encodeURIComponent(message)}`)
@@ -65,20 +64,10 @@ export async function mergeItunesArtist(formData: FormData) {
 
   const artistName = currentArtist?.name ?? itunesArtist.artistName
 
-  // アルバム数が多いと取込に数十秒〜かかるため、本体の紐付けだけ先に完了させて
+  // アルバム数が多いと取込に数十秒〜数分かかるため、本体の紐付けだけ先に完了させて
   // すぐ結果を返し、アルバム・トラックの取込はレスポンス後にバックグラウンド実行する
-  // (app/admin/import/actions.tsのimportOneArtistと同じ対策)
-  after(async () => {
-    try {
-      await syncAlbumsAndTracksForArtist(supabase, artistId, artistName, itunesAlbums, appleArtistId)
-    } catch (err) {
-      console.error(`アルバム・トラック取込に失敗しました(${artistName}):`, err)
-    }
-
-    await dispatchMusicBrainzImport(artistId)
-
-    revalidatePath(`/artists/${artistId}`)
-  })
+  // (チャンク分割・MusicBrainz取込の連鎖はutils/albumSyncDispatch.ts参照)
+  after(() => dispatchAlbumSync(artistId, artistName, appleArtistId, itunesAlbums))
 
   revalidatePath('/admin/data')
   redirectWith(

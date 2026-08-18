@@ -2,7 +2,6 @@
 'use server'
 
 import { after } from 'next/server'
-import { revalidatePath } from 'next/cache'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/utils/Supabase/admin'
 import {
@@ -16,7 +15,7 @@ import {
 } from '@/utils/itunes'
 import { fetchAppleMusicArtistImage } from '@/utils/appleMusicImage'
 import { autoImportFromMusicBrainz, autoImportFromDiscogs } from '@/utils/creditImport'
-import { dispatchMusicBrainzImport } from '@/utils/musicbrainzImportDispatch'
+import { dispatchAlbumSync } from '@/utils/albumSyncDispatch'
 import { classifyAlbumType } from '@/utils/albumType'
 
 type ImportResult = {
@@ -274,7 +273,7 @@ export async function registerSingleAlbum(
 /** 配信停止検知: 今回のiTunes取得結果に含まれなかった既存アルバムは削除せず、
  * 「配信停止の可能性」としてステータスだけ更新する(定期的な再同期での運用を想定。
  * 既に/artists/unreleasedページ等で使われているstreaming_status='none'を流用する) */
-async function flagDelistedAlbums(supabase: SupabaseClient, artistId: string, itunesAlbums: ItunesAlbum[]): Promise<void> {
+export async function flagDelistedAlbums(supabase: SupabaseClient, artistId: string, itunesAlbums: ItunesAlbum[]): Promise<void> {
   const fetchedAlbumIds = new Set(itunesAlbums.map((a) => String(a.collectionId)))
   const { data: existingArtistAlbums } = await supabase
     .from('album')
@@ -397,31 +396,11 @@ async function importOneArtist(artistUrl: string): Promise<ImportResult> {
   }
 
   // アルバム数が多いアーティストだとアルバム・トラックの取込に数十秒〜数分かかり、
-  // サーバー関数の実行時間上限を超えて処理が中断される恐れがある
-  // (festival-pilotのimportAndRegisterFestivalArtistと同じ対策)。
+  // サーバー関数の実行時間上限を超えて処理が中断される恐れがある。
   // そのためアーティスト本体の登録だけ先に完了させてすぐ結果を返し、
   // アルバム・トラックの取込はafter()でレスポンス後にバックグラウンド実行する
-  after(async () => {
-    try {
-      await syncAlbumsAndTracksForArtist(
-        supabase,
-        artistId,
-        itunesArtist.artistName,
-        itunesAlbums,
-        String(itunesArtist.artistId)
-      )
-    } catch (err) {
-      console.error(`アルバム・トラック取込に失敗しました(${itunesArtist.artistName}):`, err)
-    }
-
-    // MusicBrainzの公式サイト/SNS/ジャンルもあわせて取り込む(タイトル完全一致での
-    // MBID自動照合のみ、ベストエフォート。アルバム登録が先に済んでいる必要があるため
-    // syncAlbumsAndTracksForArtistの後に実行する)。
-    // 別関数呼び出しとして切り離す理由はutils/musicbrainzImportDispatch.tsのコメント参照
-    await dispatchMusicBrainzImport(artistId)
-
-    revalidatePath(`/artists/${artistId}`)
-  })
+  // (チャンク分割・MusicBrainz取込の連鎖はutils/albumSyncDispatch.ts参照)
+  after(() => dispatchAlbumSync(artistId, itunesArtist.artistName, String(itunesArtist.artistId), itunesAlbums))
 
   return {
     success: true,
