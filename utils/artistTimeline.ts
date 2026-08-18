@@ -12,6 +12,44 @@ function toJstDate(isoString: string): string {
   return new Date(new Date(isoString).getTime() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10)
 }
 
+/** 'YYYY-MM-DD' から 'YYYY.MM' を取り出す(ツアー期間の表示用) */
+function toYearMonth(dateStr: string): string {
+  return dateStr.slice(0, 7).replace('-', '.')
+}
+
+/** 同じ名前のmusic_event(単独ライブ)を1本のツアーとしてまとめる。全国ツアーの
+ * 各会場が同名の別行として登録されている場合、日付範囲+公演数の1エントリに
+ * 圧縮する(公演が1件だけの名前は従来通り単発ライブとして扱い、会場名を
+ * そのままsubtitleに使う)。 */
+function groupLivesByName(
+  lives: { id: string; name: string; eventDate: string | null; venue: string | null }[]
+): { date: string; title: string; subtitle: string | null }[] {
+  const groups = new Map<string, { dates: string[]; venues: Set<string> }>()
+  for (const live of lives) {
+    if (!live.eventDate) continue
+    const group = groups.get(live.name) ?? { dates: [], venues: new Set<string>() }
+    group.dates.push(live.eventDate)
+    if (live.venue) group.venues.add(live.venue)
+    groups.set(live.name, group)
+  }
+
+  return Array.from(groups.entries()).map(([name, group]) => {
+    const sortedDates = [...group.dates].sort()
+    const startDate = sortedDates[0]
+    const endDate = sortedDates[sortedDates.length - 1]
+
+    if (sortedDates.length === 1) {
+      return { date: startDate, title: name, subtitle: group.venues.size > 0 ? [...group.venues][0] : null }
+    }
+
+    const range =
+      toYearMonth(startDate) === toYearMonth(endDate)
+        ? toYearMonth(startDate)
+        : `${toYearMonth(startDate)}〜${toYearMonth(endDate)}`
+    return { date: startDate, title: name, subtitle: `${range}(${sortedDates.length}公演)` }
+  })
+}
+
 export type ArtistTimelineEntry = {
   date: string
   kind: 'release' | 'live' | 'festival' | 'tieup'
@@ -46,13 +84,12 @@ export function buildArtistTimeline(input: ArtistTimelineInput): ArtistTimelineE
     })
   }
 
-  for (const live of input.lives) {
-    if (!live.eventDate) continue
+  for (const tour of groupLivesByName(input.lives)) {
     entries.push({
-      date: live.eventDate,
+      date: tour.date,
       kind: 'live',
-      title: live.name,
-      subtitle: live.venue,
+      title: tour.title,
+      subtitle: tour.subtitle,
       href: null,
       imageUrl: null,
     })

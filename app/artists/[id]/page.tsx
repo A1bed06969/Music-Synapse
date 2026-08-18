@@ -351,11 +351,14 @@ export default async function ArtistDetailPage({
 
       <SectionDivider label="Timeline" />
       <ArtistTimeline
-        albums={albums ?? []}
+        albums={(albums ?? []).filter((a) => ['Album', 'Best'].includes((a.album_type as AlbumType | null) ?? 'Album'))}
         musicEvents={musicEvents ?? []}
         eventAppearances={eventAppearances ?? []}
         tieUps={tieUps ?? []}
       />
+      <Link href={`/artists/${id}/timeline`} className="mt-3 inline-block text-xs text-white/40 hover:text-white/70">
+        年表をすべて見る(シングル・EPを含む全リリース) →
+      </Link>
 
       {members.length > 0 && (
         <>

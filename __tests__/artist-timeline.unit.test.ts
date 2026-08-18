@@ -67,4 +67,45 @@ describe('buildArtistTimeline', () => {
     })
     assert.equal(entries[0].date, '2026-07-25')
   })
+
+  test('groups same-named lives into one tour entry spanning the date range', () => {
+    const entries = buildArtistTimeline({
+      releases: [],
+      lives: [
+        { id: 'ev1', name: '全国ツアー「XXX」', eventDate: '2021-05-10', venue: '渋谷クラブクアトロ' },
+        { id: 'ev2', name: '全国ツアー「XXX」', eventDate: '2021-08-20', venue: 'なんばHatch' },
+        { id: 'ev3', name: '全国ツアー「XXX」', eventDate: '2021-06-01', venue: 'Zepp Nagoya' },
+      ],
+      festivals: [],
+      tieUps: [],
+    })
+    assert.equal(entries.length, 1)
+    assert.equal(entries[0].date, '2021-05-10')
+    assert.equal(entries[0].title, '全国ツアー「XXX」')
+    assert.equal(entries[0].subtitle, '2021.05〜2021.08(3公演)')
+  })
+
+  test('single-date live keeps showing its venue as subtitle (no range/count)', () => {
+    const entries = buildArtistTimeline({
+      releases: [],
+      lives: [{ id: 'ev1', name: 'ワンマンライブ', eventDate: '2020-06-15', venue: '渋谷クラブクアトロ' }],
+      festivals: [],
+      tieUps: [],
+    })
+    assert.equal(entries[0].subtitle, '渋谷クラブクアトロ')
+  })
+
+  test('distinct tour names are not merged with each other', () => {
+    const entries = buildArtistTimeline({
+      releases: [],
+      lives: [
+        { id: 'ev1', name: 'ツアーA', eventDate: '2020-01-01', venue: null },
+        { id: 'ev2', name: 'ツアーB', eventDate: '2020-02-01', venue: null },
+      ],
+      festivals: [],
+      tieUps: [],
+    })
+    assert.equal(entries.length, 2)
+    assert.deepEqual(entries.map((e) => e.title).sort(), ['ツアーA', 'ツアーB'])
+  })
 })

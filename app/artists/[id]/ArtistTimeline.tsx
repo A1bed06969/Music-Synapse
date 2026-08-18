@@ -1,6 +1,5 @@
 import Link from 'next/link'
 import { buildArtistTimeline, type ArtistTimelineInput } from '@/utils/artistTimeline'
-import { formatDate } from '@/utils/format'
 
 type AlbumRow = { id: string; title: string; jacket_url: string | null; release_date: string | null }
 type MusicEventRow = { id: string; name: string; event_date: string | null; venue: string | null }
@@ -29,16 +28,22 @@ const KIND_ICON: Record<string, string> = {
   tieup: '📺',
 }
 
+/** アーティストの年表を文章メインの行リストとして表示する。ディスコグラフィー欄と
+ * 見た目が近くなりすぎないよう、横スクロールのジャケット一覧ではなく小さな
+ * サムネイル+日付+出来事のテキストを縦に並べる形式にしている。
+ * groupByYearを立てると年が変わるたびに小さな年見出しを挟む(詳細表示用)。 */
 export default function ArtistTimeline({
   albums,
   musicEvents,
   eventAppearances,
   tieUps,
+  groupByYear = false,
 }: {
   albums: AlbumRow[]
   musicEvents: MusicEventRow[]
   eventAppearances: EventAppearanceRow[]
   tieUps: TieUpRow[]
+  groupByYear?: boolean
 }) {
   const input: ArtistTimelineInput = {
     releases: albums.map((a) => ({ albumId: a.id, title: a.title, releaseDate: a.release_date, jacketUrl: a.jacket_url })),
@@ -78,29 +83,44 @@ export default function ArtistTimeline({
     return <p className="mt-4 text-sm text-white/40">まだ年表に表示できる出来事が登録されていません。</p>
   }
 
+  let previousYear: string | null = null
+
   return (
-    <div className="mt-4 flex gap-4 overflow-x-auto pb-2">
-      {entries.map((entry, i) => (
-        <div key={i} className="block w-32 flex-shrink-0">
-          <div className="relative flex aspect-square items-center justify-center overflow-hidden rounded-md bg-white/5 text-2xl">
-            {entry.imageUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={entry.imageUrl} alt={entry.title} className="h-full w-full object-cover" />
-            ) : (
-              <span>{KIND_ICON[entry.kind]}</span>
+    <div className="mt-4 divide-y divide-white/5">
+      {entries.map((entry, i) => {
+        const year = entry.date.slice(0, 4)
+        const showYearHeading = groupByYear && year !== previousYear
+        previousYear = year
+
+        return (
+          <div key={i}>
+            {showYearHeading && (
+              <p className="pt-4 text-xs font-semibold uppercase tracking-wide text-white/40 first:pt-0">{year}年</p>
             )}
+            <div className="flex items-start gap-3 py-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded bg-white/5 text-base">
+                {entry.imageUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={entry.imageUrl} alt={entry.title} className="h-full w-full object-cover" />
+                ) : (
+                  <span>{KIND_ICON[entry.kind]}</span>
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs text-white/40">{entry.date}</p>
+                {entry.href ? (
+                  <Link href={entry.href} className="text-sm font-medium hover:underline">
+                    {entry.title}
+                  </Link>
+                ) : (
+                  <p className="text-sm font-medium">{entry.title}</p>
+                )}
+                {entry.subtitle && <p className="text-xs text-white/40">{entry.subtitle}</p>}
+              </div>
+            </div>
           </div>
-          <p className="mt-2 text-xs text-white/40">{formatDate(entry.date)}</p>
-          {entry.href ? (
-            <Link href={entry.href} className="block truncate text-sm font-medium hover:underline">
-              {entry.title}
-            </Link>
-          ) : (
-            <p className="truncate text-sm font-medium">{entry.title}</p>
-          )}
-          {entry.subtitle && <p className="truncate text-xs text-white/40">{entry.subtitle}</p>}
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }
