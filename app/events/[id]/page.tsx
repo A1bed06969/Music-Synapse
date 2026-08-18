@@ -150,8 +150,16 @@ export default async function EventDetailPage({
     (requestedYear ? editionList.find((ed) => ed.year === requestedYear) : null) ?? editionList[0] ?? null
 
   let appearances: Appearance[] = []
+  let editionDates: { id: string; date: string; venue: string }[] = []
 
   if (selectedEdition) {
+    const { data: editionDateRows } = await supabase
+      .from('event_edition_date')
+      .select('id, date, venue')
+      .eq('event_edition_id', selectedEdition.id)
+      .order('date', { ascending: true })
+    editionDates = editionDateRows ?? []
+
     const { data: appearanceRows } = await supabase
       .from('event_appearance')
       .select('id, stage, venue, is_headliner, start_time, end_time, artist:artist_id(id, name, image_url)')
@@ -182,23 +190,43 @@ export default async function EventDetailPage({
     ? (selectedEdition.venue ?? appearances.find((a) => a.venue)?.venue ?? null)
     : null
 
-  let venueMarker: MapMarker | null = null
-  if (venueSummary) {
+  // event_edition_date(個別日程・会場)が登録されている開催回は、会場ごとに
+  // マーカーを分ける(サマーソニックのように複数会場になる場合があるため)。
+  // 登録が無い開催回は従来通りvenueSummary(単一の会場文字列)で1件だけ表示する。
+  let venueMarkers: MapMarker[] = []
+  if (editionDates.length > 0) {
+    const distinctVenues = Array.from(new Set(editionDates.map((ed) => ed.venue)))
+    const { data: venueLocations } = await supabase
+      .from('venue_location')
+      .select('venue_name, latitude, longitude')
+      .in('venue_name', distinctVenues)
+    venueMarkers = (venueLocations ?? []).map((v) => ({
+      id: `venue-${v.venue_name}`,
+      latitude: v.latitude,
+      longitude: v.longitude,
+      color: '#e8a63c',
+      popupHtml: v.venue_name,
+      category: 'venue' as const,
+      label: v.venue_name,
+    }))
+  } else if (venueSummary) {
     const { data: venueLocation } = await supabase
       .from('venue_location')
       .select('latitude, longitude')
       .eq('venue_name', venueSummary)
       .maybeSingle()
     if (venueLocation) {
-      venueMarker = {
-        id: 'venue',
-        latitude: venueLocation.latitude,
-        longitude: venueLocation.longitude,
-        color: '#e8a63c',
-        popupHtml: venueSummary,
-        category: 'venue',
-        label: venueSummary,
-      }
+      venueMarkers = [
+        {
+          id: 'venue',
+          latitude: venueLocation.latitude,
+          longitude: venueLocation.longitude,
+          color: '#e8a63c',
+          popupHtml: venueSummary,
+          category: 'venue',
+          label: venueSummary,
+        },
+      ]
     }
   }
 
@@ -266,23 +294,39 @@ export default async function EventDetailPage({
           </div>
 
           <div className="mt-4 flex flex-col gap-4 lg:flex-row lg:items-stretch">
-            <div className="flex-1 rounded-lg border border-white/10 bg-white/[0.02] p-4">
-              <p className="text-sm text-white/70">
-                {venueSummary}
-                {selectedEdition.start_date &&
-                  `${venueSummary ? ' ・ ' : ''}${formatDate(selectedEdition.start_date)}${
-                    selectedEdition.end_date && selectedEdition.end_date !== selectedEdition.start_date
-                      ? `〜${formatDate(selectedEdition.end_date)}`
-                      : ''
-                  }`}
-              </p>
-              {selectedEdition.description && (
-                <p className="mt-2 text-xs text-white/50">{selectedEdition.description}</p>
-              )}
-            </div>
-            {venueMarker && (
+            {editionDates.length > 0 ? (
+              <div className="flex-1 space-y-2">
+                {editionDates.map((ed, i) => (
+                  <div key={ed.id} className="rounded-lg border border-white/10 bg-white/[0.02] p-4">
+                    <p className="text-sm font-medium text-white/85">
+                      Day {i + 1} ・ {formatDayHeading(ed.date)}
+                    </p>
+                    <p className="mt-0.5 flex items-center gap-1 text-xs text-white/40">📍 {ed.venue}</p>
+                  </div>
+                ))}
+                {selectedEdition.description && (
+                  <p className="text-xs text-white/50">{selectedEdition.description}</p>
+                )}
+              </div>
+            ) : (
+              <div className="flex-1 rounded-lg border border-white/10 bg-white/[0.02] p-4">
+                <p className="text-sm text-white/70">
+                  {venueSummary}
+                  {selectedEdition.start_date &&
+                    `${venueSummary ? ' ・ ' : ''}${formatDate(selectedEdition.start_date)}${
+                      selectedEdition.end_date && selectedEdition.end_date !== selectedEdition.start_date
+                        ? `〜${formatDate(selectedEdition.end_date)}`
+                        : ''
+                    }`}
+                </p>
+                {selectedEdition.description && (
+                  <p className="mt-2 text-xs text-white/50">{selectedEdition.description}</p>
+                )}
+              </div>
+            )}
+            {venueMarkers.length > 0 && (
               <div className="lg:w-80 lg:shrink-0">
-                <MapClientWrapper markers={[venueMarker]} heightClassName="h-[180px]" />
+                <MapClientWrapper markers={venueMarkers} heightClassName="h-[180px]" />
               </div>
             )}
           </div>
