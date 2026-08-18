@@ -12,7 +12,10 @@ import { dispatchMusicBrainzImport } from '@/utils/musicbrainzImportDispatch'
 import type { ItunesAlbum } from '@/utils/itunes'
 
 export const maxDuration = 60
-const TIME_BUDGET_MS = 45_000
+// 1アルバムの処理はMusicBrainz/Discogsクレジット取込のタイムアウト(8秒×2、
+// app/admin/import/actions.tsのwithTimeout参照)を含めても最大20秒程度で収まる。
+// この予算を超えたらチェックせず打ち切る(maxDurationの60秒に対して十分な余裕を残す)
+const TIME_BUDGET_MS = 25_000
 
 export async function POST(request: NextRequest) {
   const body = await request.json()
