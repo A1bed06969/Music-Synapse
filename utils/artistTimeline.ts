@@ -1,10 +1,9 @@
-const CATEGORY_LABEL: Record<string, string> = {
+const WORK_TYPE_LABEL: Record<string, string> = {
   anime: 'アニメ',
-  drama: 'ドラマ',
+  tv_program: 'TV番組',
   movie: '映画',
   cm: 'CM',
   game: 'ゲーム',
-  other: 'タイアップ',
 }
 
 export type ArtistTimelineEntry = {
@@ -20,7 +19,7 @@ export type ArtistTimelineInput = {
   releases: { albumId: string; title: string; releaseDate: string | null; jacketUrl: string | null }[]
   lives: { id: string; name: string; eventDate: string | null; venue: string | null }[]
   festivals: { appearanceId: number; eventName: string; startTime: string | null; venue: string | null }[]
-  tieUps: { id: string; trackTitle: string; category: string; workTitle: string; year: number | null; albumId: string | null }[]
+  tieUps: { id: number; trackTitle: string; workType: string; workTitle: string; year: number | null; usageDetail: string | null; albumId: string | null }[]
 }
 
 /** アーティストページが既に取得済みのデータを、日付が分かる出来事だけ時系列1本の
@@ -67,11 +66,15 @@ export function buildArtistTimeline(input: ArtistTimelineInput): ArtistTimelineE
 
   for (const tieUp of input.tieUps) {
     if (!tieUp.year) continue
+    const typeLabel = WORK_TYPE_LABEL[tieUp.workType] ?? tieUp.workType
+    const subtitle = tieUp.usageDetail
+      ? `${tieUp.workTitle}(${typeLabel}・${tieUp.usageDetail})`
+      : `${tieUp.workTitle}(${typeLabel})`
     entries.push({
       date: `${tieUp.year}-01-01`,
       kind: 'tieup',
       title: tieUp.trackTitle,
-      subtitle: `${tieUp.workTitle}(${CATEGORY_LABEL[tieUp.category] ?? tieUp.category})`,
+      subtitle,
       href: tieUp.albumId ? `/albums/${tieUp.albumId}` : null,
       imageUrl: null,
     })

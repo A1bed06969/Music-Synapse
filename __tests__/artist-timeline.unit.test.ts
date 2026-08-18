@@ -14,7 +14,7 @@ describe('buildArtistTimeline', () => {
       releases: [{ albumId: 'al1', title: 'First Album', releaseDate: '2019-03-01', jacketUrl: 'https://example.com/jacket.jpg' }],
       lives: [{ id: 'ev1', name: 'ワンマンライブ', eventDate: '2020-06-15', venue: '渋谷クラブクアトロ' }],
       festivals: [{ appearanceId: 1, eventName: 'SUMMER SONIC', startTime: '2021-08-14T12:00:00+09:00', venue: 'ZOZOマリンスタジアム' }],
-      tieUps: [{ id: 'tie1', trackTitle: 'テーマ曲', category: 'anime', workTitle: '鬼滅の刃', year: 2019, albumId: 'al1' }],
+      tieUps: [{ id: 1, trackTitle: 'テーマ曲', workType: 'anime', workTitle: '鬼滅の刃', year: 2019, usageDetail: null, albumId: 'al1' }],
     })
 
     assert.deepEqual(
@@ -43,7 +43,7 @@ describe('buildArtistTimeline', () => {
       releases: [{ albumId: 'al1', title: 'No Date', releaseDate: null, jacketUrl: null }],
       lives: [{ id: 'ev1', name: 'No Date Live', eventDate: null, venue: null }],
       festivals: [{ appearanceId: 1, eventName: 'No Date Fes', startTime: null, venue: null }],
-      tieUps: [{ id: 'tie1', trackTitle: 'No Year', category: 'cm', workTitle: 'XYZ', year: null, albumId: null }],
+      tieUps: [{ id: 1, trackTitle: 'No Year', workType: 'cm', workTitle: 'XYZ', year: null, usageDetail: null, albumId: null }],
     })
     assert.deepEqual(entries, [])
   })
@@ -53,7 +53,7 @@ describe('buildArtistTimeline', () => {
       releases: [],
       lives: [],
       festivals: [],
-      tieUps: [{ id: 'tie1', trackTitle: 'テーマ曲', category: 'drama', workTitle: 'XYZ', year: 2022, albumId: null }],
+      tieUps: [{ id: 1, trackTitle: 'テーマ曲', workType: 'tv_program', workTitle: 'XYZ', year: 2022, usageDetail: null, albumId: null }],
     })
     assert.equal(entries[0].href, null)
   })

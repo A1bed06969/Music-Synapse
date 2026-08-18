@@ -11,10 +11,9 @@ type EventAppearanceRow = {
   start_time: string | null
 }
 type TieUpRow = {
-  id: string
-  category: string
-  work_title: string
-  year: number | null
+  id: number
+  usage_detail: string | null
+  sync_work: { title: string; work_type: string; year: number | null } | { title: string; work_type: string; year: number | null }[] | null
   track: { title: string; album_id: string | null } | { title: string; album_id: string | null }[] | null
 }
 
@@ -56,14 +55,16 @@ export default function ArtistTimeline({
     }),
     tieUps: tieUps
       .map((t) => {
+        const syncWork = firstOf(t.sync_work)
         const track = firstOf(t.track)
-        return track
+        return syncWork && track
           ? {
               id: t.id,
               trackTitle: track.title,
-              category: t.category,
-              workTitle: t.work_title,
-              year: t.year,
+              workType: syncWork.work_type,
+              workTitle: syncWork.title,
+              year: syncWork.year,
+              usageDetail: t.usage_detail,
               albumId: track.album_id,
             }
           : null

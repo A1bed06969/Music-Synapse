@@ -72,8 +72,8 @@ export default async function ArtistDetailPage({
         .select('id, stage, venue, is_headliner, start_time, event_edition:event_edition_id(year, venue, event:event_id(name))')
         .eq('artist_id', id),
       supabase
-        .from('tie_up')
-        .select('id, category, work_title, year, track:track_id!inner(title, album_id, artist_id)')
+        .from('sync_entry')
+        .select('id, usage_detail, sync_work:sync_work_id(title, work_type, year), track:track_id!inner(title, album_id, artist_id)')
         .eq('track.artist_id', id),
       supabase.from('artist_external_link').select('id, link_type, url').eq('artist_id', id).order('link_type', { ascending: true }).order('url', { ascending: true }),
       supabase
