@@ -16,6 +16,7 @@ import MemberProfile from './MemberProfile'
 import { NEWS_SOURCES } from '@/utils/newsFeeds'
 import { fetchAllNews, findRelatedNews, formatRelativeTime } from '@/utils/newsParser'
 import { ALBUM_TYPE_LABEL_JA, ALBUM_TYPE_ORDER, type AlbumType } from '@/utils/albumType'
+import ArtistTimeline from './ArtistTimeline'
 
 function SectionDivider({ label }: { label: string }) {
   return (
@@ -46,6 +47,7 @@ export default async function ArtistDetailPage({
       { data: albums },
       { data: musicEvents },
       { data: eventAppearances },
+      { data: tieUps },
       { data: externalLinks },
       { data: awardEntries },
       { data: membershipRows },
@@ -67,8 +69,12 @@ export default async function ArtistDetailPage({
         .order('event_date', { ascending: false, nullsFirst: false }),
       supabase
         .from('event_appearance')
-        .select('id, stage, venue, is_headliner, event_edition:event_edition_id(year, venue, event:event_id(name))')
+        .select('id, stage, venue, is_headliner, start_time, event_edition:event_edition_id(year, venue, event:event_id(name))')
         .eq('artist_id', id),
+      supabase
+        .from('tie_up')
+        .select('id, category, work_title, year, track:track_id!inner(title, album_id, artist_id)')
+        .eq('track.artist_id', id),
       supabase.from('artist_external_link').select('id, link_type, url').eq('artist_id', id).order('link_type', { ascending: true }).order('url', { ascending: true }),
       supabase
         .from('award_entry')
@@ -342,6 +348,14 @@ export default async function ArtistDetailPage({
           })}
         </>
       )}
+
+      <SectionDivider label="Timeline" />
+      <ArtistTimeline
+        albums={albums ?? []}
+        musicEvents={musicEvents ?? []}
+        eventAppearances={eventAppearances ?? []}
+        tieUps={tieUps ?? []}
+      />
 
       {members.length > 0 && (
         <>
