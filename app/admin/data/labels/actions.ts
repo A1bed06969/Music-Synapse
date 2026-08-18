@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { createAdminClient } from '@/utils/Supabase/admin'
+import { searchLabel, type MusicBrainzLabelSearchResult } from '@/utils/musicbrainz'
 
 function redirectWith(result: 'success' | 'error', message: string) {
   redirect(`/admin/data/labels?${result}=${encodeURIComponent(message)}`)
@@ -77,4 +78,40 @@ export async function linkAlbumLabel(formData: FormData) {
   revalidatePath(`/labels/${labelId}`)
   revalidatePath(`/albums/${albumId}`)
   redirectWith('success', 'アルバムにレーベルを紐付けました。')
+}
+
+export async function searchMusicBrainzLabel(name: string): Promise<MusicBrainzLabelSearchResult[]> {
+  return searchLabel(name)
+}
+
+/** MusicBrainzの検索候補からレーベルを作成する。同名レーベルが既に存在する場合は
+ * 新規作成せず、founded_yearが未設定なら補完するだけに留める(upsertArtistFromItunes
+ * の重複防止と同じ考え方)。 */
+export async function createLabelFromMusicBrainz(formData: FormData) {
+  const name = String(formData.get('name') ?? '').trim()
+  const foundedYearRaw = String(formData.get('founded_year') ?? '').trim()
+  const foundedYear = foundedYearRaw ? Number(foundedYearRaw) : null
+
+  if (!name) {
+    redirectWith('error', '不正なリクエストです。')
+  }
+
+  const supabase = createAdminClient()
+  const { data: existing } = await supabase.from('label').select('id, founded_year').eq('name', name).maybeSingle()
+
+  if (existing) {
+    if (!existing.founded_year && foundedYear) {
+      await supabase.from('label').update({ founded_year: foundedYear }).eq('id', existing.id)
+    }
+    revalidatePath('/admin/data/labels')
+    redirectWith('success', `「${name}」は既に登録されています(設立年が未設定だった場合は補完しました)。`)
+  }
+
+  const { error } = await supabase.from('label').insert({ name, founded_year: foundedYear })
+  if (error) {
+    redirectWith('error', `レーベルの登録に失敗しました: ${error.message}`)
+  }
+
+  revalidatePath('/admin/data/labels')
+  redirectWith('success', `レーベル「${name}」をMusicBrainzから登録しました。`)
 }
