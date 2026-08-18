@@ -70,6 +70,15 @@ export default function EventScheduleView({
       ? editionDates
       : editionDates.filter((ed) => ed.region === selectedRegion)
 
+  // 「すべて」タブでは、東京・大阪など複数都市の日程が同じ日に重複して並ぶため、
+  // 会場ごとの個別カードではなく「3 Days ・ 8月14日〜8月16日」という日数サマリー
+  // のみを表示する(会場は都市によって異なり、この時点では一意に決まらないため)。
+  const showAllRegionsSummary = regions.length >= 2 && selectedRegion === ALL_REGIONS
+  const distinctAllDates = useMemo(
+    () => Array.from(new Set(editionDates.map((ed) => ed.date))).sort(),
+    [editionDates]
+  )
+
   const filteredVenueMarkers =
     regions.length < 2 || selectedRegion === ALL_REGIONS
       ? venueMarkers
@@ -133,7 +142,18 @@ export default function EventScheduleView({
       )}
 
       <div className="mt-4 flex flex-col gap-4 lg:flex-row lg:items-stretch">
-        {filteredEditionDates.length > 0 ? (
+        {showAllRegionsSummary ? (
+          <div className="flex-1 rounded-lg border border-white/10 bg-white/[0.02] p-4">
+            <p className="text-sm font-medium text-white/85">
+              {distinctAllDates.length} Days
+              {distinctAllDates.length > 0 &&
+                ` ・ ${formatDate(distinctAllDates[0])}${
+                  distinctAllDates.length > 1 ? `〜${formatDate(distinctAllDates[distinctAllDates.length - 1])}` : ''
+                }`}
+            </p>
+            {editionDescription && <p className="mt-2 text-xs text-white/50">{editionDescription}</p>}
+          </div>
+        ) : filteredEditionDates.length > 0 ? (
           <div className="flex-1 space-y-2">
             {filteredEditionDates.map((ed, i) => (
               <div key={ed.id} className="rounded-lg border border-white/10 bg-white/[0.02] p-4">
