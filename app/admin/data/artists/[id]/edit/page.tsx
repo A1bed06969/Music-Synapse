@@ -2,7 +2,8 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/utils/Supabase/server'
 import { ARTIST_TYPE_LABEL, ARTIST_STREAMING_STATUS_LABEL, STREAMING_STATUS_LABEL } from '@/utils/format'
-import { updateArtist, updateAlbumStreamingStatus } from '@/app/admin/data/actions'
+import { updateArtist, updateAlbumStreamingStatus, updateAlbumType } from '@/app/admin/data/actions'
+import { ALBUM_TYPE_LABEL_JA, ALBUM_TYPE_ORDER } from '@/utils/albumType'
 
 const inputClass =
   'w-full rounded-md border border-white/15 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-white/25 focus:border-white/30 focus:outline-none'
@@ -21,7 +22,7 @@ export default async function ArtistEditPage({
     supabase.from('artist').select('*').eq('id', id).single(),
     supabase
       .from('album')
-      .select('id, title, streaming_status')
+      .select('id, title, streaming_status, album_type')
       .eq('artist_id', id)
       .order('release_date', { ascending: false }),
   ])
@@ -183,6 +184,30 @@ export default async function ArtistEditPage({
               <li key={album.id} className="flex flex-wrap items-center justify-between gap-2">
                 <span>{album.title}</span>
                 <div className="flex items-center gap-3">
+                  <form action={updateAlbumType} className="flex items-center gap-1.5">
+                    <input type="hidden" name="album_id" value={album.id} />
+                    <input type="hidden" name="artist_id" value={artist.id} />
+                    <select
+                      name="album_type"
+                      defaultValue={album.album_type ?? ''}
+                      className="rounded-md border border-white/15 bg-white/5 px-2 py-1 text-xs text-white focus:border-white/30 focus:outline-none"
+                    >
+                      <option value="" disabled>
+                        種別
+                      </option>
+                      {ALBUM_TYPE_ORDER.map((value) => (
+                        <option key={value} value={value}>
+                          {ALBUM_TYPE_LABEL_JA[value]}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="submit"
+                      className="rounded-md border border-white/15 px-2 py-1 text-xs hover:bg-white/5"
+                    >
+                      保存
+                    </button>
+                  </form>
                   <form action={updateAlbumStreamingStatus} className="flex items-center gap-1.5">
                     <input type="hidden" name="album_id" value={album.id} />
                     <input type="hidden" name="artist_id" value={artist.id} />

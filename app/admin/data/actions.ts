@@ -137,6 +137,28 @@ export async function updateAlbumStreamingStatus(formData: FormData) {
   redirectWith('success', 'アルバムの配信状況を更新しました。')
 }
 
+export async function updateAlbumType(formData: FormData) {
+  const albumId = String(formData.get('album_id') ?? '')
+  const artistId = String(formData.get('artist_id') ?? '')
+  const albumType = String(formData.get('album_type') ?? '').trim()
+
+  if (!albumId || !albumType) {
+    redirectWith('error', '不正なリクエストです。')
+  }
+
+  const supabase = createAdminClient()
+  const { error } = await supabase.from('album').update({ album_type: albumType }).eq('id', albumId)
+
+  if (error) {
+    redirectWith('error', `更新に失敗しました: ${error.message}`)
+  }
+
+  revalidatePath('/admin/data')
+  revalidatePath(`/albums/${albumId}`)
+  if (artistId) revalidatePath(`/artists/${artistId}`)
+  redirectWith('success', 'アルバムの種別を更新しました。')
+}
+
 export async function updateTrack(formData: FormData) {
   const trackId = String(formData.get('track_id') ?? '')
 

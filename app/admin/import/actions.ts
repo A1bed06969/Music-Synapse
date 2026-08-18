@@ -17,6 +17,7 @@ import {
 import { fetchAppleMusicArtistImage } from '@/utils/appleMusicImage'
 import { autoImportFromMusicBrainz, autoImportFromDiscogs } from '@/utils/creditImport'
 import { autoImportArtistProfileFromMusicBrainz } from '@/utils/artistProfileImport'
+import { classifyAlbumType } from '@/utils/albumType'
 
 type ImportResult = {
   success: boolean
@@ -153,12 +154,12 @@ async function syncOneAlbum(
     return 0
   }
 
+  const title = localizedCollectionName ?? itunesAlbum.collectionName
   const albumPayload = {
     artist_id: artistId,
-    title: localizedCollectionName ?? itunesAlbum.collectionName,
+    title,
     release_date: itunesAlbum.releaseDate ? itunesAlbum.releaseDate.slice(0, 10) : null,
     track_count: itunesAlbum.trackCount ?? null,
-    album_type: itunesAlbum.collectionType === 'Album' ? 'Album' : null,
     jacket_url: itunesAlbum.artworkUrl100 ? itunesAlbum.artworkUrl100.replace('100x100', '1200x1200') : null,
     apple_music_album_id: String(itunesAlbum.collectionId),
     apple_music_available: true,
@@ -167,6 +168,7 @@ async function syncOneAlbum(
 
   let albumId: string
   if (existingAlbumId) {
+    // album_typeは更新対象に含めない(手動修正が再同期のたびに上書きされないようにするため)
     albumId = existingAlbumId
     const { error: albumUpdateError } = await supabase.from('album').update(albumPayload).eq('id', albumId)
     if (albumUpdateError) {
@@ -175,7 +177,7 @@ async function syncOneAlbum(
   } else {
     const { data: insertedAlbum, error: albumError } = await supabase
       .from('album')
-      .insert(albumPayload)
+      .insert({ ...albumPayload, album_type: classifyAlbumType(title, itunesAlbum.trackCount ?? null) })
       .select('id')
       .single()
 

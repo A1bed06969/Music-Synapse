@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/utils/Supabase/server'
 import { formatDate, formatDuration, STREAMING_STATUS_LABEL } from '@/utils/format'
+import { ALBUM_TYPE_LABEL_JA, type AlbumType } from '@/utils/albumType'
 import PreviewButton from '@/app/components/PreviewButton'
 
 export default async function AlbumDetailPage({
@@ -70,7 +71,9 @@ export default async function AlbumDetailPage({
 
           <div className="mt-3 flex flex-wrap gap-2 text-xs text-white/60">
             {album.album_type && (
-              <span className="rounded-full border border-white/15 px-2.5 py-0.5">{album.album_type}</span>
+              <span className="rounded-full border border-white/15 px-2.5 py-0.5">
+                {ALBUM_TYPE_LABEL_JA[album.album_type as AlbumType] ?? album.album_type}
+              </span>
             )}
             {album.format && (
               <span className="rounded-full border border-white/15 px-2.5 py-0.5">{album.format}</span>

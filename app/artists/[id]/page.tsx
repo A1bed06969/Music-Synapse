@@ -15,6 +15,7 @@ import { resolveArtistPageKind, hasOwnRelease } from '@/utils/artistPageKind'
 import MemberProfile from './MemberProfile'
 import { NEWS_SOURCES } from '@/utils/newsFeeds'
 import { fetchAllNews, findRelatedNews, formatRelativeTime } from '@/utils/newsParser'
+import { ALBUM_TYPE_LABEL_JA, ALBUM_TYPE_ORDER, type AlbumType } from '@/utils/albumType'
 
 function SectionDivider({ label }: { label: string }) {
   return (
@@ -293,40 +294,53 @@ export default async function ArtistDetailPage({
       {!albums || albums.length === 0 ? (
         <p className="mt-4 text-sm text-white/40">まだアルバムが登録されていません。</p>
       ) : (
-        <div className="mt-4 flex gap-4 overflow-x-auto pb-2">
-          {albums.map((album) => {
-            // Apple Music限定(apple_only)は自動判定できず手動設定でしか付かないため、
-            // ここでは自動検知される「配信なし(未解禁・配信停止)」のみバッジ表示する
-            const status = album.streaming_status === 'none' ? STREAMING_STATUS_LABEL.none : null
+        <>
+          {ALBUM_TYPE_ORDER.map((type) => {
+            const albumsForType = albums.filter((album) => ((album.album_type as AlbumType | null) ?? 'Album') === type)
+            if (albumsForType.length === 0) return null
             return (
-              <Link key={album.id} href={`/albums/${album.id}`} className="group block w-28 flex-shrink-0">
-                <div className="relative aspect-square overflow-hidden rounded-md bg-white/5">
-                  {album.jacket_url ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={album.jacket_url}
-                      alt={album.title}
-                      className={`h-full w-full object-cover transition group-hover:scale-105 ${
-                        status ? 'opacity-60' : ''
-                      }`}
-                    />
-                  ) : (
-                    <div className="flex h-full w-full items-center justify-center text-white/20">
-                      No Art
-                    </div>
-                  )}
+              <div key={type} className="mt-6 first:mt-4">
+                <h3 className="text-xs uppercase tracking-wide text-white/40">
+                  {ALBUM_TYPE_LABEL_JA[type]} <span className="text-white/25">({albumsForType.length})</span>
+                </h3>
+                <div className="mt-2 flex gap-4 overflow-x-auto pb-2">
+                  {albumsForType.map((album) => {
+                    // Apple Music限定(apple_only)は自動判定できず手動設定でしか付かないため、
+                    // ここでは自動検知される「配信なし(未解禁・配信停止)」のみバッジ表示する
+                    const status = album.streaming_status === 'none' ? STREAMING_STATUS_LABEL.none : null
+                    return (
+                      <Link key={album.id} href={`/albums/${album.id}`} className="group block w-28 flex-shrink-0">
+                        <div className="relative aspect-square overflow-hidden rounded-md bg-white/5">
+                          {album.jacket_url ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={album.jacket_url}
+                              alt={album.title}
+                              className={`h-full w-full object-cover transition group-hover:scale-105 ${
+                                status ? 'opacity-60' : ''
+                              }`}
+                            />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center text-white/20">
+                              No Art
+                            </div>
+                          )}
+                        </div>
+                        <p className="mt-2 truncate text-sm font-medium">{album.title}</p>
+                        <p className="text-xs text-white/40">{formatDate(album.release_date)}</p>
+                        {status && (
+                          <p className="mt-0.5 text-xs text-white/40">
+                            {status.icon} {status.label}
+                          </p>
+                        )}
+                      </Link>
+                    )
+                  })}
                 </div>
-                <p className="mt-2 truncate text-sm font-medium">{album.title}</p>
-                <p className="text-xs text-white/40">{formatDate(album.release_date)}</p>
-                {status && (
-                  <p className="mt-0.5 text-xs text-white/40">
-                    {status.icon} {status.label}
-                  </p>
-                )}
-              </Link>
+              </div>
             )
           })}
-        </div>
+        </>
       )}
 
       {members.length > 0 && (

@@ -2,6 +2,7 @@
 
 import { createAdminClient } from '@/utils/Supabase/admin';
 import { autoImportArtistProfileFromMusicBrainz } from '@/utils/artistProfileImport';
+import { classifyAlbumType } from '@/utils/albumType';
 import { after } from 'next/server';
 import { NextRequest, NextResponse } from 'next/server';
 
@@ -92,9 +93,6 @@ export async function POST(req: NextRequest) {
 
         // Create album (unregistered)
         if (artistId) {
-          // album_type は CHECK 制約付き
-          // ('Album' | 'EP' | 'Single' | 'Live' | 'Compilation' | 'Best')。
-          // ディスクガイド掲載作は原則アルバムなので 'Album' を既定にする。
           const { data: newAlbum, error: albumError } = await supabase
             .from('album')
             .insert({
@@ -103,7 +101,8 @@ export async function POST(req: NextRequest) {
               release_date: albumData.year
                 ? `${albumData.year}-01-01`
                 : null,
-              album_type: 'Album',
+              // この時点ではトラック数が不明なため、タイトルの手がかりのみで判定する
+              album_type: classifyAlbumType(albumData.title, null),
             })
             .select('id')
             .single();
