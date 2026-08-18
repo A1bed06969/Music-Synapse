@@ -58,11 +58,11 @@ describe('buildArtistTimeline', () => {
     assert.equal(entries[0].href, null)
   })
 
-  test('festival date is derived from startTime date portion only (drops time-of-day)', () => {
+  test('festival date is derived from startTime, converted from UTC to JST (crosses midnight)', () => {
     const entries = buildArtistTimeline({
       releases: [],
       lives: [],
-      festivals: [{ appearanceId: 1, eventName: 'FUJI ROCK', startTime: '2026-07-25T15:30:00+09:00', venue: null }],
+      festivals: [{ appearanceId: 1, eventName: 'FUJI ROCK', startTime: '2026-07-24T15:30:00+00:00', venue: null }],
       tieUps: [],
     })
     assert.equal(entries[0].date, '2026-07-25')

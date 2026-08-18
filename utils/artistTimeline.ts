@@ -6,6 +6,12 @@ const WORK_TYPE_LABEL: Record<string, string> = {
   game: 'ゲーム',
 }
 
+/** timestamptz(UTC)からJSTの日付部分を取り出す。PostgRESTはtimestamptzをUTCで
+ * 返すため、そのままslice(0,10)すると日付がずれることがある(実データで確認済み)。 */
+function toJstDate(isoString: string): string {
+  return new Date(new Date(isoString).getTime() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10)
+}
+
 export type ArtistTimelineEntry = {
   date: string
   kind: 'release' | 'live' | 'festival' | 'tieup'
@@ -55,7 +61,7 @@ export function buildArtistTimeline(input: ArtistTimelineInput): ArtistTimelineE
   for (const festival of input.festivals) {
     if (!festival.startTime) continue
     entries.push({
-      date: festival.startTime.slice(0, 10),
+      date: toJstDate(festival.startTime),
       kind: 'festival',
       title: festival.eventName,
       subtitle: festival.venue,
