@@ -60,6 +60,32 @@ export async function fetchOriginCoordinates(qid: string): Promise<WikidataOrigi
   }
 }
 
+export type WikidataRecordLabel = {
+  name: string
+  /** 加入年。WikidataのP580(開始日)修飾子から取れた場合のみ。無ければnull
+   * (実データで確認済み: The Supremesの例では2件のレーベルとも開始日は未設定だった) */
+  startYear: number | null
+}
+
+/** WikidataのP264(record label)プロパティから所属レーベルの一覧を取得する */
+export async function fetchRecordLabels(qid: string): Promise<WikidataRecordLabel[]> {
+  if (!/^Q\d+$/.test(qid)) return []
+  await sleep(300)
+  const query = `SELECT ?labelLabel ?start WHERE { wd:${qid} p:P264 ?stmt . ?stmt ps:P264 ?label . OPTIONAL { ?stmt pq:P580 ?start . } SERVICE wikibase:label { bd:serviceParam wikibase:language "ja,en". } }`
+  const url = `${WIKIDATA_SPARQL_ENDPOINT}?query=${encodeURIComponent(query)}&format=json`
+  const res = await fetch(url, { headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' } })
+  if (!res.ok) {
+    throw new Error(`Wikidata API error (SPARQL): ${res.status}`)
+  }
+  const data = await res.json()
+  return (data.results?.bindings ?? [])
+    .map((b: any) => ({
+      name: b.labelLabel?.value ?? '',
+      startYear: b.start?.value ? Number(String(b.start.value).slice(0, 4)) : null,
+    }))
+    .filter((l: WikidataRecordLabel) => l.name)
+}
+
 /**
  * WikidataのP18(image)プロパティからWikimedia Commonsのファイル名を取得し、
  * Special:FilePath経由の直リンクURLに変換する(Commonsの標準的な直リンク方式。

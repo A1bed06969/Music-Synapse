@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { CREDIT_ROLE_LABEL } from '@/utils/format'
-import { searchRelease as searchMbRelease, fetchReleaseCreditsAndInstruments } from '@/utils/musicbrainz'
+import { searchRelease as searchMbRelease, fetchReleaseCreditsAndInstruments, fetchLabelFoundedYear } from '@/utils/musicbrainz'
 import { searchRelease as searchDiscogsRelease, fetchReleaseCredits as fetchDiscogsCredits } from '@/utils/discogs'
 
 export type UnifiedCreditInput = {
@@ -297,13 +297,25 @@ export async function autoImportFromMusicBrainz(
   if (!exact) return 'MB一致なし'
 
   let mbCredits
+  let labelName: string | null = null
+  let labelMbid: string | null = null
   try {
     const result = await fetchReleaseCreditsAndInstruments(exact.mbid)
     mbCredits = result.credits
+    labelName = result.labelName
+    labelMbid = result.labelMbid
   } catch (err) {
     return `MBクレジット取得失敗: ${(err as Error).message}`
   }
-  if (mbCredits.length === 0) return 'MB一致(クレジット0件)'
+
+  // タイトル完全一致で確定した同じリリースのレーベル情報も、あわせて反映する
+  // (album.label_idが未設定の場合のみ。手動設定済みの値は上書きしない)
+  let labelNote = ''
+  if (labelName) {
+    labelNote = await linkAlbumLabelFromMusicBrainz(supabase, album.id, labelName, labelMbid)
+  }
+
+  if (mbCredits.length === 0) return `MB一致(クレジット0件)${labelNote}`
 
   const resolveTrackId = buildTrackIdResolver(await resolveAlbumTracks(supabase, album, albumTracks))
 
@@ -318,7 +330,62 @@ export async function autoImportFromMusicBrainz(
   }))
 
   const r = await writeAlbumCredits(supabase, artistId, album.id, unified)
-  return `MB取込: 関係${r.relationsWritten}/クレジット${r.creditsWritten}/楽器${r.instrumentsWritten}(失敗${r.failureCount})`
+  return `MB取込: 関係${r.relationsWritten}/クレジット${r.creditsWritten}/楽器${r.instrumentsWritten}(失敗${r.failureCount})${labelNote}`
+}
+
+/** MusicBrainzのリリースから分かったレーベル名を、album.label_idへ反映する。
+ * 既存レーベルは名前完全一致で検索(無ければ発足年込みで新規作成)、
+ * album.label_idが未設定の場合のみ更新する(手動設定済みの値は上書きしない)。
+ * ベストエフォート(失敗しても呼び出し元のクレジット取込自体は継続させる)。 */
+async function linkAlbumLabelFromMusicBrainz(
+  supabase: SupabaseClient,
+  albumId: string,
+  labelName: string,
+  labelMbid: string | null
+): Promise<string> {
+  try {
+    const { data: existingRows } = await supabase
+      .from('label')
+      .select('id, founded_year')
+      .eq('name', labelName)
+      .limit(1)
+    const existing = existingRows?.[0]
+
+    let labelId: string | undefined = existing?.id
+
+    if (!existing) {
+      let foundedYear: number | null = null
+      if (labelMbid) {
+        try {
+          foundedYear = await fetchLabelFoundedYear(labelMbid)
+        } catch {
+          // 発足年が取れなくてもレーベル作成自体は続行する
+        }
+      }
+      const { data: created, error } = await supabase
+        .from('label')
+        .insert({ name: labelName, founded_year: foundedYear })
+        .select('id')
+        .single()
+      if (error || !created) return ''
+      labelId = created.id
+    } else if (!existing.founded_year && labelMbid) {
+      try {
+        const foundedYear = await fetchLabelFoundedYear(labelMbid)
+        if (foundedYear) {
+          await supabase.from('label').update({ founded_year: foundedYear }).eq('id', existing.id)
+        }
+      } catch {
+        // ベストエフォート、失敗しても無視する
+      }
+    }
+
+    if (!labelId) return ''
+    await supabase.from('album').update({ label_id: labelId }).eq('id', albumId).is('label_id', null)
+    return `・レーベル(${labelName})`
+  } catch {
+    return ''
+  }
 }
 
 /** Discogs版のautoImportFromMusicBrainz。挙動・方針は同じ */

@@ -2,7 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { searchReleaseByTitle, fetchArtistDetails, type MusicBrainzArtistDetails } from '@/utils/musicbrainz'
 import { normalizeAlbumTitle } from '@/utils/creditImport'
 import { resolveArtistImageByName } from '@/utils/appleMusicImage'
-import { fetchOriginCoordinates } from '@/utils/wikidata'
+import { fetchOriginCoordinates, fetchRecordLabels } from '@/utils/wikidata'
 
 export type ResolveArtistMbidResult =
   | { matched: true; mbid: string; matchedTitles: string[] }
@@ -80,6 +80,7 @@ export async function writeArtistProfileFromMusicBrainzDetails(
   membershipsWritten: number
   membershipsUnresolved: string[]
   originResolved: boolean
+  labelsLinked: number
 }> {
   const { data: currentArtist } = await supabase
     .from('artist')
@@ -124,25 +125,92 @@ export async function writeArtistProfileFromMusicBrainzDetails(
   // 自動取得する(既に設定済みなら上書きしない)
   let originResolved = false
   const wikidataLink = details.links.find((link) => link.type === 'wikidata')
-  if (wikidataLink && currentArtist?.origin_latitude == null) {
-    const qidMatch = wikidataLink.url.match(/\/(Q\d+)$/)
-    if (qidMatch) {
-      try {
-        const coords = await fetchOriginCoordinates(qidMatch[1])
-        if (coords) {
-          const { error } = await supabase
-            .from('artist')
-            .update({ origin_latitude: coords.latitude, origin_longitude: coords.longitude })
-            .eq('id', artistId)
-          if (error) {
-            console.error(`出身地座標の保存に失敗しました(${artistId}):`, error.message)
-          } else {
-            originResolved = true
+  const qidMatch = wikidataLink?.url.match(/\/(Q\d+)$/)
+  if (qidMatch && currentArtist?.origin_latitude == null) {
+    try {
+      const coords = await fetchOriginCoordinates(qidMatch[1])
+      if (coords) {
+        const { error } = await supabase
+          .from('artist')
+          .update({ origin_latitude: coords.latitude, origin_longitude: coords.longitude })
+          .eq('id', artistId)
+        if (error) {
+          console.error(`出身地座標の保存に失敗しました(${artistId}):`, error.message)
+        } else {
+          originResolved = true
+        }
+      }
+    } catch (err) {
+      console.error(`出身地座標の取得に失敗しました(${artistId}):`, err)
+    }
+  }
+
+  // レーベル所属(WikidataのP264: record label)。同じQIDから人間の確認無しで
+  // 自動取得する。加入日はWikidata側にほぼ無いため取れた場合のみ設定し、
+  // 取れなければnullのままにする(既存の(artist_id, label_id)組は重複登録しない)
+  let labelsLinked = 0
+  if (qidMatch) {
+    try {
+      const wikidataLabels = await fetchRecordLabels(qidMatch[1])
+      if (wikidataLabels.length > 0) {
+        const { data: existingArtistLabels } = await supabase
+          .from('artist_label')
+          .select('label_id')
+          .eq('artist_id', artistId)
+        const existingLabelIds = new Set((existingArtistLabels ?? []).map((r) => r.label_id))
+
+        for (const wl of wikidataLabels) {
+          const { data: existingLabelRows } = await supabase
+            .from('label')
+            .select('id')
+            .eq('name', wl.name)
+            .limit(1)
+          let labelId = existingLabelRows?.[0]?.id as string | undefined
+
+          if (!labelId) {
+            const { data: created, error } = await supabase
+              .from('label')
+              .insert({ name: wl.name })
+              .select('id')
+              .single()
+            if (error || !created) continue
+            labelId = created.id
+          }
+
+          if (existingLabelIds.has(labelId)) continue
+
+          // Wikidataに加入日が無い場合、自分のDB側で「このアーティストがこの
+          // レーベルの下でリリースした最も古いアルバム」の発売日を加入日の
+          // 目安として使う(このレーベル紐付け処理はアルバム同期時の
+          // レーベル自動反映(utils/creditImport.tsのautoImportFromMusicBrainz)
+          // より後に走る想定のため、既にlabel_idが入っている可能性がある)
+          let startDate = wl.startYear ? `${wl.startYear}-01-01` : null
+          if (!startDate) {
+            const { data: earliestAlbum } = await supabase
+              .from('album')
+              .select('release_date')
+              .eq('artist_id', artistId)
+              .eq('label_id', labelId)
+              .not('release_date', 'is', null)
+              .order('release_date', { ascending: true })
+              .limit(1)
+              .maybeSingle()
+            startDate = earliestAlbum?.release_date ?? null
+          }
+
+          const { error: linkError } = await supabase.from('artist_label').insert({
+            artist_id: artistId,
+            label_id: labelId,
+            start_date: startDate,
+          })
+          if (!linkError) {
+            labelsLinked++
+            existingLabelIds.add(labelId)
           }
         }
-      } catch (err) {
-        console.error(`出身地座標の取得に失敗しました(${artistId}):`, err)
       }
+    } catch (err) {
+      console.error(`レーベル所属の取得に失敗しました(${artistId}):`, err)
     }
   }
 
@@ -279,6 +347,7 @@ export async function writeArtistProfileFromMusicBrainzDetails(
     membershipsWritten,
     membershipsUnresolved,
     originResolved,
+    labelsLinked,
   }
 }
 
@@ -320,5 +389,6 @@ export async function autoImportArtistProfileFromMusicBrainz(
   const unresolvedNote =
     result.membershipsUnresolved.length > 0 ? `・未解決メンバー${result.membershipsUnresolved.length}件` : ''
   const originNote = result.originResolved ? '・出身地座標取込' : ''
-  return `MBプロフィール取込: リンク${result.linkCount}件・ジャンル${result.genresLinked}件・メンバーシップ${result.membershipsWritten}件${unresolvedNote}${originNote}(プロフィール${result.profileFieldCount}件更新)`
+  const labelNote = result.labelsLinked > 0 ? `・レーベル${result.labelsLinked}件` : ''
+  return `MBプロフィール取込: リンク${result.linkCount}件・ジャンル${result.genresLinked}件・メンバーシップ${result.membershipsWritten}件${unresolvedNote}${originNote}${labelNote}(プロフィール${result.profileFieldCount}件更新)`
 }

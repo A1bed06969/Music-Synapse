@@ -301,6 +301,8 @@ const RELEASE_ROLE_TYPE_MAP: Record<string, MusicBrainzReleaseCredit['role']> = 
 
 export type MusicBrainzReleaseCreditsResult = {
   credits: MusicBrainzReleaseCredit[]
+  labelName: string | null
+  labelMbid: string | null
 }
 
 // MusicBrainzの録音(レコーディング)単位の"instrument"タイプ関係(例:
@@ -364,7 +366,7 @@ export async function fetchReleaseCreditsAndInstruments(
   const sourceUrl = `https://musicbrainz.org/release/${releaseMbid}`
 
   const releaseData = await fetchMusicBrainz(
-    `${MUSICBRAINZ_BASE}/release/${releaseMbid}?inc=artist-rels&fmt=json`,
+    `${MUSICBRAINZ_BASE}/release/${releaseMbid}?inc=artist-rels+labels&fmt=json`,
     'release credits'
   )
   const recordingData = await fetchMusicBrainz(
@@ -434,5 +436,16 @@ export async function fetchReleaseCreditsAndInstruments(
     }
   }
 
-  return { credits }
+  // label-infoは複数レーベル(共同流通盤等)を返しうるが、代表として先頭の1件のみ扱う
+  // (コンピレーション盤のような複数レーベル絡みのケースは今回のスコープ外)
+  const labelInfo = releaseData['label-info']?.[0]?.label
+  return { credits, labelName: labelInfo?.name ?? null, labelMbid: labelInfo?.id ?? null }
+}
+
+/** レーベルのMBIDから発足年だけを取得する軽量ルックアップ。新規レーベル作成時、
+ * または既存レーベルのfounded_yearが未設定な場合にだけ呼ぶ想定。 */
+export async function fetchLabelFoundedYear(labelMbid: string): Promise<number | null> {
+  const data = await fetchMusicBrainz(`${MUSICBRAINZ_BASE}/label/${labelMbid}?fmt=json`, 'label lookup')
+  const begin = data['life-span']?.begin
+  return begin ? Number(String(begin).slice(0, 4)) : null
 }
