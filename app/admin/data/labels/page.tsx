@@ -4,6 +4,7 @@ import { inputClass, buttonClass } from '../adminUi'
 import SearchableSelect from '../SearchableSelect'
 import { searchAlbums } from '../actions'
 import { createLabel, linkArtistLabel, linkAlbumLabel } from './actions'
+import MusicBrainzLabelSearch from './MusicBrainzLabelSearch'
 
 export default async function LabelsPage({
   searchParams,
@@ -37,6 +38,8 @@ export default async function LabelsPage({
       {error && (
         <div className="mt-6 rounded-md border border-red-500/30 bg-red-500/5 px-4 py-3 text-sm">{error}</div>
       )}
+
+      <MusicBrainzLabelSearch />
 
       <form action={createLabel} className="mt-6 space-y-2">
         <div className="flex flex-wrap gap-2">
