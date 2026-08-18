@@ -10,6 +10,7 @@ import EventScheduleView, { type Appearance, type EditionDateEntry } from './Eve
 const EVENT_TYPE_LABEL: Record<string, string> = {
   festival: 'フェス',
   one_off_live: '単発イベント',
+  tour: 'ツアー',
   other: 'その他',
 }
 

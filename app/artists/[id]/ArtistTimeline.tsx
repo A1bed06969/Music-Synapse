@@ -28,6 +28,13 @@ const KIND_ICON: Record<string, string> = {
   tieup: '📺',
 }
 
+const KIND_LABEL: Record<string, string> = {
+  release: 'リリース',
+  live: 'ライブ',
+  festival: 'フェス',
+  tieup: 'タイアップ',
+}
+
 /** アーティストの年表を文章メインの行リストとして表示する。ディスコグラフィー欄と
  * 見た目が近くなりすぎないよう、横スクロールのジャケット一覧ではなく小さな
  * サムネイル+日付+出来事のテキストを縦に並べる形式にしている。
@@ -95,10 +102,13 @@ export default function ArtistTimeline({
         return (
           <div key={i}>
             {showYearHeading && (
-              <p className="pt-4 text-xs font-semibold uppercase tracking-wide text-white/40 first:pt-0">{year}年</p>
+              <div className="flex items-center gap-3 pt-8 first:pt-0">
+                <span className="text-base font-bold text-white">{year}年</span>
+                <span className="h-px flex-1 bg-white/15" />
+              </div>
             )}
-            <div className="flex items-start gap-3 py-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded bg-white/5 text-base">
+            <div className="flex items-center gap-2.5 py-1.5">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded bg-white/5 text-xs">
                 {entry.imageUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={entry.imageUrl} alt={entry.title} className="h-full w-full object-cover" />
@@ -106,17 +116,20 @@ export default function ArtistTimeline({
                   <span>{KIND_ICON[entry.kind]}</span>
                 )}
               </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-xs text-white/40">{entry.date}</p>
+              <p className="min-w-0 flex-1 truncate text-sm">
+                <span className="text-xs text-white/40">{entry.date}</span>
+                <span className="mx-1.5 text-white/20">・</span>
+                <span className="text-[10px] text-white/40">{KIND_LABEL[entry.kind]}</span>
+                <span className="mx-1.5 text-white/20">・</span>
                 {entry.href ? (
-                  <Link href={entry.href} className="text-sm font-medium hover:underline">
+                  <Link href={entry.href} className="font-medium hover:underline">
                     {entry.title}
                   </Link>
                 ) : (
-                  <p className="text-sm font-medium">{entry.title}</p>
+                  <span className="font-medium">{entry.title}</span>
                 )}
-                {entry.subtitle && <p className="text-xs text-white/40">{entry.subtitle}</p>}
-              </div>
+                {entry.subtitle && <span className="ml-1.5 text-xs text-white/40">({entry.subtitle})</span>}
+              </p>
             </div>
           </div>
         )

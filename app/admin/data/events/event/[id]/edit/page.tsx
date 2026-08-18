@@ -7,6 +7,7 @@ import { updateEvent, deleteEvent } from '../../../actions'
 const EVENT_TYPE_OPTIONS = [
   { value: 'festival', label: 'フェス' },
   { value: 'one_off_live', label: '単発イベント' },
+  { value: 'tour', label: 'ツアー' },
   { value: 'other', label: 'その他' },
 ]
 

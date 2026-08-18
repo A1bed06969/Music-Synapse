@@ -5,6 +5,7 @@ import { continentForCountry, CONTINENT_ORDER } from '@/utils/continents'
 const EVENT_TYPE_LABEL: Record<string, string> = {
   festival: 'フェス',
   one_off_live: '単発イベント',
+  tour: 'ツアー',
   other: 'その他',
 }
 
