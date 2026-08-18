@@ -15,9 +15,16 @@ function PersonRow({ person }: { person: QuadrantPerson }) {
         {initial(person.name)}
       </span>
       <span className="min-w-0 flex-1 truncate">{person.name}</span>
-      {person.roleLabel && (
-        <span className="shrink-0 rounded-full border border-white/15 px-1.5 py-0.5 text-[10px] text-white/40">
-          {person.roleLabel}
+      {person.roleLabels && person.roleLabels.length > 0 && (
+        <span className="flex shrink-0 flex-wrap justify-end gap-1">
+          {person.roleLabels.map((label) => (
+            <span
+              key={label}
+              className="rounded-full border border-white/15 px-1.5 py-0.5 text-[10px] text-white/40"
+            >
+              {label}
+            </span>
+          ))}
         </span>
       )}
     </Link>
@@ -110,7 +117,7 @@ export default function ArtistCreditQuadrantGraph({
             {quadrants.credits.length === 0 ? (
               <EmptyNote />
             ) : (
-              quadrants.credits.map((p) => <PersonRow key={`${p.id}:${p.role}`} person={p} />)
+              quadrants.credits.map((p) => <PersonRow key={p.id} person={p} />)
             )}
           </Quadrant>
           <Quadrant title="コラボアーティスト">

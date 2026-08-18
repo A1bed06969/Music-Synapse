@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { CREDIT_ROLE_LABEL } from '@/utils/format'
 
-export type QuadrantPerson = { id: string; name: string; role?: string; roleLabel?: string }
+export type QuadrantPerson = { id: string; name: string; roleLabels?: string[] }
 export type QuadrantArtist = { id: string; name: string; imageUrl: string | null }
 
 export type ArtistCreditQuadrants = {
@@ -58,7 +58,7 @@ export async function buildArtistCreditQuadrants(
   }
 
   const producers = new Map<string, QuadrantPerson>()
-  const creditFolks = new Map<string, QuadrantPerson>()
+  const creditFolks = new Map<string, { id: string; name: string; roles: Set<string> }>()
   const musicians = new Map<string, QuadrantPerson>()
 
   for (const row of credits ?? []) {
@@ -70,12 +70,14 @@ export async function buildArtistCreditQuadrants(
     } else if (row.role === 'musician') {
       musicians.set(person.id, { id: person.id, name: person.name })
     } else if (CREDIT_QUADRANT_ROLES.includes(row.role)) {
-      creditFolks.set(`${person.id}:${row.role}`, {
-        id: person.id,
-        name: person.name,
-        role: row.role,
-        roleLabel: CREDIT_ROLE_LABEL[row.role] ?? row.role,
-      })
+      // 同一人物が複数の役割でクレジットされている場合、行を分けず1人1行にまとめて
+      // 役割バッジを複数付ける(以前はperson+roleキーで別行になっていた)
+      const existing = creditFolks.get(person.id)
+      if (existing) {
+        existing.roles.add(row.role)
+      } else {
+        creditFolks.set(person.id, { id: person.id, name: person.name, roles: new Set([row.role]) })
+      }
     }
   }
 
@@ -90,9 +92,19 @@ export async function buildArtistCreditQuadrants(
   }
 
   const byName = (a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name, 'ja')
+  const creditFolksList: QuadrantPerson[] = Array.from(creditFolks.values()).map((folk) => ({
+    id: folk.id,
+    name: folk.name,
+    // バッジの並び順を「作詞・作曲・編曲・ミックス・マスタリング・アートワーク」の
+    // 見出しと揃える
+    roleLabels: CREDIT_QUADRANT_ROLES.filter((role) => folk.roles.has(role)).map(
+      (role) => CREDIT_ROLE_LABEL[role] ?? role
+    ),
+  }))
+
   return {
     producers: Array.from(producers.values()).sort(byName),
-    credits: Array.from(creditFolks.values()).sort(byName),
+    credits: creditFolksList.sort(byName),
     collaborators: Array.from(collaborators.values()).sort(byName),
     musicians: Array.from(musicians.values()).sort(byName),
   }
