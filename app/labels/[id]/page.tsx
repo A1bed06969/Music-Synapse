@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/utils/Supabase/server'
 import { formatDate } from '@/utils/format'
+import LabelTimeline from './LabelTimeline'
 
 export default async function LabelDetailPage({
   params,
@@ -77,6 +78,17 @@ export default async function LabelDetailPage({
       {label.description && (
         <p className="mt-6 text-sm leading-relaxed text-white/70">{label.description}</p>
       )}
+
+      <section className="mt-8">
+        <h2 className="text-lg font-semibold">年表</h2>
+        <LabelTimeline
+          foundedYear={label.founded_year}
+          founders={founders ?? []}
+          roster={roster ?? []}
+          catalog={catalog ?? []}
+          awards={awards ?? []}
+        />
+      </section>
 
       {founders && founders.length > 0 && (
         <section className="mt-8">
