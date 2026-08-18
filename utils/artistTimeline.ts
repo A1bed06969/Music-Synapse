@@ -71,7 +71,7 @@ export function buildArtistTimeline(input: ArtistTimelineInput): ArtistTimelineE
       date: `${tieUp.year}-01-01`,
       kind: 'tieup',
       title: tieUp.trackTitle,
-      subtitle: tieUp.workTitle,
+      subtitle: `${tieUp.workTitle}(${CATEGORY_LABEL[tieUp.category] ?? tieUp.category})`,
       href: tieUp.albumId ? `/albums/${tieUp.albumId}` : null,
       imageUrl: null,
     })

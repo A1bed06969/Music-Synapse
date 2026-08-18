@@ -27,7 +27,7 @@ describe('buildArtistTimeline', () => {
       ]
     )
     assert.equal(entries[0].title, 'テーマ曲')
-    assert.equal(entries[0].subtitle, '鬼滅の刃')
+    assert.equal(entries[0].subtitle, '鬼滅の刃(アニメ)')
     assert.equal(entries[0].href, '/albums/al1')
     assert.equal(entries[1].title, 'First Album')
     assert.equal(entries[1].href, '/albums/al1')
