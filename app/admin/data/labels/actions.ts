@@ -97,7 +97,12 @@ export async function createLabelFromMusicBrainz(formData: FormData) {
   }
 
   const supabase = createAdminClient()
-  const { data: existing } = await supabase.from('label').select('id, founded_year').eq('name', name).maybeSingle()
+  const { data: existingRows } = await supabase
+    .from('label')
+    .select('id, founded_year')
+    .eq('name', name)
+    .limit(1)
+  const existing = existingRows?.[0]
 
   if (existing) {
     if (!existing.founded_year && foundedYear) {
