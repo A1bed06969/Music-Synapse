@@ -6,7 +6,7 @@ import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/utils/Supabase/admin'
 import { fetchArtistWithAlbums } from '@/utils/itunes'
 import { syncAlbumsAndTracksForArtist } from '@/app/admin/import/actions'
-import { autoImportArtistProfileFromMusicBrainz } from '@/utils/artistProfileImport'
+import { dispatchMusicBrainzImport } from '@/utils/musicbrainzImportDispatch'
 
 function redirectWith(artistId: string, result: 'success' | 'error', message: string): never {
   redirect(`/admin/data/artists/${artistId}/itunes-merge?${result}=${encodeURIComponent(message)}`)
@@ -75,11 +75,7 @@ export async function mergeItunesArtist(formData: FormData) {
       console.error(`アルバム・トラック取込に失敗しました(${artistName}):`, err)
     }
 
-    try {
-      await autoImportArtistProfileFromMusicBrainz(supabase, artistId)
-    } catch (err) {
-      console.error(`MusicBrainzプロフィール取込に失敗しました(${artistName}):`, err)
-    }
+    await dispatchMusicBrainzImport(artistId)
 
     revalidatePath(`/artists/${artistId}`)
   })

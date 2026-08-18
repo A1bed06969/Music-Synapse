@@ -1,6 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import { after } from 'next/server'
 import { createAdminClient } from '@/utils/Supabase/admin'
 import {
   searchArtist,
@@ -17,7 +18,7 @@ import {
   registerSingleAlbum,
   fillMissingArtistImage,
 } from '@/app/admin/import/actions'
-import { autoImportArtistProfileFromMusicBrainz } from '@/utils/artistProfileImport'
+import { dispatchMusicBrainzImport } from '@/utils/musicbrainzImportDispatch'
 
 export type SearchArtistItem = ItunesArtistSearchResult & { alreadyRegistered: boolean }
 export type SearchAlbumItem = ItunesAlbum & { alreadyRegistered: boolean }
@@ -149,11 +150,9 @@ export async function registerAlbumFromSearch(collectionId: number): Promise<Reg
 
   const { trackCount } = await registerSingleAlbum(supabase, artistId, album.artistName, album)
 
-  try {
-    await autoImportArtistProfileFromMusicBrainz(supabase, artistId)
-  } catch (err) {
-    console.error(`MusicBrainzプロフィール取込に失敗しました(${album.artistName}):`, err)
-  }
+  // レスポンスをブロックしないよう、レスポンス後にバックグラウンドでディスパッチする
+  // (理由はutils/musicbrainzImportDispatch.tsのコメント参照)
+  after(() => dispatchMusicBrainzImport(artistId!))
 
   revalidatePath('/admin/import/search')
   revalidatePath(`/artists/${artistId}`)

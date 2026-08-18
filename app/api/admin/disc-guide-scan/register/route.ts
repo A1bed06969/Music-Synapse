@@ -1,7 +1,7 @@
 // app/api/admin/disc-guide-scan/register/route.ts
 
 import { createAdminClient } from '@/utils/Supabase/admin';
-import { autoImportArtistProfileFromMusicBrainz } from '@/utils/artistProfileImport';
+import { dispatchMusicBrainzImport } from '@/utils/musicbrainzImportDispatch';
 import { classifyAlbumType } from '@/utils/albumType';
 import { after } from 'next/server';
 import { NextRequest, NextResponse } from 'next/server';
@@ -153,12 +153,7 @@ export async function POST(req: NextRequest) {
     if (bulkImportArtistIds.length > 0) {
       after(async () => {
         for (const artistId of bulkImportArtistIds) {
-          try {
-            const result = await autoImportArtistProfileFromMusicBrainz(supabase, artistId);
-            console.log(`Auto-import for artist ${artistId}: ${result}`);
-          } catch (err) {
-            console.error(`Auto-import failed for artist ${artistId}:`, err);
-          }
+          await dispatchMusicBrainzImport(artistId);
         }
       });
     }

@@ -16,7 +16,7 @@ import {
 } from '@/utils/itunes'
 import { fetchAppleMusicArtistImage } from '@/utils/appleMusicImage'
 import { autoImportFromMusicBrainz, autoImportFromDiscogs } from '@/utils/creditImport'
-import { autoImportArtistProfileFromMusicBrainz } from '@/utils/artistProfileImport'
+import { dispatchMusicBrainzImport } from '@/utils/musicbrainzImportDispatch'
 import { classifyAlbumType } from '@/utils/albumType'
 
 type ImportResult = {
@@ -416,13 +416,9 @@ async function importOneArtist(artistUrl: string): Promise<ImportResult> {
 
     // MusicBrainzの公式サイト/SNS/ジャンルもあわせて取り込む(タイトル完全一致での
     // MBID自動照合のみ、ベストエフォート。アルバム登録が先に済んでいる必要があるため
-    // syncAlbumsAndTracksForArtistの後に実行する)
-    try {
-      const result = await autoImportArtistProfileFromMusicBrainz(supabase, artistId)
-      console.log(`MusicBrainzプロフィール取込(${itunesArtist.artistName}): ${result}`)
-    } catch (err) {
-      console.error(`MusicBrainzプロフィール取込に失敗しました(${itunesArtist.artistName}):`, err)
-    }
+    // syncAlbumsAndTracksForArtistの後に実行する)。
+    // 別関数呼び出しとして切り離す理由はutils/musicbrainzImportDispatch.tsのコメント参照
+    await dispatchMusicBrainzImport(artistId)
 
     revalidatePath(`/artists/${artistId}`)
   })
