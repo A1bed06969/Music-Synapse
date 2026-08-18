@@ -26,6 +26,13 @@ type ImportResult = {
   albumCount?: number
 }
 
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error(`timed out after ${ms}ms`)), ms)),
+  ])
+}
+
 export async function importArtistsFromItunes(artistUrls: string[]): Promise<ImportResult[]> {
   const results: ImportResult[] = []
   for (const url of artistUrls) {
@@ -235,15 +242,22 @@ async function syncOneAlbum(
   }
 
   // このアルバムのクレジットをMusicBrainz→Discogsの順で試みる(タイトル完全一致時のみ、
-  // ベストエフォート。取得失敗・不一致はアルバム・トラック登録自体には影響させない)
+  // ベストエフォート。取得失敗・不一致はアルバム・トラック登録自体には影響させない)。
+  // MusicBrainz側は503時に最大5回・1回ごとに1秒以上のリトライを行うため、
+  // 混雑時は1アルバムだけで数十秒かかることがある。アルバム数が多いアーティストの
+  // 同期(チャンク分割、utils/albumSyncDispatch.ts参照)が1枚のクレジット取込に
+  // 詰まって全体が進まなくなるのを防ぐため、それぞれ上限時間で打ち切る
   const albumForCredits = { id: albumId, title: albumPayload.title }
   try {
-    await autoImportFromMusicBrainz(supabase, artistId, artistName, albumForCredits, albumTrackList)
+    await withTimeout(
+      autoImportFromMusicBrainz(supabase, artistId, artistName, albumForCredits, albumTrackList),
+      15_000
+    )
   } catch (err) {
     console.error(`MusicBrainzクレジット取込に失敗しました(${albumPayload.title}):`, err)
   }
   try {
-    await autoImportFromDiscogs(supabase, artistId, artistName, albumForCredits, albumTrackList)
+    await withTimeout(autoImportFromDiscogs(supabase, artistId, artistName, albumForCredits, albumTrackList), 15_000)
   } catch (err) {
     console.error(`Discogsクレジット取込に失敗しました(${albumPayload.title}):`, err)
   }
