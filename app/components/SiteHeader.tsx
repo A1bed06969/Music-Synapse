@@ -78,7 +78,7 @@ export default function SiteHeader({ stats }: { stats: SiteStats }) {
           menuOpen ? 'max-h-[32rem]' : 'max-h-0'
         }`}
       >
-        <div className="mx-auto flex max-w-[1600px] flex-col gap-1 border-t border-white/10 px-6 py-3 sm:flex-row sm:flex-wrap sm:gap-2">
+        <div className="mx-auto grid max-w-[1600px] grid-cols-2 gap-1 border-t border-white/10 px-6 py-3 sm:flex sm:flex-row sm:flex-wrap sm:gap-2">
           {NAV_LINKS.map((link) => (
             <Link
               key={link.href}
