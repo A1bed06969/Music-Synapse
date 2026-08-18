@@ -1,35 +1,16 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/utils/Supabase/server'
-import { formatDate, extractYoutubeVideoId } from '@/utils/format'
-import MapClientWrapper from '@/app/map/MapClientWrapper'
+import { extractYoutubeVideoId } from '@/utils/format'
 import type { MapMarker } from '@/app/map/LeafletMap'
 import { NEWS_SOURCES } from '@/utils/newsFeeds'
 import { fetchAllNews, findRelatedNews, formatRelativeTime } from '@/utils/newsParser'
+import EventScheduleView, { type Appearance, type EditionDateEntry } from './EventScheduleView'
 
 const EVENT_TYPE_LABEL: Record<string, string> = {
   festival: 'フェス',
   one_off_live: '単発イベント',
   other: 'その他',
-}
-
-const WEEKDAY_LABEL_JA = ['日', '月', '火', '水', '木', '金', '土']
-
-function formatDayHeading(dateStr: string): string {
-  const d = new Date(`${dateStr}T00:00:00Z`)
-  return `${d.getUTCFullYear()}年${d.getUTCMonth() + 1}月${d.getUTCDate()}日(${WEEKDAY_LABEL_JA[d.getUTCDay()]})`
-}
-
-type Appearance = {
-  id: number
-  stage: string | null
-  venue: string | null
-  isHeadliner: boolean
-  performanceDate: string | null
-  timeLabel: string | null
-  artistId: string
-  artistName: string
-  artistImageUrl: string | null
 }
 
 function toHHMM(isoStr: string): string {
@@ -150,12 +131,12 @@ export default async function EventDetailPage({
     (requestedYear ? editionList.find((ed) => ed.year === requestedYear) : null) ?? editionList[0] ?? null
 
   let appearances: Appearance[] = []
-  let editionDates: { id: string; date: string; venue: string }[] = []
+  let editionDates: EditionDateEntry[] = []
 
   if (selectedEdition) {
     const { data: editionDateRows } = await supabase
       .from('event_edition_date')
-      .select('id, date, venue')
+      .select('id, date, venue, region')
       .eq('event_edition_id', selectedEdition.id)
       .order('date', { ascending: true })
     editionDates = editionDateRows ?? []
@@ -232,19 +213,6 @@ export default async function EventDetailPage({
 
   const relatedNews = await relatedNewsPromise
 
-  const NO_DATE = '__no_date__'
-  const dayGroups = new Map<string, Appearance[]>()
-  for (const a of appearances) {
-    const key = a.performanceDate ?? NO_DATE
-    if (!dayGroups.has(key)) dayGroups.set(key, [])
-    dayGroups.get(key)!.push(a)
-  }
-  const sortedDayKeys = Array.from(dayGroups.keys()).sort((a, b) => {
-    if (a === NO_DATE) return 1
-    if (b === NO_DATE) return -1
-    return a.localeCompare(b)
-  })
-
   return (
     <div className="mx-auto max-w-[1600px] px-6 py-12">
       <Link href="/events" className="text-xs text-white/40 hover:text-white/70">
@@ -293,118 +261,15 @@ export default async function EventDetailPage({
             ))}
           </div>
 
-          <div className="mt-4 flex flex-col gap-4 lg:flex-row lg:items-stretch">
-            {editionDates.length > 0 ? (
-              <div className="flex-1 space-y-2">
-                {editionDates.map((ed, i) => (
-                  <div key={ed.id} className="rounded-lg border border-white/10 bg-white/[0.02] p-4">
-                    <p className="text-sm font-medium text-white/85">
-                      Day {i + 1} ・ {formatDayHeading(ed.date)}
-                    </p>
-                    <p className="mt-0.5 flex items-center gap-1 text-xs text-white/40">📍 {ed.venue}</p>
-                  </div>
-                ))}
-                {selectedEdition.description && (
-                  <p className="text-xs text-white/50">{selectedEdition.description}</p>
-                )}
-              </div>
-            ) : (
-              <div className="flex-1 rounded-lg border border-white/10 bg-white/[0.02] p-4">
-                <p className="text-sm text-white/70">
-                  {venueSummary}
-                  {selectedEdition.start_date &&
-                    `${venueSummary ? ' ・ ' : ''}${formatDate(selectedEdition.start_date)}${
-                      selectedEdition.end_date && selectedEdition.end_date !== selectedEdition.start_date
-                        ? `〜${formatDate(selectedEdition.end_date)}`
-                        : ''
-                    }`}
-                </p>
-                {selectedEdition.description && (
-                  <p className="mt-2 text-xs text-white/50">{selectedEdition.description}</p>
-                )}
-              </div>
-            )}
-            {venueMarkers.length > 0 && (
-              <div className="lg:w-80 lg:shrink-0">
-                <MapClientWrapper markers={venueMarkers} heightClassName="h-[180px]" />
-              </div>
-            )}
-          </div>
-
-          {appearances.length === 0 ? (
-            <p className="mt-8 text-sm text-white/40">まだ出演アーティストが登録されていません。</p>
-          ) : (
-            <div className="mt-8 space-y-8">
-              <h2 className="text-lg font-semibold">日程・出演アーティスト</h2>
-              {sortedDayKeys.map((dayKey, dayIndex) => {
-                const rows = dayGroups.get(dayKey)!
-                const dayVenue = rows.find((a) => a.venue)?.venue ?? venueSummary
-
-                const stageGroups = new Map<string, Appearance[]>()
-                for (const row of rows) {
-                  const stageKey = row.stage ?? 'その他'
-                  if (!stageGroups.has(stageKey)) stageGroups.set(stageKey, [])
-                  stageGroups.get(stageKey)!.push(row)
-                }
-
-                return (
-                  <div key={dayKey} className="rounded-lg border border-white/10 bg-white/[0.02] p-4">
-                    <h3 className="font-semibold">
-                      {dayKey === NO_DATE ? '日程未定' : `Day ${dayIndex + 1} ・ ${formatDayHeading(dayKey)}`}
-                    </h3>
-                    {dayVenue && (
-                      <p className="mt-0.5 flex items-center gap-1 text-xs text-white/40">📍 {dayVenue}</p>
-                    )}
-
-                    <div className="mt-4 space-y-3">
-                      {Array.from(stageGroups.entries()).map(([stageKey, stageRows]) => (
-                        <div key={stageKey}>
-                          {stageGroups.size > 1 && (
-                            <h4 className="text-xs font-medium uppercase tracking-wide text-white/40">{stageKey}</h4>
-                          )}
-                          <div className="mt-2 flex flex-wrap gap-2">
-                            {stageRows.map((a) => (
-                              <Link
-                                key={a.id}
-                                href={`/artists/${a.artistId}`}
-                                className={`flex items-center gap-2 rounded-full border py-1 pl-1 pr-3 text-sm transition hover:border-white/40 hover:bg-white/[0.08] ${
-                                  a.isHeadliner
-                                    ? 'border-white/40 bg-white/[0.06] font-semibold'
-                                    : 'border-white/15 bg-white/[0.03] text-white/85'
-                                }`}
-                              >
-                                {a.artistImageUrl ? (
-                                  // eslint-disable-next-line @next/next/no-img-element
-                                  <img
-                                    src={a.artistImageUrl}
-                                    alt=""
-                                    className="h-10 w-10 shrink-0 rounded-full object-cover"
-                                  />
-                                ) : (
-                                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/10 text-base">
-                                    🎤
-                                  </span>
-                                )}
-                                <span className="leading-tight">
-                                  <span className="block">{a.artistName}</span>
-                                  {a.isHeadliner && (
-                                    <span className="block text-[10px] font-semibold tracking-wide text-amber-400">
-                                      ★ ヘッドライナー
-                                    </span>
-                                  )}
-                                  {a.timeLabel && <span className="block text-xs text-white/40">{a.timeLabel}</span>}
-                                </span>
-                              </Link>
-                            ))}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          )}
+          <EventScheduleView
+            editionDates={editionDates}
+            editionDescription={selectedEdition.description}
+            venueSummary={venueSummary}
+            editionStartDate={selectedEdition.start_date}
+            editionEndDate={selectedEdition.end_date}
+            venueMarkers={venueMarkers}
+            appearances={appearances}
+          />
         </>
       )}
 

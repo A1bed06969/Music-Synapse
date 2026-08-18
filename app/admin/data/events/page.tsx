@@ -44,7 +44,7 @@ export default async function EventsAdminPage({
     supabase.from('event_edition').select('id, year, event:event_id(name)').order('year', { ascending: false }),
     supabase
       .from('event_edition_date')
-      .select('id, date, venue, event_edition:event_edition_id(year, event:event_id(name))')
+      .select('id, date, venue, region, event_edition:event_edition_id(year, event:event_id(name))')
       .order('date', { ascending: true }),
     supabase
       .from('event_appearance')
@@ -176,7 +176,7 @@ export default async function EventsAdminPage({
 
       <h2 className="mt-8 text-sm font-semibold text-white/70">開催日程・会場</h2>
       <p className="mt-1 text-xs text-white/40">
-        サマーソニックのように日によって会場が異なるフェスや、複数都市を回るライブツアーなど、1つの開催回の中で日付・会場が複数ある場合にここで個別に登録する。アーティストの出演情報とは独立して登録できる。
+        サマーソニックのように日によって会場が異なるフェスや、複数都市を回るライブツアーなど、1つの開催回の中で日付・会場が複数ある場合にここで個別に登録する。アーティストの出演情報とは独立して登録できる。東京・大阪のように同日程で複数都市が同時開催される場合は都市名も入力すると、イベント詳細ページで都市ごとにタブ分けして表示される。
       </p>
       <form action={createEventEditionDate} className="mt-3 flex flex-wrap gap-2">
         <select name="event_edition_id" required className={`${inputClass} max-w-xs`} defaultValue="">
@@ -191,6 +191,7 @@ export default async function EventsAdminPage({
         </select>
         <input name="date" type="date" required className={`${inputClass} max-w-[160px]`} />
         <input name="venue" placeholder="会場(例: 幕張メッセ)" required className={`${inputClass} max-w-xs`} />
+        <input name="region" placeholder="都市(任意・例: 東京)" className={`${inputClass} max-w-[140px]`} />
         <button type="submit" className={buttonClass}>
           開催日程を追加
         </button>
@@ -205,6 +206,7 @@ export default async function EventsAdminPage({
               <li key={row.id} className="flex items-center justify-between gap-2">
                 <span>
                   {event?.name}({edition?.year}) — {row.date} @ {row.venue}
+                  {row.region ? `(${row.region})` : ''}
                 </span>
                 <Link
                   href={`/admin/data/events/edition-date/${row.id}/edit`}

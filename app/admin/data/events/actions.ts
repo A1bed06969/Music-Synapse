@@ -74,6 +74,7 @@ export async function createEventEditionDate(formData: FormData) {
   const eventEditionId = String(formData.get('event_edition_id') ?? '')
   const date = String(formData.get('date') ?? '').trim()
   const venue = String(formData.get('venue') ?? '').trim()
+  const region = String(formData.get('region') ?? '').trim()
 
   if (!eventEditionId || !date || !venue) {
     redirectWith('error', '開催回・日付・会場を入力してください。')
@@ -84,6 +85,7 @@ export async function createEventEditionDate(formData: FormData) {
     event_edition_id: eventEditionId,
     date,
     venue,
+    region: region || null,
   })
 
   if (error) {
@@ -273,6 +275,7 @@ export async function updateEventEditionDate(formData: FormData) {
   const eventEditionId = String(formData.get('event_edition_id') ?? '')
   const date = String(formData.get('date') ?? '').trim()
   const venue = String(formData.get('venue') ?? '').trim()
+  const region = String(formData.get('region') ?? '').trim()
 
   if (!id || !eventEditionId || !date || !venue) {
     redirectWith('error', '開催回・日付・会場を入力してください。')
@@ -281,7 +284,7 @@ export async function updateEventEditionDate(formData: FormData) {
   const supabase = createAdminClient()
   const { error } = await supabase
     .from('event_edition_date')
-    .update({ event_edition_id: eventEditionId, date, venue })
+    .update({ event_edition_id: eventEditionId, date, venue, region: region || null })
     .eq('id', id)
 
   if (error) {

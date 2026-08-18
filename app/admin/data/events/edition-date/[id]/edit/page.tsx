@@ -9,7 +9,7 @@ export default async function EditEventEditionDatePage({ params }: { params: Pro
   const supabase = await createClient()
 
   const [{ data: entry, error }, { data: eventEditions }] = await Promise.all([
-    supabase.from('event_edition_date').select('id, event_edition_id, date, venue').eq('id', id).single(),
+    supabase.from('event_edition_date').select('id, event_edition_id, date, venue, region').eq('id', id).single(),
     supabase.from('event_edition').select('id, year, event:event_id(name)').order('year', { ascending: false }),
   ])
 
@@ -51,6 +51,12 @@ export default async function EditEventEditionDatePage({ params }: { params: Pro
           required
           defaultValue={entry.venue}
           className={`${inputClass} max-w-xs`}
+        />
+        <input
+          name="region"
+          placeholder="都市(任意・例: 東京)"
+          defaultValue={entry.region ?? ''}
+          className={`${inputClass} max-w-[140px]`}
         />
         <button type="submit" className={buttonClass}>
           更新する
