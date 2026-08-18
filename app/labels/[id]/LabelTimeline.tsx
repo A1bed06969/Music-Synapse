@@ -1,6 +1,5 @@
 import Link from 'next/link'
 import { buildLabelTimeline, type LabelTimelineInput } from '@/utils/labelTimeline'
-import { formatDate } from '@/utils/format'
 
 type FounderRow = { role: string | null; person: { name: string } | { name: string }[] | null }
 type RosterRow = {
@@ -86,19 +85,29 @@ export default function LabelTimeline({
 
   return (
     <ul className="mt-4 space-y-3 border-l border-white/10 pl-4 text-sm">
-      {entries.map((entry, i) => (
-        <li key={i} className="relative">
-          <span className="absolute -left-[21px] top-0.5 text-xs">{KIND_ICON[entry.kind]}</span>
-          <span className="text-xs text-white/40">{formatDate(entry.date)}</span>{' '}
-          {entry.href ? (
-            <Link href={entry.href} className="text-white/80 hover:text-white">
-              {entry.title}
-            </Link>
-          ) : (
-            <span className="text-white/80">{entry.title}</span>
-          )}
-        </li>
-      ))}
+      {entries.map((entry, i) => {
+        const year = entry.date.slice(0, 4)
+        const prevYear = i > 0 ? entries[i - 1].date.slice(0, 4) : null
+        const monthDay = entry.date.slice(5)
+        return (
+          <li key={i}>
+            {year !== prevYear && (
+              <p className="-ml-4 mb-1 text-xs font-semibold text-white/40">{year}</p>
+            )}
+            <div className="relative">
+              <span className="absolute -left-[21px] top-0.5 text-xs">{KIND_ICON[entry.kind]}</span>
+              <span className="text-xs text-white/40">{monthDay}</span>{' '}
+              {entry.href ? (
+                <Link href={entry.href} className="text-white/80 hover:text-white">
+                  {entry.title}
+                </Link>
+              ) : (
+                <span className="text-white/80">{entry.title}</span>
+              )}
+            </div>
+          </li>
+        )
+      })}
     </ul>
   )
 }
