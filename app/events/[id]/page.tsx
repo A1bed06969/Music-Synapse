@@ -386,10 +386,12 @@ export default async function EventDetailPage({
                                   </span>
                                 )}
                                 <span className="leading-tight">
-                                  <span className="block">
-                                    {a.artistName}
-                                    {a.isHeadliner && ' ★'}
-                                  </span>
+                                  <span className="block">{a.artistName}</span>
+                                  {a.isHeadliner && (
+                                    <span className="block text-[10px] font-semibold tracking-wide text-amber-400">
+                                      ★ ヘッドライナー
+                                    </span>
+                                  )}
                                   {a.timeLabel && <span className="block text-xs text-white/40">{a.timeLabel}</span>}
                                 </span>
                               </Link>
