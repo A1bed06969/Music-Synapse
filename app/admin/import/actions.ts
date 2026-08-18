@@ -249,12 +249,12 @@ async function syncOneAlbum(
   // 詰まって全体が進まなくなるのを防ぐため、それぞれ上限時間で打ち切る
   const albumForCredits = { id: albumId, title: albumPayload.title }
   try {
-    await withTimeout(autoImportFromMusicBrainz(supabase, artistId, artistName, albumForCredits, albumTrackList), 8_000)
+    await withTimeout(autoImportFromMusicBrainz(supabase, artistId, artistName, albumForCredits, albumTrackList), 5_000)
   } catch (err) {
     console.error(`MusicBrainzクレジット取込に失敗しました(${albumPayload.title}):`, err)
   }
   try {
-    await withTimeout(autoImportFromDiscogs(supabase, artistId, artistName, albumForCredits, albumTrackList), 8_000)
+    await withTimeout(autoImportFromDiscogs(supabase, artistId, artistName, albumForCredits, albumTrackList), 5_000)
   } catch (err) {
     console.error(`Discogsクレジット取込に失敗しました(${albumPayload.title}):`, err)
   }

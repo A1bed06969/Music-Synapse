@@ -12,10 +12,14 @@ import { dispatchMusicBrainzImport } from '@/utils/musicbrainzImportDispatch'
 import type { ItunesAlbum } from '@/utils/itunes'
 
 export const maxDuration = 60
-// 1アルバムの処理はMusicBrainz/Discogsクレジット取込のタイムアウト(8秒×2、
-// app/admin/import/actions.tsのwithTimeout参照)を含めても最大20秒程度で収まる。
-// この予算を超えたらチェックせず打ち切る(maxDurationの60秒に対して十分な余裕を残す)
-const TIME_BUDGET_MS = 25_000
+// 1アルバムの処理はMusicBrainz/Discogsクレジット取込のタイムアウト(5秒×2、
+// app/admin/import/actions.tsのwithTimeout参照)を含めても最大12秒程度で収まる。
+// この予算を超えたらチェックせず打ち切る(maxDurationの60秒に対して十分な余裕を残す)。
+// カタログの大きいアーティストで自己ディスパッチの回数(ホップ数)が増えすぎると
+// Vercelのループ検知(508 Loop Detected)に引っかかるため、1回のチャンクでできるだけ
+// 多く処理してホップ数自体を減らす方針(値を上げるほどホップは減るがmaxDurationとの
+// 余白が狭くなるトレードオフ)
+const TIME_BUDGET_MS = 45_000
 
 export async function POST(request: NextRequest) {
   const body = await request.json()
