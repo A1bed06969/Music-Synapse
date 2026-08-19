@@ -10,12 +10,16 @@ function redirectWith(result: 'success' | 'error', message: string) {
 
 export async function createEvent(formData: FormData) {
   const name = String(formData.get('name') ?? '').trim()
+  const nameJa = String(formData.get('name_ja') ?? '').trim()
   const eventType = String(formData.get('event_type') ?? '').trim()
   const foundedYearRaw = String(formData.get('founded_year') ?? '').trim()
   const country = String(formData.get('country') ?? '').trim()
   const prefecture = String(formData.get('prefecture') ?? '').trim()
   const description = String(formData.get('description') ?? '').trim()
   const genreId = String(formData.get('genre_id') ?? '').trim()
+  const imageUrl = String(formData.get('image_url') ?? '').trim()
+  const officialSiteUrl = String(formData.get('official_site_url') ?? '').trim()
+  const officialYoutubeUrl = String(formData.get('official_youtube_url') ?? '').trim()
 
   if (!name) {
     redirectWith('error', 'イベント名を入力してください。')
@@ -24,12 +28,16 @@ export async function createEvent(formData: FormData) {
   const supabase = createAdminClient()
   const { error } = await supabase.from('event').insert({
     name,
+    name_ja: nameJa || null,
     event_type: eventType || null,
     founded_year: foundedYearRaw ? Number(foundedYearRaw) : null,
     country: country || null,
     prefecture: prefecture || null,
     description: description || null,
     genre_id: genreId || null,
+    image_url: imageUrl || null,
+    official_site_url: officialSiteUrl || null,
+    official_youtube_url: officialYoutubeUrl || null,
   })
 
   if (error) {
@@ -165,12 +173,16 @@ export async function createMusicEvent(formData: FormData) {
 export async function updateEvent(formData: FormData) {
   const id = String(formData.get('id') ?? '')
   const name = String(formData.get('name') ?? '').trim()
+  const nameJa = String(formData.get('name_ja') ?? '').trim()
   const eventType = String(formData.get('event_type') ?? '').trim()
   const foundedYearRaw = String(formData.get('founded_year') ?? '').trim()
   const country = String(formData.get('country') ?? '').trim()
   const prefecture = String(formData.get('prefecture') ?? '').trim()
   const description = String(formData.get('description') ?? '').trim()
   const genreId = String(formData.get('genre_id') ?? '').trim()
+  const imageUrl = String(formData.get('image_url') ?? '').trim()
+  const officialSiteUrl = String(formData.get('official_site_url') ?? '').trim()
+  const officialYoutubeUrl = String(formData.get('official_youtube_url') ?? '').trim()
 
   if (!id || !name) {
     redirectWith('error', 'イベント名を入力してください。')
@@ -181,12 +193,16 @@ export async function updateEvent(formData: FormData) {
     .from('event')
     .update({
       name,
+      name_ja: nameJa || null,
       event_type: eventType || null,
       founded_year: foundedYearRaw ? Number(foundedYearRaw) : null,
       country: country || null,
       prefecture: prefecture || null,
       description: description || null,
       genre_id: genreId || null,
+      image_url: imageUrl || null,
+      official_site_url: officialSiteUrl || null,
+      official_youtube_url: officialYoutubeUrl || null,
     })
     .eq('id', id)
 

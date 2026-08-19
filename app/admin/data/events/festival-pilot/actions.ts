@@ -8,9 +8,101 @@ import { createAdminClient } from '@/utils/Supabase/admin'
 import { searchArtist, fetchArtistWithAlbums, type ItunesArtistSearchResult } from '@/utils/itunes'
 import { upsertArtistFromItunes } from '@/app/admin/import/actions'
 import { dispatchAlbumSync } from '@/utils/albumSyncDispatch'
+import type { FestivalPick } from '@/utils/festivalScrape'
 
 function redirectWith(result: 'success' | 'error', message: string): never {
   redirect(`/admin/data/events/festival-pilot?${result}=${encodeURIComponent(message)}`)
+}
+
+function redirectDatasetsWith(result: 'success' | 'error', message: string): never {
+  redirect(`/admin/data/events/festival-pilot/datasets?${result}=${encodeURIComponent(message)}`)
+}
+
+type FestivalPickWithFlag = FestivalPick & { suspicious?: boolean }
+
+/** 貼り付けられたJSONが、最低限FestivalPick[]として使える形かを検証する
+ * (完全な型検証ではなく、実行時に壊れる代表的な不備だけを弾く) */
+function validateFestivalPicks(value: unknown): { picks: FestivalPickWithFlag[] | null; errorMessage: string | null } {
+  if (!Array.isArray(value)) {
+    return { picks: null, errorMessage: 'JSONは配列である必要があります。' }
+  }
+  if (value.length === 0) {
+    return { picks: null, errorMessage: '空の配列です。' }
+  }
+  for (const [i, row] of value.entries()) {
+    if (typeof row !== 'object' || row === null) {
+      return { picks: null, errorMessage: `${i}件目が配列/オブジェクトの形になっていません。` }
+    }
+    const r = row as Record<string, unknown>
+    if (typeof r.festivalName !== 'string' || !r.festivalName) {
+      return { picks: null, errorMessage: `${i}件目にfestivalName(文字列)がありません。` }
+    }
+    if (typeof r.editionYear !== 'number') {
+      return { picks: null, errorMessage: `${i}件目にeditionYear(数値)がありません。` }
+    }
+    if (typeof r.artistName !== 'string' || !r.artistName) {
+      return { picks: null, errorMessage: `${i}件目にartistName(文字列)がありません。` }
+    }
+  }
+  return { picks: value as FestivalPickWithFlag[], errorMessage: null }
+}
+
+/** festival-pilotの出演者候補データ(JSON配列)を、キー指定でDBに保存する(無ければ新規作成、
+ * あれば更新)。コードへのコミット・デプロイ無しで新しいフェスを追加できるようにするため。 */
+export async function saveFestivalPilotDataset(formData: FormData) {
+  const key = String(formData.get('key') ?? '').trim()
+  const label = String(formData.get('label') ?? '').trim()
+  const picksRaw = String(formData.get('picks') ?? '').trim()
+
+  if (!key || !label || !picksRaw) {
+    redirectDatasetsWith('error', 'キー・表示名・JSONをすべて入力してください。')
+  }
+  if (!/^[a-z0-9_-]+$/.test(key)) {
+    redirectDatasetsWith('error', 'キーは半角英小文字・数字・ハイフン・アンダースコアのみ使用できます。')
+  }
+
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(picksRaw)
+  } catch {
+    redirectDatasetsWith('error', 'JSONの構文が不正です。')
+  }
+
+  const { picks, errorMessage } = validateFestivalPicks(parsed)
+  if (!picks) {
+    redirectDatasetsWith('error', errorMessage ?? 'JSONの形式が不正です。')
+  }
+
+  const supabase = createAdminClient()
+  const { error } = await supabase
+    .from('festival_pilot_dataset')
+    .upsert({ key, label, picks }, { onConflict: 'key' })
+
+  if (error) {
+    redirectDatasetsWith('error', `保存に失敗しました: ${error.message}`)
+  }
+
+  revalidatePath('/admin/data/events/festival-pilot')
+  revalidatePath('/admin/data/events/festival-pilot/datasets')
+  redirectDatasetsWith('success', `「${label}」を保存しました(${picks!.length}件)。`)
+}
+
+export async function deleteFestivalPilotDataset(formData: FormData) {
+  const id = String(formData.get('id') ?? '')
+  if (!id) {
+    redirectDatasetsWith('error', '不正なリクエストです。')
+  }
+
+  const supabase = createAdminClient()
+  const { error } = await supabase.from('festival_pilot_dataset').delete().eq('id', id)
+
+  if (error) {
+    redirectDatasetsWith('error', `削除に失敗しました: ${error.message}`)
+  }
+
+  revalidatePath('/admin/data/events/festival-pilot')
+  revalidatePath('/admin/data/events/festival-pilot/datasets')
+  redirectDatasetsWith('success', '削除しました。')
 }
 
 type EditionInput = {

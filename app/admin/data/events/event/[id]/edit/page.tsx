@@ -18,7 +18,9 @@ export default async function EditEventPage({ params }: { params: Promise<{ id: 
   const [{ data: entry, error }, { data: genres }] = await Promise.all([
     supabase
       .from('event')
-      .select('id, name, event_type, founded_year, country, prefecture, description, genre_id')
+      .select(
+        'id, name, name_ja, event_type, founded_year, country, prefecture, description, genre_id, image_url, official_site_url, official_youtube_url'
+      )
       .eq('id', id)
       .single(),
     supabase.from('genre').select('id, name').order('name'),
@@ -45,6 +47,12 @@ export default async function EditEventPage({ params }: { params: Promise<{ id: 
             required
             defaultValue={entry.name}
             className={`${inputClass} max-w-xs`}
+          />
+          <input
+            name="name_ja"
+            placeholder="略称・日本語名(任意・例: フジロック)"
+            defaultValue={entry.name_ja ?? ''}
+            className={`${inputClass} max-w-[200px]`}
           />
           <select name="event_type" className={`${inputClass} max-w-[140px]`} defaultValue={entry.event_type ?? ''}>
             <option value="">種別(任意)</option>
@@ -78,6 +86,26 @@ export default async function EditEventPage({ params }: { params: Promise<{ id: 
               </option>
             ))}
           </select>
+        </div>
+        <input
+          name="image_url"
+          placeholder="キービジュアル画像URL(任意)"
+          defaultValue={entry.image_url ?? ''}
+          className={inputClass}
+        />
+        <div className="flex flex-wrap gap-2">
+          <input
+            name="official_site_url"
+            placeholder="公式サイトURL(任意)"
+            defaultValue={entry.official_site_url ?? ''}
+            className={`${inputClass} max-w-xs`}
+          />
+          <input
+            name="official_youtube_url"
+            placeholder="公式YouTube URL(任意)"
+            defaultValue={entry.official_youtube_url ?? ''}
+            className={`${inputClass} max-w-xs`}
+          />
         </div>
         <input
           name="description"

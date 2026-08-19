@@ -1,6 +1,4 @@
 import Link from 'next/link'
-import fs from 'fs'
-import path from 'path'
 import { createClient } from '@/utils/Supabase/server'
 import { fetchGlastonburyLineup, type FestivalPick } from '@/utils/festivalScrape'
 import { registerFestivalAppearance } from './actions'
@@ -16,34 +14,31 @@ type DisplayPick = StaticFestivalPick & {
   alreadyRegistered: boolean
 }
 
-const FESTIVALS = [
-  { key: 'glastonbury', label: 'Glastonbury', dataFile: null },
-  { key: 'fujirock', label: 'フジロック', dataFile: 'fujirock-2026.json' },
-  { key: 'summersonic', label: 'サマーソニック', dataFile: 'summersonic-2026.json' },
-  { key: 'risingsun', label: 'ライジングサン', dataFile: 'risingsun-2026.json' },
-  { key: 'sweetloveshower', label: 'スイートラブシャワー', dataFile: 'sweetloveshower-2026.json' },
-  { key: 'kyotoongakuhaku', label: '京都音楽博覧会', dataFile: 'kyotoongakuhaku-2026.json' },
-  { key: 'rockinjapan', label: 'ロック・イン・ジャパン', dataFile: 'rockinjapan-2026.json' },
-] as const
-
-function loadStaticPicks(dataFile: string): FestivalPick[] {
-  const filePath = path.join(process.cwd(), 'app/admin/data/events/festival-pilot/data', dataFile)
-  return JSON.parse(fs.readFileSync(filePath, 'utf-8'))
-}
-
 export default async function FestivalPilotPage({
   searchParams,
 }: {
   searchParams: Promise<{ success?: string; error?: string; festival?: string }>
 }) {
   const { success, error: errorMessage, festival: festivalParam } = await searchParams
-  const activeFestival = FESTIVALS.find((f) => f.key === festivalParam) ?? FESTIVALS[0]
   const supabase = await createClient()
+
+  // Glastonburyだけはライブスクレイピング(utils/festivalScrape.ts)、それ以外は
+  // 管理画面(festival-pilot/datasets)からDBに登録された出演者データを使う
+  const { data: datasetRows } = await supabase
+    .from('festival_pilot_dataset')
+    .select('key, label, picks')
+    .order('label')
+
+  const FESTIVALS = [
+    { key: 'glastonbury', label: 'Glastonbury', picks: null as StaticFestivalPick[] | null },
+    ...(datasetRows ?? []).map((d) => ({ key: d.key, label: d.label, picks: d.picks as StaticFestivalPick[] })),
+  ]
+  const activeFestival = FESTIVALS.find((f) => f.key === festivalParam) ?? FESTIVALS[0]
 
   let picks: StaticFestivalPick[] = []
   let fetchError: string | null = null
   try {
-    picks = activeFestival.dataFile ? loadStaticPicks(activeFestival.dataFile) : await fetchGlastonburyLineup()
+    picks = activeFestival.picks ?? (await fetchGlastonburyLineup())
   } catch (err) {
     fetchError = err instanceof Error ? err.message : '取得に失敗しました。'
   }
@@ -98,9 +93,14 @@ export default async function FestivalPilotPage({
 
   return (
     <div className="mx-auto max-w-[1600px] px-6 py-12">
-      <Link href="/admin/data/events" className="text-xs text-white/40 hover:text-white/70">
-        ← イベント管理に戻る
-      </Link>
+      <div className="flex items-center justify-between">
+        <Link href="/admin/data/events" className="text-xs text-white/40 hover:text-white/70">
+          ← イベント管理に戻る
+        </Link>
+        <Link href="/admin/data/events/festival-pilot/datasets" className="text-xs text-white/40 hover:text-white/70">
+          出演者データを管理 →
+        </Link>
+      </div>
 
       <h1 className="mt-4 text-2xl font-bold">世界のフェス出演者収集</h1>
       <p className="mt-2 text-sm text-white/50">

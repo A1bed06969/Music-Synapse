@@ -91,6 +91,7 @@ export default async function EventsAdminPage({
       <form action={createEvent} className="mt-6 space-y-2">
         <div className="flex flex-wrap gap-2">
           <input name="name" placeholder="イベント名(例: FUJI ROCK FESTIVAL)" required className={`${inputClass} max-w-xs`} />
+          <input name="name_ja" placeholder="略称・日本語名(任意・例: フジロック)" className={`${inputClass} max-w-[200px]`} />
           <select name="event_type" className={`${inputClass} max-w-[140px]`} defaultValue="">
             <option value="">種別(任意)</option>
             {EVENT_TYPE_OPTIONS.map((opt) => (
@@ -112,6 +113,11 @@ export default async function EventsAdminPage({
               </option>
             ))}
           </select>
+        </div>
+        <input name="image_url" placeholder="キービジュアル画像URL(任意)" className={inputClass} />
+        <div className="flex flex-wrap gap-2">
+          <input name="official_site_url" placeholder="公式サイトURL(任意)" className={`${inputClass} max-w-xs`} />
+          <input name="official_youtube_url" placeholder="公式YouTube URL(任意)" className={`${inputClass} max-w-xs`} />
         </div>
         <input name="description" placeholder="概要(任意)" className={inputClass} />
         <button type="submit" className={buttonClass}>
