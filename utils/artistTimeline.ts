@@ -50,6 +50,49 @@ function groupLivesByName(
   })
 }
 
+/** 同じ楽曲が同日に複数局でパワープレイ等に選出されている場合、局ごとに別行に
+ * ならないよう1エントリにまとめる(全国ネットの提供楽曲は数十局まとめて登録
+ * されるため、まとめないと年表が同じ日付の行で埋まってしまう)。選出が1件だけの
+ * 楽曲は従来通りメディア名+番組名をsubtitleに使う。楽曲名が無い行(アーティスト
+ * 直接指定)は他の行と誤って混ざらないようid単位で独立させる。 */
+function groupMediaSelections(
+  mediaSelections: ArtistTimelineInput['mediaSelections']
+): { date: string; title: string; subtitle: string | null }[] {
+  const groups = new Map<string, { date: string; mediaName: string | null; programName: string | null }[]>()
+
+  for (const media of mediaSelections) {
+    if (!media.date) continue
+    const key = media.trackTitle ?? `__untitled_${media.id}`
+    const items = groups.get(key) ?? []
+    items.push({ date: media.date, mediaName: media.mediaName, programName: media.programName })
+    groups.set(key, items)
+  }
+
+  return Array.from(groups.entries()).map(([key, items]) => {
+    const title = key.startsWith('__untitled_') ? '—' : key
+
+    if (items.length === 1) {
+      return {
+        date: items[0].date,
+        title,
+        subtitle: [items[0].mediaName, items[0].programName].filter(Boolean).join(' ') || null,
+      }
+    }
+
+    const sortedDates = [...items.map((i) => i.date)].sort()
+    const startDate = sortedDates[0]
+    const endDate = sortedDates[sortedDates.length - 1]
+    const rangePrefix = toYearMonth(startDate) === toYearMonth(endDate) ? '' : `${toYearMonth(startDate)}〜${toYearMonth(endDate)}・`
+    const stationCount = new Set(items.map((i) => i.mediaName).filter(Boolean)).size || items.length
+
+    return {
+      date: startDate,
+      title,
+      subtitle: `${rangePrefix}全国${stationCount}局にてパワープレイ選出`,
+    }
+  })
+}
+
 export type ArtistTimelineEntry = {
   date: string
   kind: 'release' | 'live' | 'festival' | 'tieup' | 'media' | 'award'
@@ -125,13 +168,12 @@ export function buildArtistTimeline(input: ArtistTimelineInput): ArtistTimelineE
     })
   }
 
-  for (const media of input.mediaSelections) {
-    if (!media.date) continue
+  for (const media of groupMediaSelections(input.mediaSelections)) {
     entries.push({
       date: media.date,
       kind: 'media',
-      title: media.trackTitle ?? '—',
-      subtitle: [media.mediaName, media.programName].filter(Boolean).join(' ') || null,
+      title: media.title,
+      subtitle: media.subtitle,
       href: null,
       imageUrl: null,
     })

@@ -141,6 +141,59 @@ describe('buildArtistTimeline', () => {
     assert.equal(entries[0].subtitle, 'エフエム北海道 POWER PLAY')
   })
 
+  test('groups same-day media selections for the same track into one row with a station count', () => {
+    const entries = buildArtistTimeline({
+      releases: [],
+      lives: [],
+      festivals: [],
+      tieUps: [],
+      mediaSelections: [
+        { id: 'rr1', date: '2026-07-01', trackTitle: '新女神', mediaName: 'エフエム北海道', programName: 'POWER PLAY' },
+        { id: 'rr2', date: '2026-07-01', trackTitle: '新女神', mediaName: 'エフエム青森', programName: 'Monthly On Air' },
+        { id: 'rr3', date: '2026-07-01', trackTitle: '新女神', mediaName: 'TBC東北放送', programName: 'イチオシパワープレイ' },
+      ],
+      awards: [],
+    })
+    assert.equal(entries.length, 1)
+    assert.equal(entries[0].date, '2026-07-01')
+    assert.equal(entries[0].kind, 'media')
+    assert.equal(entries[0].title, '新女神')
+    assert.equal(entries[0].subtitle, '全国3局にてパワープレイ選出')
+  })
+
+  test('media selections spanning multiple months show a month range before the station count', () => {
+    const entries = buildArtistTimeline({
+      releases: [],
+      lives: [],
+      festivals: [],
+      tieUps: [],
+      mediaSelections: [
+        { id: 'rr1', date: '2026-07-01', trackTitle: 'X', mediaName: 'A局', programName: null },
+        { id: 'rr2', date: '2026-09-01', trackTitle: 'X', mediaName: 'B局', programName: null },
+      ],
+      awards: [],
+    })
+    assert.equal(entries.length, 1)
+    assert.equal(entries[0].date, '2026-07-01')
+    assert.equal(entries[0].subtitle, '2026.07〜2026.09・全国2局にてパワープレイ選出')
+  })
+
+  test('media selections for distinct tracks are not merged with each other', () => {
+    const entries = buildArtistTimeline({
+      releases: [],
+      lives: [],
+      festivals: [],
+      tieUps: [],
+      mediaSelections: [
+        { id: 'rr1', date: '2026-07-01', trackTitle: 'トラックA', mediaName: 'A局', programName: null },
+        { id: 'rr2', date: '2026-07-01', trackTitle: 'トラックB', mediaName: 'B局', programName: null },
+      ],
+      awards: [],
+    })
+    assert.equal(entries.length, 2)
+    assert.deepEqual(entries.map((e) => e.title).sort(), ['トラックA', 'トラックB'])
+  })
+
   test('award entry synthesizes a date from year and combines name/category/result into the title', () => {
     const entries = buildArtistTimeline({
       releases: [],
