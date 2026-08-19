@@ -81,7 +81,7 @@ CREATE TABLE geo_boundary (
    - `geo_boundary`に該当`muniCd`のレコードが無ければ、`niiyz/JapanCityGeoJson`から個別ファイルを取得してキャッシュする。
 4. `country_code !== 'jp'`の場合:
    - `ISO3166-2-lvl4`が取得できていれば`origin_region_code`に保存する。
-   - `geo_boundary`に該当コードのレコードが無ければ、Natural Earthの`admin_1_states_provinces`データ(1回フェッチ・メモリ上でパース)から該当featureを抽出してキャッシュする。取得できなければ`origin_region_code`はNULLのまま(=国ブロック表示にフォールバック)。
+   - `geo_boundary`に該当コードのレコードが無ければ、Natural Earthの`admin_1_states_provinces`データ(1回フェッチ・メモリ上でパース)から該当featureを抽出してキャッシュする。**`origin_region_code`自体は、対応する境界ポリゴンの取得可否に関わらず、`ISO3166-2-lvl4`が取得できていれば常に保存する**(Nominatimの州地域粒度とNatural Earthのポリゴン収録粒度は必ずしも一致しないため — 例: 英国はNominatimが`GB-ENG`のような国レベル相当のコードを返す一方、Natural Earthの10m版admin-1データには県・自治体レベルの`GB-*`コードしか収録されておらず、`GB-ENG`自体のポリゴンは存在しない。この場合`origin_region_code`は`GB-ENG`のまま保存され、対応する`geo_boundary`行は作られない)。したがって、`origin_region_code`(および`origin_muni_code`)が非NULLであることは、対応する`geo_boundary`行が存在することを保証しない。UIの描画側は「コードは設定されているが`geo_boundary`に一致する行が無い」場合を、国ブロック表示へのフォールバックとして扱う必要がある。
 
 Nominatim・GSIともにレート制限に配慮し、既存の`tmp-backfill-artist-labels.ts`と同様に直列・スリープ入りで処理する。件数は少ない(現状座標登録済みは数十〜百件規模)ため、時間はかかっても問題ない想定。
 

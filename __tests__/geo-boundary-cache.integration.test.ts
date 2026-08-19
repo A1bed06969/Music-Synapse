@@ -17,7 +17,12 @@ import {
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 
 const TEST_MUNI_CODE = '13101' // 千代田区
-const TEST_REGION_CODE = 'US-CA'
+// US-CAは本番のバックフィルで既にキャッシュ済みのため、常にキャッシュ命中してしまい
+// fetch+insert経路を検証できなくなった。AQ-X01~(南極の領有権主張地域の一つ)は
+// Natural Earth 10m admin-1データセットに実在する正当なiso_3166_2コードだが、
+// 音楽アーティストの出身地としては実質的にあり得ないため、キャッシュ未ヒット
+// → 外部取得 → INSERTの経路を安全に再現できる。
+const TEST_REGION_CODE = 'AQ-X01~'
 
 // Task 4のバックフィルが既に実行済みの環境でテストを再実行すると、これらのコードは
 // 本物のキャッシュ行として既に存在している可能性がある。誤って本物のキャッシュを
@@ -69,7 +74,7 @@ describe('getOrFetchMunicipalityBoundary (live DB + live niiyz/JapanCityGeoJson)
 })
 
 describe('getOrFetchRegionBoundary (live DB + Natural Earth admin-1)', () => {
-  test('fetches, caches, and returns a geometry for California (US-CA)', async () => {
+  test('fetches, caches, and returns a geometry for an Antarctic claim territory (AQ-X01~)', async () => {
     const features = await fetchNaturalEarthAdmin1Features()
     assert.ok(features.length > 4000, `expected the full ~4,596-feature world dataset, got ${features.length}`)
 

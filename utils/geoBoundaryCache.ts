@@ -21,12 +21,15 @@ export async function getOrFetchMunicipalityBoundary(
   supabase: SupabaseClient,
   muniCode: string
 ): Promise<GeoBoundaryGeometry | null> {
-  const { data: existing } = await supabase
+  const { data: existing, error: selectError } = await supabase
     .from('geo_boundary')
     .select('geometry')
     .eq('level', 'municipality')
     .eq('code', muniCode)
     .limit(1)
+  if (selectError) {
+    console.error(`geo_boundary読み取り失敗(municipality/${muniCode}):`, selectError.message)
+  }
   if (existing && existing.length > 0) return existing[0].geometry as GeoBoundaryGeometry
 
   const prefectureCode = muniCode.slice(0, 2)
@@ -38,12 +41,15 @@ export async function getOrFetchMunicipalityBoundary(
   const feature = data.features?.[0]
   if (!feature?.geometry) return null
 
-  await supabase.from('geo_boundary').insert({
+  const { error: insertError } = await supabase.from('geo_boundary').insert({
     level: 'municipality',
     code: muniCode,
     name: feature.properties?.N03_004 ?? null,
     geometry: feature.geometry,
   })
+  if (insertError) {
+    console.error(`geo_boundary書き込み失敗(municipality/${muniCode}):`, insertError.message)
+  }
 
   return feature.geometry
 }
@@ -67,23 +73,29 @@ export async function getOrFetchRegionBoundary(
   regionCode: string,
   preloadedFeatures: NaturalEarthAdmin1Feature[]
 ): Promise<GeoBoundaryGeometry | null> {
-  const { data: existing } = await supabase
+  const { data: existing, error: selectError } = await supabase
     .from('geo_boundary')
     .select('geometry')
     .eq('level', 'region')
     .eq('code', regionCode)
     .limit(1)
+  if (selectError) {
+    console.error(`geo_boundary読み取り失敗(region/${regionCode}):`, selectError.message)
+  }
   if (existing && existing.length > 0) return existing[0].geometry as GeoBoundaryGeometry
 
   const feature = preloadedFeatures.find((f) => f.properties.iso_3166_2 === regionCode)
   if (!feature) return null
 
-  await supabase.from('geo_boundary').insert({
+  const { error: insertError } = await supabase.from('geo_boundary').insert({
     level: 'region',
     code: regionCode,
     name: feature.properties.name ?? null,
     geometry: feature.geometry,
   })
+  if (insertError) {
+    console.error(`geo_boundary書き込み失敗(region/${regionCode}):`, insertError.message)
+  }
 
   return feature.geometry
 }

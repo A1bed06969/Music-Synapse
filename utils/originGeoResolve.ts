@@ -6,10 +6,6 @@
 
 const NOMINATIM_USER_AGENT = 'MusicSynapse-Dev/1.0 (personal project, origin geo code backfill)'
 
-function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms))
-}
-
 export type NominatimAddress = {
   country_code?: string
   'ISO3166-2-lvl4'?: string
@@ -58,5 +54,3 @@ export async function fetchMuniCode(lat: number, lon: number): Promise<string | 
   const data = (await res.json()) as GsiReverseGeocoderResult
   return parseGsiMuniCode(data)
 }
-
-export { sleep as sleepForRateLimit }

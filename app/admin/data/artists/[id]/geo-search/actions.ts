@@ -27,7 +27,16 @@ export async function importOriginCoordinates(formData: FormData) {
   const supabase = createAdminClient()
   const { error } = await supabase
     .from('artist')
-    .update({ origin_latitude: latitude, origin_longitude: longitude })
+    .update({
+      origin_latitude: latitude,
+      origin_longitude: longitude,
+      // 座標を修正した場合、それまでに解決済みの国/州地域/市区町村コードは
+      // 古い座標に基づいたものである可能性があるため無効化し、
+      // バックフィルスクリプトの次回実行で再解決させる。
+      origin_country_code: null,
+      origin_region_code: null,
+      origin_muni_code: null,
+    })
     .eq('id', artistId)
 
   if (error) {
@@ -73,6 +82,12 @@ export async function importOriginCoordinatesFromAddress(formData: FormData) {
       // 既に手動設定済みの値は上書きしない(空のときだけ埋める)
       origin_prefecture: existingArtist?.origin_prefecture ?? (prefectureOrState || null),
       hometown_city: existingArtist?.hometown_city ?? (city || null),
+      // 座標を修正した場合、それまでに解決済みの国/州地域/市区町村コードは
+      // 古い座標に基づいたものである可能性があるため無効化し、
+      // バックフィルスクリプトの次回実行で再解決させる。
+      origin_country_code: null,
+      origin_region_code: null,
+      origin_muni_code: null,
     })
     .eq('id', artistId)
 
