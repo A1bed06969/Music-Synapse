@@ -11,6 +11,7 @@ export default async function UnreleasedArtistsListPage() {
       .from('album')
       .select('id, title, streaming_status, artist:artist_id(id, name)')
       .eq('streaming_status', 'none')
+      .is('primary_album_id', null)
       .order('title'),
   ])
 

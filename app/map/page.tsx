@@ -40,6 +40,7 @@ export default async function MapPage() {
           .from('album')
           .select('id, title, jacket_url, release_date')
           .eq('artist_id', id)
+          .is('primary_album_id', null)
           .order('release_date', { ascending: false, nullsFirst: false })
           .limit(3)
       )

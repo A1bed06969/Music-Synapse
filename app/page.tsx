@@ -8,6 +8,7 @@ async function getLatestAlbums() {
   const { data } = await supabase
     .from('album')
     .select('id, title, jacket_url, release_date, streaming_status, artist:artist_id(id, name)')
+    .is('primary_album_id', null)
     .order('release_date', { ascending: false, nullsFirst: false })
     .limit(12)
 

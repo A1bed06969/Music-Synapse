@@ -29,6 +29,7 @@ export default async function LabelDetailPage({
       .from('album')
       .select('id, title, jacket_url, release_date, artist:artist_id(id, name)')
       .eq('label_id', id)
+      .is('primary_album_id', null)
       .order('release_date', { ascending: false, nullsFirst: false }),
   ])
 
