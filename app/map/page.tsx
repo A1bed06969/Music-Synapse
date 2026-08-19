@@ -106,6 +106,29 @@ export default async function MapPage() {
       }
     })
 
+  // world-countries.jsonは177件×約168プロパティ(人口・GDP・多言語名など未使用の
+  // ものを多く含む)で815KBあり、venue/shopタブ利用者にも毎回そのまま送るのは無駄。
+  // 実際に読んでいるのはISO_A2/ISO_A2_EH/CONTINENT/ADMINのみで、geometry自体も
+  // アーティストが実在する国以外はContinent状態のマップで一切描画されない
+  // (groupArtistsByCountryがアーティスト0人の国を返さないため)。そこで、
+  // アーティストがいない国はプロパティだけ残してgeometryを空のGeometryCollectionに
+  // 差し替え、ペイロードを縮小する。
+  const countriesWithArtists = new Set(artistOriginRows.map((a) => a.countryCode?.toLowerCase()).filter(Boolean))
+
+  const trimmedCountryFeatures: NaturalEarthCountryFeature[] = worldCountries.features.map((feature) => {
+    const iso = (feature.properties.ISO_A2_EH ?? feature.properties.ISO_A2)?.toLowerCase()
+    const properties = {
+      ISO_A2: feature.properties.ISO_A2,
+      ISO_A2_EH: feature.properties.ISO_A2_EH,
+      CONTINENT: feature.properties.CONTINENT,
+      ADMIN: feature.properties.ADMIN,
+    }
+    if (iso && iso !== '-99' && countriesWithArtists.has(iso)) {
+      return { properties, geometry: feature.geometry }
+    }
+    return { properties, geometry: { type: 'GeometryCollection', geometries: [] } }
+  })
+
   const { data: venueLocations } = await supabase.from('venue_location').select('id, venue_name, latitude, longitude')
 
   const [{ data: musicEvents }, { data: eventEditions }, { data: eventEditionDates }, { data: eventAppearances }] =
@@ -267,7 +290,7 @@ export default async function MapPage() {
         <TabbedMapView
           markers={markers}
           artistOriginRows={artistOriginRows}
-          countryFeatures={worldCountries.features}
+          countryFeatures={trimmedCountryFeatures}
           boundaryCodeSet={boundaryCodeSet}
         />
       </div>
