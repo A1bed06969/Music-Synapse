@@ -23,6 +23,7 @@ const FESTIVALS = [
   { key: 'risingsun', label: 'ライジングサン', dataFile: 'risingsun-2026.json' },
   { key: 'sweetloveshower', label: 'スイートラブシャワー', dataFile: 'sweetloveshower-2026.json' },
   { key: 'kyotoongakuhaku', label: '京都音楽博覧会', dataFile: 'kyotoongakuhaku-2026.json' },
+  { key: 'rockinjapan', label: 'ロック・イン・ジャパン', dataFile: 'rockinjapan-2026.json' },
 ] as const
 
 function loadStaticPicks(dataFile: string): FestivalPick[] {
