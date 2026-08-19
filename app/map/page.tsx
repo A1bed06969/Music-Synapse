@@ -3,6 +3,7 @@ import path from 'path'
 import { createClient } from '@/utils/Supabase/server'
 import { normalizeVenueName } from '@/utils/textNormalize'
 import { escapeHtml } from '@/utils/format'
+import { getMemberArtistIdsAmong } from '@/utils/artistPageKind'
 import TabbedMapView from './TabbedMapView'
 import type { MapMarker } from './LeafletMap'
 import type { NaturalEarthCountryFeature } from '@/utils/artistOriginMap'
@@ -12,7 +13,7 @@ import type { ArtistOriginRow } from './ArtistOriginMap'
 export default async function MapPage() {
   const supabase = await createClient()
 
-  const { data: artists } = await supabase
+  const { data: artistsWithMembers } = await supabase
     .from('artist')
     .select(
       'id, name, image_url, origin_latitude, origin_longitude, origin_prefecture, hometown_city, hometown_country, origin_country_code, origin_region_code, origin_muni_code'
@@ -20,7 +21,15 @@ export default async function MapPage() {
     .not('origin_latitude', 'is', null)
     .not('origin_longitude', 'is', null)
 
-  const artistIds = (artists ?? []).map((a) => a.id)
+  // バンドメンバー個人のページ(自身のリリースを持たない)は、マップ上では
+  // 所属バンド自体と重複表示になるため除外する(検索・一覧ページと同じ扱い)
+  const memberIds = await getMemberArtistIdsAmong(
+    supabase,
+    (artistsWithMembers ?? []).map((a) => a.id)
+  )
+  const artists = (artistsWithMembers ?? []).filter((a) => !memberIds.has(a.id))
+
+  const artistIds = artists.map((a) => a.id)
 
   const albumsByArtist = new Map<string, { id: string; title: string; jacketUrl: string | null }[]>()
 
@@ -44,17 +53,17 @@ export default async function MapPage() {
     })
   }
 
-  const artistMarkers: MapMarker[] = (artists ?? [])
+  const artistMarkers: MapMarker[] = artists
     .filter((a) => a.origin_latitude != null && a.origin_longitude != null)
     .map((a) => {
       const albumsHtml = (albumsByArtist.get(a.id) ?? [])
         .map(
           (album) =>
-            `<div style="margin-top:4px;font-size:12px;"><a href="/albums/${escapeHtml(album.id)}" style="color:inherit;">${
+            `<div style="margin-top:12px;"><a href="/albums/${escapeHtml(album.id)}" style="color:inherit;text-decoration:none;">${
               album.jacketUrl
-                ? `<img src="${escapeHtml(album.jacketUrl)}" alt="" style="width:32px;height:32px;object-fit:cover;border-radius:4px;vertical-align:middle;margin-right:4px;" />`
+                ? `<img src="${escapeHtml(album.jacketUrl)}" alt="" style="display:block;width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;" />`
                 : ''
-            }${escapeHtml(album.title)}</a></div>`
+            }<div style="margin-top:6px;font-size:15px;">${escapeHtml(album.title)}</div></a></div>`
         )
         .join('')
       const placeName = a.hometown_city ?? a.origin_prefecture
@@ -68,14 +77,14 @@ export default async function MapPage() {
         label: a.name,
         imageUrl: a.image_url,
         region,
-        popupHtml: `<div style="min-width:160px;">${
+        popupHtml: `<div style="width:180px;">${
           a.image_url
-            ? `<img src="${escapeHtml(a.image_url)}" alt="" style="width:48px;height:48px;object-fit:cover;border-radius:50%;" />`
+            ? `<img src="${escapeHtml(a.image_url)}" alt="" style="display:block;width:120px;height:120px;object-fit:cover;border-radius:50%;" />`
             : ''
-        }<div style="margin-top:4px;font-weight:bold;"><a href="/artists/${escapeHtml(a.id)}" style="color:inherit;">${escapeHtml(
+        }<div style="margin-top:10px;font-weight:bold;font-size:22px;"><a href="/artists/${escapeHtml(a.id)}" style="color:inherit;text-decoration:none;">${escapeHtml(
           a.name
         )}</a></div>${
-          placeName ? `<div style="font-size:12px;color:#aaa;">${escapeHtml(placeName)}</div>` : ''
+          placeName ? `<div style="margin-top:4px;font-size:13px;color:#888;">${escapeHtml(placeName)}</div>` : ''
         }${albumsHtml}</div>`,
       }
     })
@@ -89,7 +98,7 @@ export default async function MapPage() {
     regionCodes: new Set((cachedBoundaries ?? []).filter((b) => b.level === 'region').map((b) => b.code)),
   }
 
-  const artistOriginRows: ArtistOriginRow[] = (artists ?? [])
+  const artistOriginRows: ArtistOriginRow[] = artists
     .filter((a) => a.origin_latitude != null && a.origin_longitude != null)
     .map((a) => {
       const marker = artistMarkers.find((m) => m.id === `artist-${a.id}`)
