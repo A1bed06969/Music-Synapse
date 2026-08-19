@@ -138,13 +138,18 @@ export async function fillMissingArtistImage(
 
 /** 1アルバム分をupsertし、収録トラックの取得・登録・クレジット取込までを行う。
  * existingAlbumIdがnullなら新規登録、そうでなければ更新として扱う。
- * 戻り値は登録・更新できたトラック数(取得失敗などでスキップした場合は0)。 */
+ * 戻り値は登録・更新できたトラック数(取得失敗などでスキップした場合は0)。
+ * skipCreditImportがtrueの場合、クレジット取込(MusicBrainz→Discogs)を省略する
+ * (大量アルバムの一括同期でチャンクあたりの処理数を稼ぎ、Vercelの自己ディスパッチ
+ * ホップ数を減らすため。省略されたクレジットはscripts/backfill-album-credits.tsが
+ * 別途拾う) */
 async function syncOneAlbum(
   supabase: SupabaseClient,
   artistId: string,
   artistName: string,
   itunesAlbum: ItunesAlbum,
-  existingAlbumId: string | null
+  existingAlbumId: string | null,
+  skipCreditImport = false
 ): Promise<number> {
   // iTunes側の一時的なエラー(レート制限等)でここが失敗しても、このアルバムだけ
   // スキップして呼び出し元(残りのアルバムのループ)は継続させる(以前は無捕捉のまま
@@ -246,29 +251,38 @@ async function syncOneAlbum(
   // MusicBrainz側は503時に最大5回・1回ごとに1秒以上のリトライを行うため、
   // 混雑時は1アルバムだけで数十秒かかることがある。アルバム数が多いアーティストの
   // 同期(チャンク分割、utils/albumSyncDispatch.ts参照)が1枚のクレジット取込に
-  // 詰まって全体が進まなくなるのを防ぐため、それぞれ上限時間で打ち切る
-  const albumForCredits = { id: albumId, title: albumPayload.title }
-  try {
-    await withTimeout(autoImportFromMusicBrainz(supabase, artistId, artistName, albumForCredits, albumTrackList), 5_000)
-  } catch (err) {
-    console.error(`MusicBrainzクレジット取込に失敗しました(${albumPayload.title}):`, err)
-  }
-  try {
-    await withTimeout(autoImportFromDiscogs(supabase, artistId, artistName, albumForCredits, albumTrackList), 5_000)
-  } catch (err) {
-    console.error(`Discogsクレジット取込に失敗しました(${albumPayload.title}):`, err)
+  // 詰まって全体が進まなくなるのを防ぐため、それぞれ上限時間で打ち切る。
+  // skipCreditImportがtrueの場合はここごと省略する(理由は関数コメント参照)
+  if (!skipCreditImport) {
+    const albumForCredits = { id: albumId, title: albumPayload.title }
+    try {
+      await withTimeout(autoImportFromMusicBrainz(supabase, artistId, artistName, albumForCredits, albumTrackList), 5_000)
+    } catch (err) {
+      console.error(`MusicBrainzクレジット取込に失敗しました(${albumPayload.title}):`, err)
+    }
+    try {
+      await withTimeout(autoImportFromDiscogs(supabase, artistId, artistName, albumForCredits, albumTrackList), 5_000)
+    } catch (err) {
+      console.error(`Discogsクレジット取込に失敗しました(${albumPayload.title}):`, err)
+    }
+    // 成功・不一致に関わらず「試行済み」を記録する(scripts/backfill-album-credits.tsが
+    // このカラムがNULLのアルバムだけを対象にするため)
+    await supabase.from('album').update({ credit_import_attempted_at: new Date().toISOString() }).eq('id', albumId)
   }
 
   return trackCount
 }
 
-/** 検索・選択式の登録UI(app/admin/import/search)から、1件だけアルバムを
- * 登録するための公開ラッパー。artist_idでの既存判定込みでsyncOneAlbumを呼ぶ */
+/** 検索・選択式の登録UI(app/admin/import/search)や、大量アルバムの一括同期
+ * (app/api/admin/album-sync/route.ts)から、1件だけアルバムを登録するための
+ * 公開ラッパー。artist_idでの既存判定込みでsyncOneAlbumを呼ぶ。skipCreditImportは
+ * syncOneAlbum同様、一括同期でのホップ数削減用(詳細はsyncOneAlbumのコメント参照) */
 export async function registerSingleAlbum(
   supabase: SupabaseClient,
   artistId: string,
   artistName: string,
-  itunesAlbum: ItunesAlbum
+  itunesAlbum: ItunesAlbum,
+  skipCreditImport = false
 ): Promise<{ trackCount: number }> {
   const { data: existingAlbum } = await supabase
     .from('album')
@@ -277,7 +291,14 @@ export async function registerSingleAlbum(
     .eq('artist_id', artistId)
     .maybeSingle()
 
-  const trackCount = await syncOneAlbum(supabase, artistId, artistName, itunesAlbum, existingAlbum?.id ?? null)
+  const trackCount = await syncOneAlbum(
+    supabase,
+    artistId,
+    artistName,
+    itunesAlbum,
+    existingAlbum?.id ?? null,
+    skipCreditImport
+  )
   return { trackCount }
 }
 

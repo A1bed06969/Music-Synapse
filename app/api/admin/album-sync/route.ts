@@ -13,13 +13,15 @@ import { applyEditionGrouping } from '@/utils/applyEditionGrouping'
 import type { ItunesAlbum } from '@/utils/itunes'
 
 export const maxDuration = 60
-// 1アルバムの処理はMusicBrainz/Discogsクレジット取込のタイムアウト(5秒×2、
-// app/admin/import/actions.tsのwithTimeout参照)を含めても最大12秒程度で収まる。
-// この予算を超えたらチェックせず打ち切る(maxDurationの60秒に対して十分な余裕を残す)。
-// カタログの大きいアーティストで自己ディスパッチの回数(ホップ数)が増えすぎると
-// Vercelのループ検知(508 Loop Detected)に引っかかるため、1回のチャンクでできるだけ
-// 多く処理してホップ数自体を減らす方針(値を上げるほどホップは減るがmaxDurationとの
-// 余白が狭くなるトレードオフ)
+// クレジット取込(MusicBrainz/Discogs、1曲あたり最大5秒×2)はここでは省略する
+// (registerSingleAlbumのskipCreditImport=true、下記呼び出し参照)。理由:
+// 大量アルバムを持つアーティストの一括同期で1曲ごとにクレジット取込を挟むと、
+// 45秒のチャンク予算内で4〜5枚程度しか処理できず、自己ディスパッチの回数
+// (ホップ数)が増えすぎてVercelのループ検知(508 Loop Detected)に引っかかり、
+// カタログの取り込みが静かに止まる不具合を実際のアーティスト(71枚のカタログ)で
+// 確認した。クレジット省略後は1曲あたり1〜2秒程度で済むため、同じ45秒予算でも
+// 十分な枚数を処理でき、ホップ数を大きく減らせる。省略したクレジットは
+// scripts/backfill-album-credits.tsが別途拾う(月次cron)
 const TIME_BUDGET_MS = 45_000
 
 export async function POST(request: NextRequest) {
@@ -51,7 +53,7 @@ export async function POST(request: NextRequest) {
         // 自己ディスパッチを繰り返し無限ループになりうるため)
         if (i > startIndex && Date.now() - startedAt > TIME_BUDGET_MS) break
         try {
-          await registerSingleAlbum(supabase, artistId, artistName, albums[i])
+          await registerSingleAlbum(supabase, artistId, artistName, albums[i], true)
         } catch (err) {
           console.error(`アルバム同期に失敗しました(${artistName}, ${albums[i].collectionName}):`, err)
         }
