@@ -1,23 +1,22 @@
+import { readFileSync } from 'fs'
+import path from 'path'
 import { createClient } from '@/utils/Supabase/server'
 import { normalizeVenueName } from '@/utils/textNormalize'
+import { escapeHtml } from '@/utils/format'
 import TabbedMapView from './TabbedMapView'
 import type { MapMarker } from './LeafletMap'
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
-}
+import type { NaturalEarthCountryFeature } from '@/utils/artistOriginMap'
+import type { BoundaryCodeSet } from '@/utils/artistOriginBoundary'
+import type { ArtistOriginRow } from './ArtistOriginMap'
 
 export default async function MapPage() {
   const supabase = await createClient()
 
   const { data: artists } = await supabase
     .from('artist')
-    .select('id, name, image_url, origin_latitude, origin_longitude, origin_prefecture, hometown_city, hometown_country')
+    .select(
+      'id, name, image_url, origin_latitude, origin_longitude, origin_prefecture, hometown_city, hometown_country, origin_country_code, origin_region_code, origin_muni_code'
+    )
     .not('origin_latitude', 'is', null)
     .not('origin_longitude', 'is', null)
 
@@ -78,6 +77,32 @@ export default async function MapPage() {
         )}</a></div>${
           placeName ? `<div style="font-size:12px;color:#aaa;">${escapeHtml(placeName)}</div>` : ''
         }${albumsHtml}</div>`,
+      }
+    })
+
+  const worldCountriesRaw = readFileSync(path.join(process.cwd(), 'public/geo/world-countries.json'), 'utf-8')
+  const worldCountries: { features: NaturalEarthCountryFeature[] } = JSON.parse(worldCountriesRaw)
+
+  const { data: cachedBoundaries } = await supabase.from('geo_boundary').select('level, code')
+  const boundaryCodeSet: BoundaryCodeSet = {
+    municipalityCodes: new Set((cachedBoundaries ?? []).filter((b) => b.level === 'municipality').map((b) => b.code)),
+    regionCodes: new Set((cachedBoundaries ?? []).filter((b) => b.level === 'region').map((b) => b.code)),
+  }
+
+  const artistOriginRows: ArtistOriginRow[] = (artists ?? [])
+    .filter((a) => a.origin_latitude != null && a.origin_longitude != null)
+    .map((a) => {
+      const marker = artistMarkers.find((m) => m.id === `artist-${a.id}`)
+      return {
+        id: a.id,
+        name: a.name,
+        imageUrl: a.image_url,
+        latitude: Number(a.origin_latitude),
+        longitude: Number(a.origin_longitude),
+        countryCode: a.origin_country_code,
+        regionCode: a.origin_region_code,
+        muniCode: a.origin_muni_code,
+        popupHtml: marker?.popupHtml ?? '',
       }
     })
 
@@ -239,7 +264,12 @@ export default async function MapPage() {
         アーティストの出身地・結成地、ライブ会場(フェス会場・ライブハウス)、レコードショップをタブで切り替えて表示します。
       </p>
       <div className="mt-8">
-        <TabbedMapView markers={markers} />
+        <TabbedMapView
+          markers={markers}
+          artistOriginRows={artistOriginRows}
+          countryFeatures={worldCountries.features}
+          boundaryCodeSet={boundaryCodeSet}
+        />
       </div>
     </div>
   )

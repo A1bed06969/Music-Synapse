@@ -3,6 +3,9 @@
 import dynamic from 'next/dynamic'
 import { useMemo, useState } from 'react'
 import type { MapCategory, MapMarker } from './LeafletMap'
+import ArtistOriginMap, { type ArtistOriginRow } from './ArtistOriginMap'
+import type { NaturalEarthCountryFeature } from '@/utils/artistOriginMap'
+import type { BoundaryCodeSet } from '@/utils/artistOriginBoundary'
 
 const LeafletMap = dynamic(() => import('./LeafletMap'), { ssr: false })
 
@@ -12,7 +15,17 @@ const TABS: { value: MapCategory; label: string }[] = [
   { value: 'shop', label: 'レコードショップ' },
 ]
 
-export default function TabbedMapView({ markers }: { markers: MapMarker[] }) {
+export default function TabbedMapView({
+  markers,
+  artistOriginRows,
+  countryFeatures,
+  boundaryCodeSet,
+}: {
+  markers: MapMarker[]
+  artistOriginRows: ArtistOriginRow[]
+  countryFeatures: NaturalEarthCountryFeature[]
+  boundaryCodeSet: BoundaryCodeSet
+}) {
   const [activeTab, setActiveTab] = useState<MapCategory>('artist')
   const [focusId, setFocusId] = useState<string | null>(null)
 
@@ -45,12 +58,25 @@ export default function TabbedMapView({ markers }: { markers: MapMarker[] }) {
 
       <div className="mt-4 flex flex-col gap-4 lg:flex-row">
         <div className="lg:flex-1">
-          <LeafletMap
-            markers={filteredMarkers}
-            focusId={focusId}
-            onMarkerHover={(id) => setFocusId(id ?? null)}
-            onMarkerClick={setFocusId}
-          />
+          {activeTab === 'artist' ? (
+            <ArtistOriginMap
+              artists={artistOriginRows}
+              countryFeatures={countryFeatures}
+              boundaryCodeSet={boundaryCodeSet}
+              // 側リストのmarker.idは他タブと共通の`artist-${id}`形式だが、
+              // ArtistOriginRow.idは/artists/${id}リンク生成にそのまま使う生のIDなので、
+              // ここで相互変換してArtistOriginMapに橋渡しする
+              selectedArtistId={focusId ? focusId.replace(/^artist-/, '') : null}
+              onSelectArtist={(id) => setFocusId(id ? `artist-${id}` : null)}
+            />
+          ) : (
+            <LeafletMap
+              markers={filteredMarkers}
+              focusId={focusId}
+              onMarkerHover={(id) => setFocusId(id ?? null)}
+              onMarkerClick={setFocusId}
+            />
+          )}
         </div>
         <div className="lg:w-72 lg:shrink-0">
           <div className="max-h-[600px] overflow-y-auto rounded-lg border border-white/10">
