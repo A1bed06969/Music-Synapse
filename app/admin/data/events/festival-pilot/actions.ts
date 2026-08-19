@@ -32,13 +32,14 @@ async function findOrCreateFestivalEdition(
     .maybeSingle()
   let eventId = existingEvent?.id as string | undefined
   if (!eventId) {
+    // country/description等はフェスごとに異なるため、ここでは決め打ちせずnullのまま
+    // 作成し(誤った国名で他フェスに登録されるのを防ぐ)、管理画面(/admin/data/events)から
+    // 後で正しい値を入力する運用とする
     const { data: createdEvent, error } = await supabase
       .from('event')
       .insert({
         name: input.festivalName,
         event_type: 'festival',
-        country: 'イギリス',
-        description: '毎年6月にワージー・ファーム(サマセット)で開催される世界最大級の野外音楽フェスティバル。',
       })
       .select('id')
       .single()
@@ -56,6 +57,7 @@ async function findOrCreateFestivalEdition(
     .maybeSingle()
   let editionId = existingEdition?.id as string | undefined
   if (!editionId) {
+    // venueもフェス・年ごとに異なるため決め打ちせずnullのまま作成する(上のevent同様)
     const { data: createdEdition, error } = await supabase
       .from('event_edition')
       .insert({
@@ -63,7 +65,6 @@ async function findOrCreateFestivalEdition(
         year: input.editionYear,
         start_date: input.startDate || null,
         end_date: input.endDate || null,
-        venue: 'Worthy Farm, Pilton',
       })
       .select('id')
       .single()
