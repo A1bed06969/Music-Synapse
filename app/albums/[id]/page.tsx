@@ -37,6 +37,14 @@ export default async function AlbumDetailPage({
       .eq('album_id', id),
   ])
 
+  const groupAnchorId = album.primary_album_id ?? album.id
+  const { data: otherVersions } = await supabase
+    .from('album')
+    .select('id, title, jacket_url, release_date')
+    .or(`id.eq.${groupAnchorId},primary_album_id.eq.${groupAnchorId}`)
+    .neq('id', id)
+    .order('release_date', { ascending: true, nullsFirst: false })
+
   const artist = Array.isArray(album.artist) ? album.artist[0] : album.artist
   const label = Array.isArray(album.label) ? album.label[0] : album.label
   const status = album.streaming_status ? STREAMING_STATUS_LABEL[album.streaming_status] : null
@@ -176,6 +184,32 @@ export default async function AlbumDetailPage({
               )
             })}
           </ul>
+        </section>
+      )}
+
+      {otherVersions && otherVersions.length > 0 && (
+        <section className="mt-10">
+          <h2 className="text-lg font-semibold">その他のバージョン</h2>
+          <div className="mt-4 flex gap-4 overflow-x-auto pb-2">
+            {otherVersions.map((v) => (
+              <Link key={v.id} href={`/albums/${v.id}`} className="group block w-28 flex-shrink-0">
+                <div className="aspect-square overflow-hidden rounded-md bg-white/5">
+                  {v.jacket_url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={v.jacket_url}
+                      alt={v.title}
+                      className="h-full w-full object-cover transition group-hover:scale-105"
+                    />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center text-white/20">No Art</div>
+                  )}
+                </div>
+                <p className="mt-2 truncate text-sm font-medium">{v.title}</p>
+                <p className="text-xs text-white/40">{formatDate(v.release_date)}</p>
+              </Link>
+            ))}
+          </div>
         </section>
       )}
     </div>
