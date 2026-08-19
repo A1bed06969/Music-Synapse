@@ -79,6 +79,8 @@ export default function LeafletMap({
   polygons = EMPTY_POLYGONS,
   heightClassName = 'h-[600px]',
   focusId,
+  showMarkerLabels = false,
+  viewOverride,
   onMarkerHover,
   onMarkerClick,
   onPolygonClick,
@@ -88,6 +90,13 @@ export default function LeafletMap({
   heightClassName?: string
   /** 一覧パネルなどからピンを選んだ時にセットすると、そのピンへスムーズにフライト+ポップアップを開く(ポリゴンのidも対象) */
   focusId?: string | null
+  /** trueならmarker.labelを常時表示のツールチップとしてピンの上に出す(世界地図の
+   * 大陸別件数表示用。クリックしないと件数が見えないのは不親切、という要望に対応)。
+   * 他の呼び出し元(ライブ会場・ショップ等)には影響しないようデフォルトfalse */
+  showMarkerLabels?: boolean
+  /** 指定するとfitBoundsの代わりにこの中心・ズームへ固定表示する(海外県を含む国の
+   * 飛び地でboundsが暴れるのを避けるため、大陸段階で使用) */
+  viewOverride?: { center: [number, number]; zoom: number }
   /** ピン自体にマウスホバーした時に呼ばれる(一覧パネル側のハイライトなどに利用) */
   onMarkerHover?: (id: string | null) => void
   /** ピン自体をクリックした時に呼ばれる */
@@ -175,6 +184,9 @@ export default function LeafletMap({
         .on('mouseover', () => onMarkerHoverRef.current?.(marker.id))
         .on('mouseout', () => onMarkerHoverRef.current?.(null))
         .on('click', () => onMarkerClickRef.current?.(marker.id))
+      if (showMarkerLabels) {
+        leafletMarker.bindTooltip(marker.label, { permanent: true, direction: 'top', offset: [0, -8] })
+      }
       leafletMarkers.set(marker.id, leafletMarker)
     }
     leafletMarkersRef.current = leafletMarkers
@@ -183,8 +195,11 @@ export default function LeafletMap({
     for (const polygon of polygons) {
       const geoJsonLayer = L.geoJSON(polygon.geometry as unknown as GeoJSON.GeoJsonObject, {
         style: {
-          color: polygon.color,
-          weight: 1,
+          // 枠線を塗りと同じ色にすると、隣接する国同士(例: フランスとベルギー)が
+          // 境目の無い1つの塊に見えてしまう。枠線だけ白で分離してコントラストを出す
+          color: '#ffffff',
+          weight: 1.5,
+          opacity: 0.9,
           fillColor: polygon.color,
           fillOpacity: 0.35,
         },
@@ -197,7 +212,15 @@ export default function LeafletMap({
     }
     leafletPolygonsRef.current = leafletPolygons
 
-    if (markers.length > 0 || polygons.length > 0) {
+    if (viewOverride) {
+      // 国境ポリゴンの生boundsに単純にfitBoundsすると、一部の国(例: フランス本土+
+      // 仏領ギアナ・レユニオン等の海外県)のように、実データ上は同じ1国の
+      // MultiPolygonでも地理的に大陸をまたいで遠く離れた飛び地を含む場合があり、
+      // その飛び地までbounds計算に含まれて地図が異常に引いて見えてしまう
+      // (実データで確認済み)。大陸段階では代わりに、その大陸のおおよその中心へ
+      // 固定ズームで移動する(親コンポーネントが指定)
+      map.setView(viewOverride.center, viewOverride.zoom)
+    } else if (markers.length > 0 || polygons.length > 0) {
       map.fitBounds(layerGroup.getBounds(), { padding: [40, 40], maxZoom: 12 })
     }
 
@@ -214,7 +237,7 @@ export default function LeafletMap({
       layerGroup.remove()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [markers, polygons])
+  }, [markers, polygons, showMarkerLabels, viewOverride])
 
   // フォーカス対象自体が変化した時(レイヤーは既に安定している状態で、一覧の
   // 別の項目にホバー/クリックしたなど)に改めてフォーカスする。

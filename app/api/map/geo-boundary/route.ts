@@ -11,8 +11,8 @@ export async function GET(request: NextRequest) {
   const level = searchParams.get('level')
   const codesParam = searchParams.get('codes')
 
-  if (level !== 'municipality' && level !== 'region') {
-    return NextResponse.json({ error: 'level must be "municipality" or "region"' }, { status: 400 })
+  if (level !== 'municipality' && level !== 'region' && level !== 'country') {
+    return NextResponse.json({ error: 'level must be "municipality", "region", or "country"' }, { status: 400 })
   }
   if (!codesParam) {
     return NextResponse.json({ error: 'codes is required' }, { status: 400 })

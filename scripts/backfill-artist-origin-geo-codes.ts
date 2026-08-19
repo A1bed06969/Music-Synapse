@@ -20,8 +20,11 @@ import { fetchCountryAndRegion, fetchMuniCode } from '@/utils/originGeoResolve'
 import {
   getOrFetchMunicipalityBoundary,
   getOrFetchRegionBoundary,
+  getOrFetchCountryBoundary,
   fetchNaturalEarthAdmin1Features,
+  fetchNaturalEarthAdmin0Features,
   type NaturalEarthAdmin1Feature,
+  type NaturalEarthAdmin0Feature,
 } from '@/utils/geoBoundaryCache'
 
 const REQUEST_INTERVAL_MS = 1000
@@ -86,25 +89,33 @@ async function resolveOtherArtist(
 }
 
 /**
- * 既にorigin_muni_code/origin_region_codeが保存済みのアーティストのうち、対応する
- * geo_boundary行が無いものを再取得する補修パス。メインループとは独立して、
- * 何度でも安全に再実行できる(取得済みのものはコスト無しでスキップされる)。
- * GB/FRの一部の州地域コードのようにNatural Earthに恒久的に収録が無いケースは
- * 毎回「取得失敗」と表示され続けるが、これは既知のデータ欠落であり不具合ではない。
+ * 既にorigin_muni_code/origin_region_code/origin_country_codeが保存済みの
+ * アーティストのうち、対応するgeo_boundary行が無いものを再取得する補修パス。
+ * メインループとは独立して、何度でも安全に再実行できる(取得済みのものは
+ * コスト無しでスキップされる)。GB/FRの一部の州地域コードのようにNatural Earthに
+ * 恒久的に収録が無いケースは毎回「取得失敗」と表示され続けるが、これは既知の
+ * データ欠落であり不具合ではない。国レベルは高解像度データ(ne_10m_admin_0)を
+ * 使うため、この点は該当しない(全世界の国が収録されている)。
  */
 async function repairMissingBoundaries(
   supabase: ReturnType<typeof createAdminClient>,
-  admin1Features: NaturalEarthAdmin1Feature[]
+  admin1Features: NaturalEarthAdmin1Feature[],
+  admin0Features: NaturalEarthAdmin0Feature[]
 ) {
   const { data: muniRows } = await supabase.from('artist').select('origin_muni_code').not('origin_muni_code', 'is', null)
   const { data: regionRows } = await supabase
     .from('artist')
     .select('origin_region_code')
     .not('origin_region_code', 'is', null)
+  const { data: countryRows } = await supabase
+    .from('artist')
+    .select('origin_country_code')
+    .not('origin_country_code', 'is', null)
   const { data: cachedBoundaries } = await supabase.from('geo_boundary').select('level, code')
 
   const cachedMuni = new Set((cachedBoundaries ?? []).filter((b) => b.level === 'municipality').map((b) => b.code))
   const cachedRegion = new Set((cachedBoundaries ?? []).filter((b) => b.level === 'region').map((b) => b.code))
+  const cachedCountry = new Set((cachedBoundaries ?? []).filter((b) => b.level === 'country').map((b) => b.code))
 
   const missingMuni = [...new Set((muniRows ?? []).map((r) => r.origin_muni_code as string))].filter(
     (c) => !cachedMuni.has(c)
@@ -112,12 +123,17 @@ async function repairMissingBoundaries(
   const missingRegion = [...new Set((regionRows ?? []).map((r) => r.origin_region_code as string))].filter(
     (c) => !cachedRegion.has(c)
   )
+  const missingCountry = [...new Set((countryRows ?? []).map((r) => r.origin_country_code as string))].filter(
+    (c) => !cachedCountry.has(c)
+  )
 
-  if (missingMuni.length === 0 && missingRegion.length === 0) {
+  if (missingMuni.length === 0 && missingRegion.length === 0 && missingCountry.length === 0) {
     console.log('補修対象の境界ポリゴンはありません。')
     return
   }
-  console.log(`\n境界ポリゴンの補修: 市区町村${missingMuni.length}件・州地域${missingRegion.length}件`)
+  console.log(
+    `\n境界ポリゴンの補修: 市区町村${missingMuni.length}件・州地域${missingRegion.length}件・国${missingCountry.length}件`
+  )
 
   for (const muniCode of missingMuni) {
     const boundary = await getOrFetchMunicipalityBoundary(supabase, muniCode)
@@ -126,6 +142,10 @@ async function repairMissingBoundaries(
   for (const regionCode of missingRegion) {
     const boundary = await getOrFetchRegionBoundary(supabase, regionCode, admin1Features)
     console.log(`  region=${regionCode}${boundary ? ' 取得成功' : '(取得失敗、既知のデータ欠落の可能性)'}`)
+  }
+  for (const countryCode of missingCountry) {
+    const boundary = await getOrFetchCountryBoundary(supabase, countryCode, admin0Features)
+    console.log(`  country=${countryCode}${boundary ? ' 取得成功' : '(取得失敗)'}`)
   }
 }
 
@@ -148,7 +168,11 @@ async function main() {
 
   console.log('Natural Earthの州・地域データを取得中(約40MB、数十秒かかります)...')
   const admin1Features = await fetchNaturalEarthAdmin1Features()
-  console.log(`取得完了: ${admin1Features.length}件\n`)
+  console.log(`取得完了: ${admin1Features.length}件`)
+
+  console.log('Natural Earthの国データ(高解像度)を取得中(約13MB)...')
+  const admin0Features = await fetchNaturalEarthAdmin0Features()
+  console.log(`取得完了: ${admin0Features.length}件\n`)
 
   let resolved = 0
   let noCountryCode = 0
@@ -195,7 +219,7 @@ async function main() {
     console.log(`失敗: ${failed}/${rows.length}件`)
   }
 
-  await repairMissingBoundaries(supabase, admin1Features)
+  await repairMissingBoundaries(supabase, admin1Features, admin0Features)
 
   console.log('\nDONE')
 }
