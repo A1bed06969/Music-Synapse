@@ -21,6 +21,7 @@ export async function search(query: string) {
       .from('album')
       .select('id, title, title_kana, jacket_url, artist:artist_id(id, name)')
       .ilike('title', `%${trimmed}%`)
+      .is('primary_album_id', null)
       .limit(20),
   ])
 

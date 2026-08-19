@@ -29,6 +29,7 @@ export default async function ArtistTimelinePage({
       .from('album')
       .select('id, title, jacket_url, release_date')
       .eq('artist_id', id)
+      .is('primary_album_id', null)
       .order('release_date', { ascending: false, nullsFirst: false }),
     supabase
       .from('music_event')

@@ -58,6 +58,7 @@ export default async function AlbumCalendarPage({
     .select('id, title, jacket_url, release_date, artist:artist_id(id, name)')
     .gte('release_date', start)
     .lt('release_date', end)
+    .is('primary_album_id', null)
     .order('release_date', { ascending: true })
 
   const artistIds = Array.from(

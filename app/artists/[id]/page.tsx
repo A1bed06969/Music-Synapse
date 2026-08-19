@@ -63,6 +63,7 @@ export default async function ArtistDetailPage({
         .from('album')
         .select('id, title, jacket_url, release_date, album_type, streaming_status')
         .eq('artist_id', id)
+        .is('primary_album_id', null)
         .order('release_date', { ascending: false, nullsFirst: false }),
       supabase
         .from('music_event')

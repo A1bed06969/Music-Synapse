@@ -22,6 +22,7 @@ async function fetchAllAlbums(supabase: Awaited<ReturnType<typeof createClient>>
     const { data } = await supabase
       .from('album')
       .select('id, title, title_kana, jacket_url, release_date, streaming_status, artist:artist_id(name)')
+      .is('primary_album_id', null)
       .range(offset, offset + PAGE_SIZE - 1)
     if (!data || data.length === 0) break
     rows.push(...data)
