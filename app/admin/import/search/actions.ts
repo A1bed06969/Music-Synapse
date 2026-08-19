@@ -8,6 +8,7 @@ import {
   searchAlbums,
   searchTracks,
   fetchAlbumById,
+  fetchArtistWithAlbums,
   type ItunesArtistSearchResult,
   type ItunesAlbum,
   type ItunesTrackSearchResult,
@@ -19,6 +20,7 @@ import {
   fillMissingArtistImage,
 } from '@/app/admin/import/actions'
 import { dispatchMusicBrainzImport } from '@/utils/musicbrainzImportDispatch'
+import { dispatchAlbumSync } from '@/utils/albumSyncDispatch'
 import { applyEditionGrouping } from '@/utils/applyEditionGrouping'
 
 export type SearchArtistItem = ItunesArtistSearchResult & { alreadyRegistered: boolean }
@@ -127,6 +129,7 @@ export async function registerAlbumFromSearch(collectionId: number): Promise<Reg
     .eq('apple_music_artist_id', String(album.artistId))
     .maybeSingle()
 
+  const isNewArtist = !existingArtist
   let artistId = existingArtist?.id as string | undefined
   if (!artistId) {
     const { artistId: newArtistId, errorMessage } = await upsertArtistFromItunes(supabase, {
@@ -156,6 +159,23 @@ export async function registerAlbumFromSearch(collectionId: number): Promise<Reg
   // 地域別版等のグループ化)もこのアーティストの分だけここで実行する
   after(() => dispatchMusicBrainzImport(artistId!))
   after(() => applyEditionGrouping(supabase, { artistId: artistId! }))
+
+  // 新規アーティストの場合、検索で選んだこの1枚だけでなく全カタログを取り込む
+  // (URL入力式の一括登録と同じ完全性にするため。既存アーティストへの追加登録では
+  // 毎回全カタログを再走査すると無駄が大きいため行わない)
+  if (isNewArtist) {
+    const targetArtistId = artistId
+    after(async () => {
+      try {
+        const { artist: itunesArtist, albums: itunesAlbums } = await fetchArtistWithAlbums(String(album.artistId))
+        if (itunesArtist) {
+          await dispatchAlbumSync(targetArtistId, itunesArtist.artistName, String(album.artistId), itunesAlbums)
+        }
+      } catch (err) {
+        console.error(`全カタログ取込のディスパッチに失敗しました(${album.artistName}):`, err)
+      }
+    })
+  }
 
   revalidatePath('/admin/import/search')
   revalidatePath(`/artists/${artistId}`)
