@@ -56,6 +56,14 @@ export async function linkEdition(formData: FormData) {
     redirectWith('error', '指定した代表版は既に別のアルバムの版になっています。そのグループの本来の代表版を指定してください。')
   }
 
+  // 紐付けようとしている版が、既に他のアルバムから代表版として参照されている
+  // (=自分自身の版を持っている)場合、そのままだと多段階のグループになってしまう
+  // (子アルバムたちが一覧・詳細ページから見えなくなる静かなデータ消失につながる)ため拒否する。
+  const { data: editionChildren } = await supabase.from('album').select('id').eq('primary_album_id', editionId).limit(1)
+  if (editionChildren && editionChildren.length > 0) {
+    redirectWith('error', '指定した版は既に他のアルバムの代表版になっています。先にそちらのグループを解消してから紐付けてください。')
+  }
+
   const { error } = await supabase
     .from('album')
     .update({ primary_album_id: primaryId, edition_group_manual_override: true })
@@ -92,32 +100,42 @@ export async function changeGroupRepresentative(formData: FormData) {
     redirectWith('error', '指定した新しい代表版は、そのグループの版ではありません。')
   }
 
-  // 新代表版以外の、旧代表版を指していた版たちを新代表版へ付け替える
+  // 3段階の更新は1トランザクションではないため、途中で失敗しても手動修正可能な
+  // 安全な状態(=代表版が2つに分かれるだけ)で止まるよう、必ずこの順序で実行すること。
+  // 「新代表版を先に昇格 → 版たちの付け替え → 旧代表版を降格」の順にすることで、
+  // どの段階で失敗しても「旧代表版→新代表版→旧代表版」のような循環参照が
+  // 決して発生しない(旧代表版と新代表版がそれぞれ独立した代表版のまま止まるだけ)。
+
+  // 新代表版自身をまずNULLにする(これが代表版になる)。手動修正フラグも立てる
+  // (unlinkEdition/linkEditionと同様、以後の自動バックフィルに再び拾われないように)。
+  const { error: promoteError } = await supabase
+    .from('album')
+    .update({ primary_album_id: null, edition_group_manual_override: true })
+    .eq('id', newPrimaryId)
+  if (promoteError) {
+    redirectWith('error', `新代表版の更新に失敗しました: ${promoteError.message}`)
+  }
+
+  // 旧代表版を指していた版たちを新代表版へ付け替える。新代表版は直前の更新で
+  // 既にprimary_album_id=NULLになっているため、この時点でWHERE句には一致せず、
+  // 自分自身を指してしまう心配はない(.neq()による除外が不要になった)。
   const { error: reassignError } = await supabase
     .from('album')
     .update({ primary_album_id: newPrimaryId })
     .eq('primary_album_id', currentPrimaryId)
-    .neq('id', newPrimaryId)
   if (reassignError) {
     redirectWith('error', `版の付け替えに失敗しました: ${reassignError.message}`)
   }
 
-  // 旧代表版を新代表版の版にする
+  // 最後に旧代表版を新代表版の版にする。旧代表版自身は上の付け替えクエリの対象外
+  // (旧代表版のprimary_album_idはNULLであり、currentPrimaryIdと一致しない)なので、
+  // ここで確実に新代表版へ紐付ける。手動修正フラグも立てる(linkEditionが版にする際と同様)。
   const { error: demoteError } = await supabase
     .from('album')
-    .update({ primary_album_id: newPrimaryId })
+    .update({ primary_album_id: newPrimaryId, edition_group_manual_override: true })
     .eq('id', currentPrimaryId)
   if (demoteError) {
     redirectWith('error', `旧代表版の更新に失敗しました: ${demoteError.message}`)
-  }
-
-  // 新代表版自身をNULLにする(これが代表版になる)
-  const { error: promoteError } = await supabase
-    .from('album')
-    .update({ primary_album_id: null })
-    .eq('id', newPrimaryId)
-  if (promoteError) {
-    redirectWith('error', `新代表版の更新に失敗しました: ${promoteError.message}`)
   }
 
   revalidatePath('/admin/data/albums/edition-groups')
