@@ -45,6 +45,21 @@ const EMPTY_MARKERS: MapMarker[] = []
 const EMPTY_POLYGONS: MapPolygon[] = []
 const EMPTY_ARTISTS: ArtistOriginRow[] = []
 
+/** 国/州地域/市区町村の「この中にいるアーティスト一覧」ポップアップ用の行リストを
+ * 組み立てる(小さな丸画像+名前のリンク)。1つのポリゴンに多人数(48人など)入る
+ * 場合もあるため、個別アーティストの吹き出し(画像・アルバム込み)とは別の
+ * コンパクトな書式にしている。 */
+function buildArtistListHtml(artists: { id: string; name: string; imageUrl: string | null }[]): string {
+  return artists
+    .map((a) => {
+      const thumb = a.imageUrl
+        ? `<img src="${escapeHtml(a.imageUrl)}" alt="" style="width:24px;height:24px;border-radius:50%;object-fit:cover;flex-shrink:0;" />`
+        : `<span style="display:inline-block;width:24px;height:24px;border-radius:50%;background:#e5e5e5;flex-shrink:0;"></span>`
+      return `<div style="margin-top:6px;"><a href="/artists/${escapeHtml(a.id)}" style="display:flex;align-items:center;gap:8px;color:inherit;text-decoration:none;">${thumb}<span>${escapeHtml(a.name)}</span></a></div>`
+    })
+    .join('')
+}
+
 export default function ArtistOriginMap({
   artists,
   countryFeatures,
@@ -219,12 +234,7 @@ export default function ArtistOriginMap({
         let popupHtml = ''
         if (!willDrillDown) {
           const adminName = lowResFeature?.properties.ADMIN ?? c.countryCode.toUpperCase()
-          const artistListHtml = artistsInThisCountry
-            .map(
-              (a) =>
-                `<div style="margin-top:4px;"><a href="/artists/${escapeHtml(a.id)}" style="color:inherit;">${escapeHtml(a.name)}</a></div>`
-            )
-            .join('')
+          const artistListHtml = buildArtistListHtml(artistsInThisCountry)
           popupHtml = `<div style="font-weight:bold;">${escapeHtml(adminName)}: ${c.artistCount}組</div><div style="margin-top:6px;max-height:200px;overflow-y:auto;">${artistListHtml}</div>`
         }
 
@@ -271,12 +281,7 @@ export default function ArtistOriginMap({
     if (!activeCountryCode) return EMPTY_POLYGONS
     return regionFeatures.map((feature) => {
       const matchingArtists = artistsInCountry.filter((a) => a.muniCode === feature.code || a.regionCode === feature.code)
-      const artistListHtml = matchingArtists
-        .map(
-          (a) =>
-            `<div style="margin-top:4px;"><a href="/artists/${escapeHtml(a.id)}" style="color:inherit;">${escapeHtml(a.name)}</a></div>`
-        )
-        .join('')
+      const artistListHtml = buildArtistListHtml(matchingArtists)
       return {
         id: `boundary-${feature.code}`,
         geometry: feature.geometry,
