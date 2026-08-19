@@ -21,6 +21,17 @@ export type MapMarker = {
   region?: string | null
 }
 
+export type MapPolygon = {
+  id: string
+  /** GeoJSON Geometry(Polygon/MultiPolygon)。geo_boundaryやworld-countries.jsonの
+   * featureからそのまま渡す想定 */
+  geometry: Record<string, unknown>
+  color: string
+  /** 空文字列ならポップアップを出さない(親コンポーネント側で「ここは即座に
+   * さらにドリルダウンするのでポップアップ不要」と判断した場合に使う) */
+  popupHtml: string
+}
+
 // 座標が完全に一致するマーカーはピンが重なって隠れてしまうため、
 // 同じ座標をグループ化し、円状に少しずつずらして全て見えるようにする
 function spreadOverlapping(markers: MapMarker[]): MapMarker[] {
@@ -56,32 +67,47 @@ function spreadOverlapping(markers: MapMarker[]): MapMarker[] {
 // 現在のズームがこれより既に大きい(寄っている)場合はズームアウトさせない。
 const FOCUS_ZOOM = 14
 
+// デフォルト引数に `[]` リテラルを直接書くとレンダーの度に新しい配列参照が
+// 生成され、下のuseEffectの依存配列([markers, polygons])が毎回変化したと
+// 誤認識してlayerGroupを不要に再構築してしまう(例: ホバーでfocusIdが変わる
+// 度にTabbedMapViewが再レンダーされ、polygonsを渡していない呼び出し元でも
+// マーカーがちらつく)。参照を安定させるためモジュールスコープの定数にする。
+const EMPTY_POLYGONS: MapPolygon[] = []
+
 export default function LeafletMap({
   markers,
+  polygons = EMPTY_POLYGONS,
   heightClassName = 'h-[600px]',
   focusId,
   onMarkerHover,
   onMarkerClick,
+  onPolygonClick,
 }: {
   markers: MapMarker[]
+  polygons?: MapPolygon[]
   heightClassName?: string
-  /** 一覧パネルなどからピンを選んだ時にセットすると、そのピンへスムーズにフライト+ポップアップを開く */
+  /** 一覧パネルなどからピンを選んだ時にセットすると、そのピンへスムーズにフライト+ポップアップを開く(ポリゴンのidも対象) */
   focusId?: string | null
   /** ピン自体にマウスホバーした時に呼ばれる(一覧パネル側のハイライトなどに利用) */
   onMarkerHover?: (id: string | null) => void
   /** ピン自体をクリックした時に呼ばれる */
   onMarkerClick?: (id: string) => void
+  /** ポリゴンをクリックした時に呼ばれる(ドリルダウンの状態遷移などに利用) */
+  onPolygonClick?: (id: string) => void
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<L.Map | null>(null)
   const leafletMarkersRef = useRef<Map<string, L.Marker>>(new Map())
+  const leafletPolygonsRef = useRef<Map<string, L.GeoJSON>>(new Map())
   // マーカー生成エフェクトを再実行させずに常に最新のコールバックを呼べるようref経由で保持する
   const onMarkerHoverRef = useRef(onMarkerHover)
   const onMarkerClickRef = useRef(onMarkerClick)
+  const onPolygonClickRef = useRef(onPolygonClick)
   useEffect(() => {
     onMarkerHoverRef.current = onMarkerHover
     onMarkerClickRef.current = onMarkerClick
-  }, [onMarkerHover, onMarkerClick])
+    onPolygonClickRef.current = onPolygonClick
+  }, [onMarkerHover, onMarkerClick, onPolygonClick])
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return
@@ -128,23 +154,50 @@ export default function LeafletMap({
     }
     leafletMarkersRef.current = leafletMarkers
 
-    if (markers.length > 0) {
+    const leafletPolygons = new Map<string, L.GeoJSON>()
+    for (const polygon of polygons) {
+      const geoJsonLayer = L.geoJSON(polygon.geometry as unknown as GeoJSON.GeoJsonObject, {
+        style: {
+          color: polygon.color,
+          weight: 1,
+          fillColor: polygon.color,
+          fillOpacity: 0.35,
+        },
+      }).addTo(layerGroup)
+      if (polygon.popupHtml) {
+        geoJsonLayer.bindPopup(polygon.popupHtml)
+      }
+      geoJsonLayer.on('click', () => onPolygonClickRef.current?.(polygon.id))
+      leafletPolygons.set(polygon.id, geoJsonLayer)
+    }
+    leafletPolygonsRef.current = leafletPolygons
+
+    if (markers.length > 0 || polygons.length > 0) {
       map.fitBounds(layerGroup.getBounds(), { padding: [40, 40], maxZoom: 12 })
     }
 
     return () => {
       layerGroup.remove()
     }
-  }, [markers])
+  }, [markers, polygons])
 
   useEffect(() => {
     const map = mapRef.current
     if (!map || !focusId) return
+
     const marker = leafletMarkersRef.current.get(focusId)
-    if (!marker) return
-    const targetZoom = Math.max(map.getZoom(), FOCUS_ZOOM)
-    map.flyTo(marker.getLatLng(), targetZoom, { duration: 0.8 })
-    marker.openPopup()
+    if (marker) {
+      const targetZoom = Math.max(map.getZoom(), FOCUS_ZOOM)
+      map.flyTo(marker.getLatLng(), targetZoom, { duration: 0.8 })
+      marker.openPopup()
+      return
+    }
+
+    const polygon = leafletPolygonsRef.current.get(focusId)
+    if (polygon) {
+      map.flyToBounds(polygon.getBounds(), { padding: [60, 60], duration: 0.8 })
+      polygon.openPopup()
+    }
   }, [focusId])
 
   return <div ref={containerRef} className={`w-full rounded-lg ${heightClassName}`} />
