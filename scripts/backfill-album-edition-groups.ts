@@ -35,6 +35,7 @@ async function fetchAllTargetAlbums(supabase: SupabaseAdminClient) {
       .is('primary_album_id', null)
       .eq('edition_group_manual_override', false)
       .in('album_type', ['Album', 'EP', 'Live'])
+      .order('id', { ascending: true })
       .range(offset, offset + pageSize - 1)
 
     if (error) {
