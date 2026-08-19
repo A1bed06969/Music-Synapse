@@ -269,7 +269,7 @@ export default function ArtistOriginMap({
     ? (() => {
         const target = resolveArtistTarget(selectedArtist, boundaryCodeSet)
         if (target.level === 'municipality' || target.level === 'region') return `boundary-${target.code}`
-        if (target.level === 'point') return `artist-${selectedArtist.id}`
+        if (target.level === 'point' || target.level === 'country') return `artist-${selectedArtist.id}`
         return null
       })()
     : null
