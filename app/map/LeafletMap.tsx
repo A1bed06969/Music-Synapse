@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 
@@ -109,6 +109,31 @@ export default function LeafletMap({
     onPolygonClickRef.current = onPolygonClick
   }, [onMarkerHover, onMarkerClick, onPolygonClick])
 
+  // focusIdが指すマーカー/ポリゴンへフライトしてポップアップを開く。
+  // 「初回ドリル時のfly-to取りこぼし」対策として、以下2箇所から呼ぶ:
+  //   1. レイヤー(markers/polygons)描画エフェクトの末尾 — 非同期フェッチで
+  //      polygonsが後から揃った直後、focusId自体は変わっていなくても改めて狙う
+  //   2. focusId自体が変化した時の既存エフェクト — レイヤーが既に安定した状態で
+  //      フォーカス対象だけが変わるケース(一覧の別項目にホバー等)
+  const applyFocus = useCallback((id: string | null | undefined) => {
+    const map = mapRef.current
+    if (!map || !id) return
+
+    const marker = leafletMarkersRef.current.get(id)
+    if (marker) {
+      const targetZoom = Math.max(map.getZoom(), FOCUS_ZOOM)
+      map.flyTo(marker.getLatLng(), targetZoom, { duration: 0.8 })
+      marker.openPopup()
+      return
+    }
+
+    const polygon = leafletPolygonsRef.current.get(id)
+    if (polygon) {
+      map.flyToBounds(polygon.getBounds(), { padding: [60, 60], duration: 0.8 })
+      polygon.openPopup()
+    }
+  }, [])
+
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return
 
@@ -176,29 +201,26 @@ export default function LeafletMap({
       map.fitBounds(layerGroup.getBounds(), { padding: [40, 40], maxZoom: 12 })
     }
 
+    // レイヤーがちょうど揃った直後(特に非同期フェッチでpolygonsが後から届いた時)に
+    // 現在のfocusIdへ改めてフォーカスする。focusId自体は変わっていないことが多いため
+    // 依存配列には含めない — 含めると、フォーカス対象が変わるたびにこの重い
+    // レイヤー再構築エフェクト全体が再実行され、ユーザーの手動パン/ズームを
+    // 巻き戻してしまう(このコンポーネントを渡すmarkers/polygonsはArtistOriginMap側で
+    // useMemoにより安定した参照になっているため、この効果自体は本当にレイヤーの
+    // 中身が変わった時だけ発火する)。
+    applyFocus(focusId)
+
     return () => {
       layerGroup.remove()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [markers, polygons])
 
+  // フォーカス対象自体が変化した時(レイヤーは既に安定している状態で、一覧の
+  // 別の項目にホバー/クリックしたなど)に改めてフォーカスする。
   useEffect(() => {
-    const map = mapRef.current
-    if (!map || !focusId) return
-
-    const marker = leafletMarkersRef.current.get(focusId)
-    if (marker) {
-      const targetZoom = Math.max(map.getZoom(), FOCUS_ZOOM)
-      map.flyTo(marker.getLatLng(), targetZoom, { duration: 0.8 })
-      marker.openPopup()
-      return
-    }
-
-    const polygon = leafletPolygonsRef.current.get(focusId)
-    if (polygon) {
-      map.flyToBounds(polygon.getBounds(), { padding: [60, 60], duration: 0.8 })
-      polygon.openPopup()
-    }
-  }, [focusId])
+    applyFocus(focusId)
+  }, [focusId, applyFocus])
 
   return <div ref={containerRef} className={`w-full rounded-lg ${heightClassName}`} />
 }
