@@ -21,6 +21,8 @@ const FESTIVALS = [
   { key: 'fujirock', label: 'フジロック', dataFile: 'fujirock-2026.json' },
   { key: 'summersonic', label: 'サマーソニック', dataFile: 'summersonic-2026.json' },
   { key: 'risingsun', label: 'ライジングサン', dataFile: 'risingsun-2026.json' },
+  { key: 'sweetloveshower', label: 'スイートラブシャワー', dataFile: 'sweetloveshower-2026.json' },
+  { key: 'kyotoongakuhaku', label: '京都音楽博覧会', dataFile: 'kyotoongakuhaku-2026.json' },
 ] as const
 
 function loadStaticPicks(dataFile: string): FestivalPick[] {
