@@ -3,6 +3,8 @@ import { searchReleaseByTitle, fetchArtistDetails, type MusicBrainzArtistDetails
 import { normalizeAlbumTitle } from '@/utils/creditImport'
 import { resolveArtistImageByName } from '@/utils/appleMusicImage'
 import { fetchOriginCoordinates, fetchRecordLabels } from '@/utils/wikidata'
+import { searchArtist, fetchArtistWithAlbums } from '@/utils/itunes'
+import { dispatchAlbumSync } from '@/utils/albumSyncDispatch'
 
 export type ResolveArtistMbidResult =
   | { matched: true; mbid: string; matchedTitles: string[] }
@@ -67,12 +69,17 @@ export async function resolveArtistMbid(knownAlbumTitles: string[]): Promise<Res
  * 取得済みのMusicBrainzアーティスト詳細をDBへ反映する(プロフィール項目は空欄のみ
  * 埋め、既存の手入力値は上書きしない)。手動確認フロー
  * (app/admin/data/artists/[id]/musicbrainz/actions.ts)と自動取込の両方から使う共通処理。
+ * skipMembershipsは、バンドメンバーのスタブ作成直後にそのメンバー自身のプロフィールを
+ * 肉付けする際、そのメンバーが所属する他のバンド(無関係な別プロジェクト等)の
+ * メンバー一覧まで芋づる式に作成してしまわないようにするためのガード(詳細は
+ * enrichNewlyCreatedMemberのコメント参照)
  */
 export async function writeArtistProfileFromMusicBrainzDetails(
   supabase: SupabaseClient,
   artistId: string,
   mbid: string,
-  details: MusicBrainzArtistDetails
+  details: MusicBrainzArtistDetails,
+  options?: { skipMemberships?: boolean }
 ): Promise<{
   profileFieldCount: number
   linkCount: number
@@ -250,7 +257,7 @@ export async function writeArtistProfileFromMusicBrainzDetails(
   // a/bの向きを示す列が無く、他のrelation_type(production等)は一貫していないため)
   let membershipsWritten = 0
   const membershipsUnresolved: string[] = []
-  for (const membership of details.memberships) {
+  for (const membership of options?.skipMemberships ? [] : details.memberships) {
     const { data: existingOtherArtist } = await supabase
       .from('artist')
       .select('id')
@@ -300,8 +307,9 @@ export async function writeArtistProfileFromMusicBrainzDetails(
     }
 
     // MusicBrainz経由で名前だけ作成/再利用されたメンバーはapple_music_artist_idを
-    // 持たないため画像が空になりがち。名前検索で確度の高い(完全一致1件のみ)候補が
-    // 見つかった場合に限り画像を補完する(ベストエフォート、失敗しても処理は続行)
+    // 持たないため画像・SNS・カタログが空になりがち。名前検索で確度の高い
+    // (完全一致1件のみ)候補が見つかった場合に限り画像を補完する
+    // (ベストエフォート、失敗しても処理は続行)
     const { data: otherArtistRow } = await supabase.from('artist').select('name, image_url').eq('id', otherArtistId).single()
     if (otherArtistRow && !otherArtistRow.image_url) {
       try {
@@ -313,6 +321,9 @@ export async function writeArtistProfileFromMusicBrainzDetails(
         console.error(`メンバー「${otherArtistRow.name}」の画像取得に失敗しました:`, err)
       }
     }
+    // 画像だけでなく、SNS/ジャンル/出身地とカタログ(アルバム・トラック)も
+    // 同じタイミングで肉付けする(詳細はenrichNewlyCreatedMemberのコメント参照)
+    await enrichNewlyCreatedMember(supabase, otherArtistId!, membership.name, membership.mbid)
 
     const bandId = membership.subjectIsBand ? artistId : otherArtistId
     const memberId = membership.subjectIsBand ? otherArtistId : artistId
@@ -348,6 +359,63 @@ export async function writeArtistProfileFromMusicBrainzDetails(
     membershipsUnresolved,
     originResolved,
     labelsLinked,
+  }
+}
+
+/**
+ * バンドメンバーとして新規作成/再利用されたartist行(名前+MBIDだけの薄い状態の
+ * ことが多い)を、そのメンバー自身のMBIDを使って肉付けする:
+ * ①SNS・公式サイト・ジャンル・出身地(writeArtistProfileFromMusicBrainzDetailsを
+ *   skipMemberships:trueで再帰的に呼ぶ。trueにする理由: このメンバーが
+ *   所属する他の無関係なバンド(別プロジェクト等)のメンバー一覧まで
+ *   芋づる式に作成してしまうのを防ぐため)
+ * ②iTunesカタログ(名前検索で確度の高い(完全一致1件のみ)候補が見つかった場合に
+ *   限りapple_music_artist_idを補完し、アルバム・トラックを一括同期する)
+ * 呼び出し元(writeArtistProfileFromMusicBrainzDetailsのメンバーシップループ)で
+ * バンドメンバーが見つかるたび毎回呼ばれるが、既に十分な情報を持つメンバー
+ * (他のバンド経由で既に肉付け済み等)は内部で早期リターンし、無駄なAPI呼び出しを
+ * しない。ベストエフォートで、失敗してもメンバーシップ登録自体には影響させない
+ */
+async function enrichNewlyCreatedMember(
+  supabase: SupabaseClient,
+  memberArtistId: string,
+  memberName: string,
+  memberMbid: string
+): Promise<void> {
+  const { data: current } = await supabase
+    .from('artist')
+    .select('official_site_url, sns_x_url, apple_music_artist_id')
+    .eq('id', memberArtistId)
+    .single()
+  if (!current) return
+
+  if (!current.official_site_url && !current.sns_x_url) {
+    try {
+      const details = await fetchArtistDetails(memberMbid)
+      await writeArtistProfileFromMusicBrainzDetails(supabase, memberArtistId, memberMbid, details, {
+        skipMemberships: true,
+      })
+    } catch (err) {
+      console.error(`メンバー「${memberName}」のプロフィール取込に失敗しました:`, err)
+    }
+  }
+
+  if (!current.apple_music_artist_id) {
+    try {
+      const candidates = await searchArtist(memberName)
+      const normalize = (s: string) => s.trim().toLowerCase()
+      const exactMatches = candidates.filter((c) => normalize(c.artistName) === normalize(memberName))
+      if (exactMatches.length === 1) {
+        const appleArtistId = String(exactMatches[0].artistId)
+        await supabase.from('artist').update({ apple_music_artist_id: appleArtistId }).eq('id', memberArtistId)
+        const { artist: itunesArtist, albums: itunesAlbums } = await fetchArtistWithAlbums(appleArtistId)
+        if (itunesArtist) {
+          await dispatchAlbumSync(memberArtistId, itunesArtist.artistName, appleArtistId, itunesAlbums)
+        }
+      }
+    } catch (err) {
+      console.error(`メンバー「${memberName}」のカタログ照合に失敗しました:`, err)
+    }
   }
 }
 
