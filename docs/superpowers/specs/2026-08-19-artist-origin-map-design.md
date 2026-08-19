@@ -35,8 +35,8 @@
 | 座標→日本の市区町村コード(5桁JISコード) | 国土地理院(GSI) 逆ジオコーディングAPI `https://mreversegeocoder.gsi.go.jp/reverse-geocoder/LonLatToAddress?lon=..&lat=..` | 無料・APIキー不要。レスポンス例: `{"results":{"muniCd":"13101","lv01Nm":"..."}}` |
 | 座標→国コード・州/地域コード(ISO 3166-2) | Nominatim逆ジオコーディング(既存の`scripts/backfill-artist-hometown-country.ts`と同じAPI) | `address.country_code`(例:`us`)、`address.ISO3166-2-lvl4`(例:`US-CA`、`GB-ENG`)を利用。米は州、英はイングランド/スコットランド/ウェールズ/北アイルランドの4地域相当。利用ポリシー上1リクエスト/秒程度に制限が必要(既存スクリプトと同様の配慮を踏襲)。 |
 | 日本の市区町村ポリゴン | GitHub `niiyz/JapanCityGeoJson`(国土数値情報 行政区域データ由来、2020年版) | `geojson/{都道府県コード2桁}/{5桁muniCd}.json`で1市区町村ずつ個別ファイル取得可能(1ファイル約10〜100KB)。実際に必要な市区町村だけを都度取得してDBにキャッシュする(全1,700件を先読みしない)。 |
-| 州・地域ポリゴン(世界、Admin-1) | GitHub `martynafford/natural-earth-geojson`の`50m/cultural/ne_50m_admin_1_states_provinces.json`(Natural Earth、パブリックドメイン) | 世界全体で約1.6MB。`iso_3166_2`プロパティでNominatimの`ISO3166-2-lvl4`と直接突合できる。取得は初回のみ(サーバ側で1回フェッチし、必要な地域だけ抽出してDBにキャッシュ)。 |
-| 国ポリゴン(世界、Admin-0) | 同リポジトリの`110m/cultural/ne_110m_admin_0_countries.json`(Natural Earth、パブリックドメイン) | 世界全体で約725KB。低解像度で「大陸ズーム時に国を塗り分ける」用途に十分。`ISO_A2`(2文字国コード)と`CONTINENT`(大陸名、英語)プロパティを持つ。この`CONTINENT`をそのまま使うことで、既存の`utils/continents.ts`(自由入力国名ベースで漏れがある)には依存しない、コード起点の頑健な大陸判定ができる。 |
+| 州・地域ポリゴン(世界、Admin-1) | Natural Earth公式GitHub `nvkelso/natural-earth-vector`の`geojson/ne_10m_admin_1_states_provinces.geojson`(パブリックドメイン) | 世界全体で約40MB・4,596件(253国・地域、日本の47都道府県含む)、実測で件数を確認済み。`iso_3166_2`プロパティ(小文字)でNominatimの`ISO3166-2-lvl4`と直接突合できる。**注意**: 同リポジトリでも50m/110m版はなぜか世界の一部の国しか収録されておらず(実測で294件・4ヶ国分のみ)、必ず10m版を使うこと。取得は初回のみ(サーバ側で1回フェッチし、必要な地域だけ抽出してDBにキャッシュ)。 |
+| 国ポリゴン(世界、Admin-0) | 同リポジトリの`geojson/ne_110m_admin_0_countries.geojson`(パブリックドメイン) | 世界全体で約725KB・177件、実測で件数・大陸網羅を確認済み。低解像度で「大陸ズーム時に国を塗り分ける」用途に十分。`ISO_A2`(大文字、2文字国コード)と`CONTINENT`(大文字キー、大陸名は英語)プロパティを持つ。Admin-1ファイルとはプロパティ名の大文字/小文字が異なる(Admin-0は`ISO_A2`/`CONTINENT`、Admin-1は`iso_a2`/`iso_3166_2`)ため実装時に混同しないこと。この`CONTINENT`をそのまま使うことで、既存の`utils/continents.ts`(自由入力国名ベースで漏れがある)には依存しない、コード起点の頑健な大陸判定ができる。 |
 
 いずれもAPIキー・利用登録・課金が不要な公開データ/APIであることを確認済み。ライセンス表記(国土数値情報・Natural Earthのクレジット)は既存の`utils/japan-map.ts`冒頭コメントの慣習に倣い、新規ファイルにも出典コメントを残す。
 
