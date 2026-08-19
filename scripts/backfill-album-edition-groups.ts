@@ -79,9 +79,10 @@ async function fetchAlbumIdsWithChildren(
     while (true) {
       const { data, error } = await supabase
         .from('album')
-        .select('primary_album_id')
+        .select('id, primary_album_id')
         .in('primary_album_id', batch)
         .order('primary_album_id', { ascending: true })
+        .order('id', { ascending: true })
         .range(offset, offset + pageSize - 1)
 
       if (error) {
