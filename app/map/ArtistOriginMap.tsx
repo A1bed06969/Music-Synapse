@@ -9,6 +9,7 @@ import {
   buildCountryToContinentMap,
   groupArtistsByContinent,
   groupArtistsByCountry,
+  resolveCountryIso,
   CONTINENT_CENTER,
   type NaturalEarthCountryFeature,
 } from '@/utils/artistOriginMap'
@@ -36,6 +37,14 @@ type DrillState =
 
 type BoundaryFeature = { code: string; name: string | null; geometry: Record<string, unknown> }
 
+// レンダー毎に新しい配列リテラルを作らないための安定した空配列参照(LeafletMap.tsxの
+// EMPTY_POLYGONS定数と同じ狙い)。useMemoの各ブランチが「今回は自分の出番ではない」時に
+// これを返すことで、その他のブランチ用データが変わってもLeafletMapへ渡すpropsの参照が
+// 不必要に変化しないようにする。
+const EMPTY_MARKERS: MapMarker[] = []
+const EMPTY_POLYGONS: MapPolygon[] = []
+const EMPTY_ARTISTS: ArtistOriginRow[] = []
+
 export default function ArtistOriginMap({
   artists,
   countryFeatures,
@@ -58,30 +67,41 @@ export default function ArtistOriginMap({
   const countryFeatureByCode = useMemo(() => {
     const map = new Map<string, NaturalEarthCountryFeature>()
     for (const feature of countryFeatures) {
-      const iso = feature.properties.ISO_A2?.toLowerCase()
+      const iso = resolveCountryIso(feature.properties)
       if (iso) map.set(iso, feature)
     }
     return map
   }, [countryFeatures])
 
   // アーティスト一覧から選択されたら、そのアーティストの国の階層まで直接ドリルダウンする
-  // (市区町村/州地域そのものへのズームはCountry状態のLeafletMapのfocusIdで行う)
+  // (市区町村/州地域そのものへのズームはCountry状態のLeafletMapのfocusIdで行う)。
+  // 側リストを高速にホバーで通過するだけで対象国が変わらないことも多いため、
+  // 解決先の国が実際に変わった時だけstateを更新する(prevをそのまま返して
+  // オブジェクト参照を保つことで、下のポリゴン取得effectの不要な再実行を防ぐ)。
   useEffect(() => {
     if (!selectedArtistId) return
     const artist = artists.find((a) => a.id === selectedArtistId)
     if (!artist?.countryCode) return
-    const continent = countryToContinent.get(artist.countryCode.toLowerCase()) ?? 'その他'
-    setDrill({ level: 'country', continent, countryCode: artist.countryCode.toLowerCase() })
+    const countryCode = artist.countryCode.toLowerCase()
+    setDrill((prev) =>
+      prev.level === 'country' && prev.countryCode === countryCode
+        ? prev
+        : { level: 'country', continent: countryToContinent.get(countryCode) ?? 'その他', countryCode }
+    )
   }, [selectedArtistId, artists, countryToContinent])
 
+  const activeCountryCode = drill.level === 'country' ? drill.countryCode : null
+
   // Country状態に入ったら、その国のアーティスト達が使っているregion/muniコードに
-  // 対応するポリゴンだけをオンデマンドで取得する(geo_boundary全件は絶対に取らない)
+  // 対応するポリゴンだけをオンデマンドで取得する(geo_boundary全件は絶対に取らない)。
+  // activeCountryCodeにのみ依存させることで、対象国が変わらない限り(drillオブジェクトの
+  // 参照だけが変わっても)再フェッチしない。
   useEffect(() => {
-    if (drill.level !== 'country') {
-      setRegionFeatures([])
+    if (!activeCountryCode) {
+      setRegionFeatures((prev) => (prev.length === 0 ? prev : []))
       return
     }
-    const artistsInCountry = artists.filter((a) => a.countryCode?.toLowerCase() === drill.countryCode)
+    const artistsInCountry = artists.filter((a) => a.countryCode?.toLowerCase() === activeCountryCode)
     const muniCodes = [...new Set(artistsInCountry.map((a) => a.muniCode).filter((c): c is string => Boolean(c)))]
     const regionCodes = [...new Set(artistsInCountry.map((a) => a.regionCode).filter((c): c is string => Boolean(c)))]
 
@@ -106,11 +126,19 @@ export default function ArtistOriginMap({
     return () => {
       cancelled = true
     }
-  }, [drill, artists])
+  }, [activeCountryCode, artists])
 
-  if (drill.level === 'world') {
+  // 3つのドリルダウン段階それぞれのmarkers/polygonsをuseMemoで作る。Reactのフック規則上
+  // (呼び出し順序をレンダー間で変えてはいけない)、下のif分岐の中でuseMemoを呼ぶことは
+  // できないため、ここで全段階分をあらかじめ計算し、該当しない段階では安定した空配列
+  // (EMPTY_MARKERS/EMPTY_POLYGONS)を返すことで、他の段階のデータが変化しても
+  // このコンポーネントが今いない段階の配列の参照までは変わらないようにする。
+
+  // World段階
+  const worldMarkers: MapMarker[] = useMemo(() => {
+    if (drill.level !== 'world') return EMPTY_MARKERS
     const continents = groupArtistsByContinent(artists, countryToContinent)
-    const markers: MapMarker[] = continents
+    return continents
       .filter((c) => CONTINENT_CENTER[c.continent])
       .map((c) => ({
         id: `continent-${c.continent}`,
@@ -121,24 +149,19 @@ export default function ArtistOriginMap({
         label: `${c.continent}(${c.artistCount})`,
         popupHtml: `<div style="font-weight:bold;">${escapeHtml(c.continent)}: ${c.artistCount}組</div>`,
       }))
+  }, [drill.level, artists, countryToContinent])
 
-    return (
-      <LeafletMap
-        markers={markers}
-        onMarkerClick={(id) => setDrill({ level: 'continent', continent: id.replace('continent-', '') })}
-      />
-    )
-  }
-
-  if (drill.level === 'continent') {
+  // Continent段階
+  const continentPolygons: MapPolygon[] = useMemo(() => {
+    if (drill.level !== 'continent') return EMPTY_POLYGONS
     const countries = groupArtistsByCountry(artists, drill.continent, countryToContinent)
-    const polygons: MapPolygon[] = countries
+    return countries
       .map((c) => {
         const feature = countryFeatureByCode.get(c.countryCode)
         if (!feature) return null
-        const artistsInCountry = artists.filter((a) => a.countryCode?.toLowerCase() === c.countryCode)
+        const artistsInThisCountry = artists.filter((a) => a.countryCode?.toLowerCase() === c.countryCode)
         const willDrillDown = hasBoundaryDataForCountry(
-          artistsInCountry.map((a) => ({ regionCode: a.regionCode, muniCode: a.muniCode })),
+          artistsInThisCountry.map((a) => ({ regionCode: a.regionCode, muniCode: a.muniCode })),
           boundaryCodeSet
         )
         return {
@@ -151,7 +174,66 @@ export default function ArtistOriginMap({
         }
       })
       .filter((p): p is MapPolygon => p !== null)
+  }, [drill, artists, countryFeatureByCode, boundaryCodeSet, countryToContinent])
 
+  // Country段階
+  const artistsInCountry: ArtistOriginRow[] = useMemo(() => {
+    if (!activeCountryCode) return EMPTY_ARTISTS
+    return artists.filter((a) => a.countryCode?.toLowerCase() === activeCountryCode)
+  }, [artists, activeCountryCode])
+
+  // #3: artistsInCountryは定義上countryCodeを持つアーティストしか含まないため、
+  // resolveArtistTargetが'point'を返すことはない(countryCodeがnullの時のみ'point')。
+  // 'country'レベル(=そのアーティストの国にはregion/muniポリゴンがまだ無い、または
+  // 一部のアーティストだけキャッシュ済み、という混在ケース)までを取りこぼさず点表示する。
+  const fallbackMarkers: MapMarker[] = useMemo(() => {
+    if (!activeCountryCode) return EMPTY_MARKERS
+    return artistsInCountry
+      .filter((a) => {
+        const level = resolveArtistTarget(a, boundaryCodeSet).level
+        return level === 'point' || level === 'country'
+      })
+      .map((a) => ({
+        id: `artist-${a.id}`,
+        latitude: a.latitude,
+        longitude: a.longitude,
+        color: '#e85d5d',
+        category: 'artist' as const,
+        label: a.name,
+        imageUrl: a.imageUrl,
+        popupHtml: a.popupHtml,
+      }))
+  }, [activeCountryCode, artistsInCountry, boundaryCodeSet])
+
+  const countryPolygons: MapPolygon[] = useMemo(() => {
+    if (!activeCountryCode) return EMPTY_POLYGONS
+    return regionFeatures.map((feature) => {
+      const matchingArtists = artistsInCountry.filter((a) => a.muniCode === feature.code || a.regionCode === feature.code)
+      const artistListHtml = matchingArtists
+        .map(
+          (a) =>
+            `<div style="margin-top:4px;"><a href="/artists/${escapeHtml(a.id)}" style="color:inherit;">${escapeHtml(a.name)}</a></div>`
+        )
+        .join('')
+      return {
+        id: `boundary-${feature.code}`,
+        geometry: feature.geometry,
+        color: '#e85d5d',
+        popupHtml: `<div style="font-weight:bold;">${escapeHtml(feature.name ?? feature.code)}</div>${artistListHtml}`,
+      }
+    })
+  }, [activeCountryCode, regionFeatures, artistsInCountry])
+
+  if (drill.level === 'world') {
+    return (
+      <LeafletMap
+        markers={worldMarkers}
+        onMarkerClick={(id) => setDrill({ level: 'continent', continent: id.replace('continent-', '') })}
+      />
+    )
+  }
+
+  if (drill.level === 'continent') {
     return (
       <div>
         <button
@@ -162,13 +244,13 @@ export default function ArtistOriginMap({
           ← 大陸一覧に戻る
         </button>
         <LeafletMap
-          markers={[]}
-          polygons={polygons}
+          markers={EMPTY_MARKERS}
+          polygons={continentPolygons}
           onPolygonClick={(id) => {
             const countryCode = id.replace('country-', '')
-            const artistsInCountry = artists.filter((a) => a.countryCode?.toLowerCase() === countryCode)
+            const artistsInClickedCountry = artists.filter((a) => a.countryCode?.toLowerCase() === countryCode)
             const willDrillDown = hasBoundaryDataForCountry(
-              artistsInCountry.map((a) => ({ regionCode: a.regionCode, muniCode: a.muniCode })),
+              artistsInClickedCountry.map((a) => ({ regionCode: a.regionCode, muniCode: a.muniCode })),
               boundaryCodeSet
             )
             if (willDrillDown) {
@@ -179,36 +261,6 @@ export default function ArtistOriginMap({
       </div>
     )
   }
-
-  // drill.level === 'country'
-  const artistsInCountry = artists.filter((a) => a.countryCode?.toLowerCase() === drill.countryCode)
-  const fallbackMarkers: MapMarker[] = artistsInCountry
-    .filter((a) => resolveArtistTarget(a, boundaryCodeSet).level === 'point')
-    .map((a) => ({
-      id: `artist-${a.id}`,
-      latitude: a.latitude,
-      longitude: a.longitude,
-      color: '#e85d5d',
-      category: 'artist' as const,
-      label: a.name,
-      imageUrl: a.imageUrl,
-      popupHtml: a.popupHtml,
-    }))
-  const polygons: MapPolygon[] = regionFeatures.map((feature) => {
-    const matchingArtists = artistsInCountry.filter((a) => a.muniCode === feature.code || a.regionCode === feature.code)
-    const artistListHtml = matchingArtists
-      .map(
-        (a) =>
-          `<div style="margin-top:4px;"><a href="/artists/${escapeHtml(a.id)}" style="color:inherit;">${escapeHtml(a.name)}</a></div>`
-      )
-      .join('')
-    return {
-      id: `boundary-${feature.code}`,
-      geometry: feature.geometry,
-      color: '#e85d5d',
-      popupHtml: `<div style="font-weight:bold;">${escapeHtml(feature.name ?? feature.code)}</div>${artistListHtml}`,
-    }
-  })
 
   // 選択中のアーティストがこの国に属するなら、そのアーティストの解決済み最深レベル
   // (市区町村/州地域のポリゴン、または解決できなければ点マーカー)までズームする
@@ -232,7 +284,7 @@ export default function ArtistOriginMap({
         ← {drill.continent}の国一覧に戻る
       </button>
       {loadingRegions && <p className="mb-2 text-xs text-white/40">読み込み中...</p>}
-      <LeafletMap markers={fallbackMarkers} polygons={polygons} focusId={focusId} />
+      <LeafletMap markers={fallbackMarkers} polygons={countryPolygons} focusId={focusId} />
     </div>
   )
 }

@@ -7,6 +7,8 @@
 
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 import {
   buildCountryToContinentMap,
   groupArtistsByContinent,
@@ -62,6 +64,18 @@ describe('groupArtistsByContinent', () => {
     const countryToContinent = buildCountryToContinentMap(FIXTURE_FEATURES)
     const counts = groupArtistsByContinent([{ countryCode: null }, { countryCode: 'jp' }], countryToContinent)
     assert.deepEqual(counts, [{ continent: 'アジア', artistCount: 1 }])
+  })
+})
+
+describe('buildCountryToContinentMap against the real committed asset', () => {
+  test('resolves every real-world country actually used in production, including ISO_A2="-99" sentinel cases (France)', () => {
+    const raw = readFileSync(path.join(process.cwd(), 'public/geo/world-countries.json'), 'utf-8')
+    const worldCountries = JSON.parse(raw) as { features: NaturalEarthCountryFeature[] }
+    const map = buildCountryToContinentMap(worldCountries.features)
+    assert.equal(map.get('fr'), 'ヨーロッパ')
+    assert.equal(map.get('jp'), 'アジア')
+    assert.equal(map.get('us'), '北米')
+    assert.equal(map.get('gb'), 'ヨーロッパ')
   })
 })
 

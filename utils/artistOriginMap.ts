@@ -6,8 +6,17 @@
 // カバレッジに漏れがある)には依存しない、コード起点の頑健な大陸判定を行う。
 
 export type NaturalEarthCountryFeature = {
-  properties: { ISO_A2?: string; CONTINENT?: string; ADMIN?: string }
+  properties: { ISO_A2?: string; ISO_A2_EH?: string; CONTINENT?: string; ADMIN?: string }
   geometry: Record<string, unknown>
+}
+
+/** Natural Earthの`ISO_A2`は一部の国(フランス・ノルウェー・コソボ・北キプロス・
+ * ソマリランド)で解決できず、プレースホルダーの`"-99"`が入る。実コードは
+ * `ISO_A2_EH`プロパティ側にあるため、そちらを優先し、`-99`は未設定として扱う。 */
+export function resolveCountryIso(properties: NaturalEarthCountryFeature['properties']): string | null {
+  const raw = properties.ISO_A2_EH ?? properties.ISO_A2
+  if (!raw || raw === '-99') return null
+  return raw.toLowerCase()
 }
 
 export const CONTINENT_ORDER = ['アジア', 'ヨーロッパ', '北米', '南米', 'オセアニア', 'アフリカ', 'その他'] as const
@@ -31,12 +40,13 @@ export const CONTINENT_CENTER: Record<string, [number, number]> = {
   南米: [-15, -60],
   オセアニア: [-25, 140],
   アフリカ: [2, 20],
+  その他: [0, 0],
 }
 
 export function buildCountryToContinentMap(features: NaturalEarthCountryFeature[]): Map<string, string> {
   const map = new Map<string, string>()
   for (const feature of features) {
-    const iso = feature.properties.ISO_A2?.toLowerCase()
+    const iso = resolveCountryIso(feature.properties)
     const continent = feature.properties.CONTINENT
     if (!iso || !continent) continue
     map.set(iso, CONTINENT_LABEL_JA[continent] ?? 'その他')
