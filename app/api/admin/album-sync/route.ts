@@ -22,7 +22,7 @@ export const maxDuration = 60
 // 確認した。クレジット省略後は1曲あたり1〜2秒程度で済むため、同じ45秒予算でも
 // 十分な枚数を処理でき、ホップ数を大きく減らせる。省略したクレジットは
 // scripts/backfill-album-credits.tsが別途拾う(月次cron)
-const TIME_BUDGET_MS = 45_000
+const TIME_BUDGET_MS = 40_000
 
 export async function POST(request: NextRequest) {
   const body = await request.json()
@@ -60,6 +60,11 @@ export async function POST(request: NextRequest) {
       }
 
       if (i < albums.length) {
+        // 自己ディスパッチ(同じURLへの短時間の連続呼び出し)がVercelのループ検知
+        // (508 Loop Detected)に引っかかることを実際のアーティストで確認したため、
+        // 次のチャンクへのディスパッチ前に少し間を空ける(45秒予算消費後でも
+        // maxDuration=60秒に対してまだ余裕がある)
+        await new Promise((resolve) => setTimeout(resolve, 3_000))
         await dispatchAlbumSync(artistId, artistName, appleMusicArtistId, albums, i)
       } else {
         console.log(`アルバム同期完了(${artistName}): ${albums.length}件`)
