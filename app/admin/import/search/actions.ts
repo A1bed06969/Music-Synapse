@@ -19,6 +19,7 @@ import {
   fillMissingArtistImage,
 } from '@/app/admin/import/actions'
 import { dispatchMusicBrainzImport } from '@/utils/musicbrainzImportDispatch'
+import { applyEditionGrouping } from '@/utils/applyEditionGrouping'
 
 export type SearchArtistItem = ItunesArtistSearchResult & { alreadyRegistered: boolean }
 export type SearchAlbumItem = ItunesAlbum & { alreadyRegistered: boolean }
@@ -151,8 +152,10 @@ export async function registerAlbumFromSearch(collectionId: number): Promise<Reg
   const { trackCount } = await registerSingleAlbum(supabase, artistId, album.artistName, album)
 
   // レスポンスをブロックしないよう、レスポンス後にバックグラウンドでディスパッチする
-  // (理由はutils/musicbrainzImportDispatch.tsのコメント参照)
+  // (理由はutils/musicbrainzImportDispatch.tsのコメント参照)。版統合(デラックス版・
+  // 地域別版等のグループ化)もこのアーティストの分だけここで実行する
   after(() => dispatchMusicBrainzImport(artistId!))
+  after(() => applyEditionGrouping(supabase, { artistId: artistId! }))
 
   revalidatePath('/admin/import/search')
   revalidatePath(`/artists/${artistId}`)

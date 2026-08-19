@@ -9,6 +9,7 @@ import { createAdminClient } from '@/utils/Supabase/admin'
 import { fillMissingArtistImage, registerSingleAlbum, flagDelistedAlbums } from '@/app/admin/import/actions'
 import { dispatchAlbumSync } from '@/utils/albumSyncDispatch'
 import { dispatchMusicBrainzImport } from '@/utils/musicbrainzImportDispatch'
+import { applyEditionGrouping } from '@/utils/applyEditionGrouping'
 import type { ItunesAlbum } from '@/utils/itunes'
 
 export const maxDuration = 60
@@ -61,6 +62,14 @@ export async function POST(request: NextRequest) {
       } else {
         console.log(`アルバム同期完了(${artistName}): ${albums.length}件`)
         await flagDelistedAlbums(supabase, artistId, albums)
+        // このアーティストの全アルバムが揃ったので、版違い(デラックス版・地域別版等)の
+        // 統合をこのタイミングで1回だけ実行する(チャンク途中では実行しない)
+        const groupingResult = await applyEditionGrouping(supabase, { artistId })
+        if (groupingResult.groupsDetected > 0) {
+          console.log(
+            `アルバム版統合(${artistName}): ${groupingResult.groupsDetected}件のグループを検出、${groupingResult.updated}件を適用`
+          )
+        }
         await dispatchMusicBrainzImport(artistId)
         revalidatePath(`/artists/${artistId}`)
       }
