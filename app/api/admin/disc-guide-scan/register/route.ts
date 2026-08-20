@@ -1,27 +1,21 @@
 // app/api/admin/disc-guide-scan/register/route.ts
+//
+// 確認画面の「確認して登録」(このページの全件をまとめて登録)。1件ずつ登録する
+// 場合は/api/admin/disc-guide-scan/register-oneを使う。
 
 import { createAdminClient } from '@/utils/Supabase/admin';
 import { dispatchMusicBrainzImport } from '@/utils/musicbrainzImportDispatch';
-import { classifyAlbumType } from '@/utils/albumType';
-import { findAppleMusicAlbumMatch } from '@/utils/discGuideImport';
-import { registerAlbumFromSearch } from '@/app/admin/import/search/actions';
+import { registerOneConfirmedAlbum, type ConfirmedAlbum } from '@/utils/discGuideRegister';
 import { after } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import { NextRequest, NextResponse } from 'next/server';
 
-// after()内で新規アーティストごとにMusicBrainzプロフィール取込を行うため、
-// 1ページに新規アーティストが多いと時間がかかる。他の管理画面バックグラウンド
-// 処理と同じ規約に合わせる。
+// 1ページのエントリ(1枚あたりiTunes検索+登録)を順番に処理するうえ、after()内で
+// 新規アーティストごとにMusicBrainzプロフィール取込も行うため、エントリ数が多い
+// ページはmaxDuration(60秒)を超えてVercelの504で強制終了することが本番で
+// 実際に発生した(1エントリの実登録に数秒〜十数秒かかりうるため、8件でも
+// 余裕で60秒を超えうる)。レスポンスはすぐ返し、実処理はafter()に切り離す。
 export const maxDuration = 60;
-
-type ConfirmedAlbum = {
-  extracted_index: number;
-  title: string;
-  artist_name: string;
-  label?: string;
-  year?: number;
-  album_id?: string;
-  create_new_album?: boolean;
-};
 
 export async function POST(req: NextRequest) {
   try {
@@ -33,7 +27,6 @@ export async function POST(req: NextRequest) {
 
     const supabase = createAdminClient();
 
-    // Fetch confirmed pending record
     const { data: pending } = await supabase
       .from('disc_guide_scan_pending')
       .select('*')
@@ -47,170 +40,43 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const confirmed: { albums: ConfirmedAlbum[] } = pending.confirmed_data;
-    const bulkImportArtistIds: string[] = [];
-    let registeredCount = 0;
+    after(() => registerAllConfirmedAlbums(supabase, pending));
 
-    // 2. Create albums & register selections
-    for (const albumData of confirmed.albums) {
-      let albumId = albumData.album_id;
-
-      // 確認画面の手動検索(Apple Musicカタログ全体を検索)で選ばれた候補は、
-      // 自前DBにまだ無いためalbum_idが`itunes:<collectionId>`の形で来る
-      // (app/admin/data/discguides/confirm/actions.ts参照)。自動マッチ済みの
-      // create_new_albumパスと同じ経路(iTunes検索登録)で実データを作る。
-      if (albumId?.startsWith('itunes:')) {
-        const collectionId = Number(albumId.slice('itunes:'.length));
-        albumId = undefined;
-        const result = await registerAlbumFromSearch(collectionId);
-        if (result.success) {
-          const { data: registeredAlbum } = await supabase
-            .from('album')
-            .select('id')
-            .eq('apple_music_album_id', String(collectionId))
-            .maybeSingle();
-          albumId = registeredAlbum?.id;
-        } else {
-          console.error(`iTunes経由の登録に失敗しました(collectionId=${collectionId}): ${result.message}`);
-        }
-      } else if (!albumId && albumData.create_new_album) {
-        // まずiTunesで実カタログを検索する。タイトル完全一致(正規化後)かつ
-        // アーティスト名一致の候補が1件だけ見つかった場合、既存の検索登録
-        // (app/admin/import/search)と同じ経路で登録する。これによりトラック・
-        // ジャケット画像・新規アーティストなら全カタログ同期まで揃った状態になる
-        // (裸のinsertだけでは名前しかない空のアルバム行になってしまうため)
-        const matched = await findAppleMusicAlbumMatch(albumData.artist_name, albumData.title);
-        if (matched) {
-          const result = await registerAlbumFromSearch(matched.collectionId);
-          if (result.success) {
-            const { data: registeredAlbum } = await supabase
-              .from('album')
-              .select('id')
-              .eq('apple_music_album_id', String(matched.collectionId))
-              .maybeSingle();
-            albumId = registeredAlbum?.id;
-          } else {
-            console.error(`iTunes経由の登録に失敗しました("${albumData.title}"): ${result.message}`);
-          }
-        }
-
-        // iTunesに実カタログが見つからない場合のフォールバック:
-        // 従来通りOCRの手がかり(タイトル・アーティスト名のテキストのみ)で
-        // 最低限の行を作る(トラック・画像は無いまま、後で手動で肉付けする想定)
-        if (!albumId) {
-          // Get or create artist
-          let artistId = albumData.artist_name; // Placeholder, should query
-
-          // Check if artist exists. .single()は0件・2件以上の両方でエラーになり、
-          // dataがnullのまま握りつぶされるため、既に候補が複数ある場合も
-          // 「存在しない」扱いになって重複作成されてしまう。.limit(1).maybeSingle()
-          // なら該当が2件以上あっても先頭1件を安全に拾える。
-          const { data: existingArtist } = await supabase
-            .from('artist')
-            .select('id')
-            .ilike('name', `%${albumData.artist_name}%`)
-            .limit(1)
-            .maybeSingle();
-
-          if (!existingArtist) {
-            // Create new artist
-            const { data: newArtist, error: artistError } = await supabase
-              .from('artist')
-              .insert({ name: albumData.artist_name })
-              .select('id')
-              .single();
-
-            if (artistError) {
-              console.error(
-                `Failed to create artist "${albumData.artist_name}":`,
-                artistError.message
-              );
-            }
-
-            artistId = newArtist?.id || '';
-            if (artistId) {
-              bulkImportArtistIds.push(artistId);
-            }
-          } else {
-            artistId = existingArtist.id;
-          }
-
-          // Create album (unregistered)
-          if (artistId) {
-            const { data: newAlbum, error: albumError } = await supabase
-              .from('album')
-              .insert({
-                artist_id: artistId,
-                title: albumData.title,
-                release_date: albumData.year
-                  ? `${albumData.year}-01-01`
-                  : null,
-                // この時点ではトラック数が不明なため、タイトルの手がかりのみで判定する
-                album_type: classifyAlbumType(albumData.title, null),
-              })
-              .select('id')
-              .single();
-
-            if (albumError) {
-              console.error(
-                `Failed to create album "${albumData.title}":`,
-                albumError.message
-              );
-            }
-
-            albumId = newAlbum?.id;
-          }
-        }
-      }
-
-      // Register to disc_guide_selection。upsert + onConflict ignoreDuplicatesで、
-      // (disc_guide_id, album_id)が既に登録済みなら何もしない(再試行時の冪等性)。
-      // エラーを確認せずにカウントしていた旧実装では、insert失敗時も
-      // registeredCountが実際の登録件数より多く報告されてしまっていた。
-      if (albumId) {
-        const { error: selectionError } = await supabase.from('disc_guide_selection').upsert(
-          {
-            disc_guide_id: pending.disc_guide_id,
-            album_id: albumId,
-            note: null,
-          },
-          { onConflict: 'disc_guide_id,album_id', ignoreDuplicates: true }
-        );
-
-        if (selectionError) {
-          console.error(
-            `Failed to register album "${albumData.title}" (${albumId}) to disc guide selection:`,
-            selectionError.message
-          );
-        } else {
-          registeredCount++;
-        }
-      }
-    }
-
-    // 3. Update pending status
-    await supabase
-      .from('disc_guide_scan_pending')
-      .update({ status: 'registered' })
-      .eq('id', pending_id);
-
-    // 4. Trigger bulk import for new artists
-    if (bulkImportArtistIds.length > 0) {
-      after(async () => {
-        for (const artistId of bulkImportArtistIds) {
-          await dispatchMusicBrainzImport(artistId);
-        }
-      });
-    }
-
-    return NextResponse.json({
-      success: true,
-      message: `Registered ${registeredCount} albums`,
-      registered_count: registeredCount,
-      new_artists: bulkImportArtistIds,
-    });
+    return NextResponse.json({ dispatched: true });
   } catch (err) {
     console.error('Register endpoint error:', err);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}
+
+async function registerAllConfirmedAlbums(
+  supabase: ReturnType<typeof createAdminClient>,
+  pending: { id: string; disc_guide_id: string; confirmed_data: { albums: ConfirmedAlbum[] } }
+): Promise<void> {
+  try {
+    const bulkImportArtistIds: string[] = [];
+    let registeredCount = 0;
+
+    for (const albumData of pending.confirmed_data.albums) {
+      const result = await registerOneConfirmedAlbum(supabase, pending.disc_guide_id, albumData);
+      if (result.newArtistId) bulkImportArtistIds.push(result.newArtistId);
+      if (result.selectionRegistered) registeredCount++;
+    }
+
+    await supabase
+      .from('disc_guide_scan_pending')
+      .update({ status: 'registered' })
+      .eq('id', pending.id);
+
+    // すでにafter()の中なので、直接awaitしてよい(呼び出し元をさらにネストする必要は無い)
+    for (const artistId of bulkImportArtistIds) {
+      await dispatchMusicBrainzImport(artistId);
+    }
+
+    revalidatePath('/admin/data/discguides');
+    revalidatePath('/admin/data/discguides/confirm');
+    console.log(`ディスクガイド登録完了(pending_id=${pending.id}): ${registeredCount}件`);
+  } catch (err) {
+    console.error(`ディスクガイド登録に失敗しました(pending_id=${pending.id}):`, err);
   }
 }

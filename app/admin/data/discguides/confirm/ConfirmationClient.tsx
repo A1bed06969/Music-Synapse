@@ -63,16 +63,41 @@ export default function ConfirmationClient({ pending }: { pending: PendingRecord
     )
   )
   const [loading, setLoading] = useState(false)
+  const [registeredRows, setRegisteredRows] = useState<Record<number, boolean>>({})
+  const [registeringRow, setRegisteringRow] = useState<number | null>(null)
+  const [rowError, setRowError] = useState<Record<number, string>>({})
+
+  const buildAlbumPayload = (i: number) => ({
+    extracted_index: i,
+    ...editing[i],
+    album_id: selections[i] === 'new' || !selections[i] ? undefined : selections[i],
+    create_new_album: selections[i] === 'new' || !selections[i],
+  })
+
+  const handleRegisterOne = async (i: number) => {
+    setRegisteringRow(i)
+    setRowError({ ...rowError, [i]: '' })
+    try {
+      const res = await fetch('/api/admin/disc-guide-scan/register-one', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pending_id: pending.id, album: buildAlbumPayload(i) }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setRowError({ ...rowError, [i]: body.error ?? `HTTP ${res.status}` })
+        return
+      }
+      setRegisteredRows({ ...registeredRows, [i]: true })
+    } finally {
+      setRegisteringRow(null)
+    }
+  }
 
   const handleSaveConfirmation = async () => {
     setLoading(true)
     try {
-      const albums = extracted.map((_, i) => ({
-        extracted_index: i,
-        ...editing[i],
-        album_id: selections[i] === 'new' || !selections[i] ? undefined : selections[i],
-        create_new_album: selections[i] === 'new' || !selections[i],
-      }))
+      const albums = extracted.map((_, i) => buildAlbumPayload(i))
 
       const response = await fetch('/api/admin/disc-guide-scan/confirm', {
         method: 'POST',
@@ -89,7 +114,8 @@ export default function ConfirmationClient({ pending }: { pending: PendingRecord
         return
       }
 
-      // Trigger registration
+      // 登録処理はバックグラウンドで進む(件数が多いページだと同期的に待つと
+      // タイムアウトすることが実際にあったため)。完了を待たずに結果を知らせる。
       const registerRes = await fetch('/api/admin/disc-guide-scan/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -102,8 +128,7 @@ export default function ConfirmationClient({ pending }: { pending: PendingRecord
         return
       }
 
-      const result = await registerRes.json().catch(() => ({}))
-      alert(`${result.registered_count ?? 0}件のアルバムを登録しました。`)
+      alert('登録処理を開始しました。数秒〜数十秒ほどでディスクガイド管理ページに反映されます。')
       window.location.href = '/admin/data/discguides/confirm'
     } finally {
       setLoading(false)
@@ -199,6 +224,22 @@ export default function ConfirmationClient({ pending }: { pending: PendingRecord
                     />
                   </div>
                 )}
+              </div>
+
+              <div className="mt-3 flex items-center gap-3">
+                {registeredRows[i] ? (
+                  <span className="text-xs font-semibold text-green-400">✓ 登録済み</span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => handleRegisterOne(i)}
+                    disabled={registeringRow === i}
+                    className="rounded bg-white/10 px-3 py-1 text-xs font-semibold text-white hover:bg-white/20 disabled:opacity-50"
+                  >
+                    {registeringRow === i ? '登録中...' : 'この1件を登録'}
+                  </button>
+                )}
+                {rowError[i] && <span className="text-xs text-red-400">{rowError[i]}</span>}
               </div>
             </div>
           )
