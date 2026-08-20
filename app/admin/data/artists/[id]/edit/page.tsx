@@ -237,6 +237,13 @@ export default async function ArtistEditPage({
                   >
                     クレジットを取り込む →
                   </Link>
+                  <Link
+                    href={`/admin/data/albums/${album.id}/tower-lookup`}
+                    prefetch={false}
+                    className="text-xs text-white/40 hover:text-white/70"
+                  >
+                    Tower Records取込 →
+                  </Link>
                 </div>
               </li>
             ))}

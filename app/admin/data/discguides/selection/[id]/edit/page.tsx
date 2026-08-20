@@ -34,6 +34,15 @@ export default async function EditDiscGuideSelectionPage({ params }: { params: P
       <h1 className="mt-4 text-2xl font-bold">掲載データを編集</h1>
       <p className="mt-2 text-sm text-white/50">{guide?.title}</p>
 
+      {selection.album_id && (
+        <Link
+          href={`/admin/data/albums/${selection.album_id}/tower-lookup`}
+          className="mt-2 inline-block text-xs text-white/40 hover:text-white/70"
+        >
+          Apple Musicに無い作品の場合: Tower Recordsから画像・発売日を取込 →
+        </Link>
+      )}
+
       <form action={updateDiscGuideSelection} className="mt-6 flex flex-wrap items-center gap-2">
         <input type="hidden" name="id" value={selection.id} />
         <input type="hidden" name="previous_album_id" value={selection.album_id ?? ''} />
