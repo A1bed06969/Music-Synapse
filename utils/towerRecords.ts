@@ -6,10 +6,17 @@
 // そのまま含まれている「基本情報」テーブル(TOL-item-info-PC-tab-basic-info-table)
 // をそのまま解析する(実際の商品ページで構造を確認済み)。
 
+export type TowerTrack = {
+  discNumber: number;
+  trackNo: number;
+  title: string;
+};
+
 export type TowerProductInfo = {
   imageUrl?: string;
   releaseDate?: string; // YYYY-MM-DD
   labelName?: string;
+  tracks: TowerTrack[];
 };
 
 function decodeHtmlEntities(s: string): string {
@@ -39,6 +46,26 @@ function parseJapaneseDate(raw: string | undefined): string | undefined {
   return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
 }
 
+// 「収録内容」タブは "N.[CDアルバム]" のようなディスク見出しと、各トラックの
+// 番号・曲名が交互に並ぶ構造になっている(実際の商品ページで確認済み)。
+// ディスク見出しとトラック行を1つの正規表現の交互マッチで拾い、直近に見た
+// ディスク番号を状態として保持しながらトラックへ割り当てる。
+function extractTracks(html: string): TowerTrack[] {
+  const re =
+    /<div class="TOL-item-info-PC-tab-recorded-contents-list-item-name"><span class="text-size-16 is-bold">(\d+)\.\[|<div class="TOL-item-info-PC-tab-recorded-contents-list-track-number"><span class="is-bold">(\d+)\.<\/span><\/div>\s*<div class="TOL-item-info-PC-tab-recorded-contents-list-track-title">([^<]+)<\/div>/g;
+
+  let discNumber = 1;
+  const tracks: TowerTrack[] = [];
+  for (const m of html.matchAll(re)) {
+    if (m[1] !== undefined) {
+      discNumber = parseInt(m[1], 10);
+    } else if (m[2] !== undefined && m[3] !== undefined) {
+      tracks.push({ discNumber, trackNo: parseInt(m[2], 10), title: decodeHtmlEntities(m[3]).trim() });
+    }
+  }
+  return tracks;
+}
+
 export async function fetchTowerProductInfo(url: string): Promise<TowerProductInfo> {
   const res = await fetch(url, {
     headers: { 'User-Agent': 'Mozilla/5.0 (compatible; MusicSynapse/1.0)' },
@@ -56,6 +83,7 @@ export async function fetchTowerProductInfo(url: string): Promise<TowerProductIn
 
   const releaseDate = parseJapaneseDate(extractBasicInfoField(table, '発売日'));
   const labelName = extractBasicInfoField(table, 'レーベル');
+  const tracks = extractTracks(html);
 
-  return { imageUrl, releaseDate, labelName };
+  return { imageUrl, releaseDate, labelName, tracks };
 }

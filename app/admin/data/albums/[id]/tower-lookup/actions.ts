@@ -24,7 +24,7 @@ export async function applyTowerLookup(formData: FormData) {
     redirectWith(albumId, 'error', `取得に失敗しました: ${(err as Error).message}`)
   }
 
-  if (!info.imageUrl && !info.releaseDate && !info.labelName) {
+  if (!info.imageUrl && !info.releaseDate && !info.labelName && info.tracks.length === 0) {
     redirectWith(albumId, 'error', '商品ページから情報を読み取れませんでした。URLをご確認ください。')
   }
 
@@ -65,7 +65,40 @@ export async function applyTowerLookup(formData: FormData) {
     redirectWith(albumId, 'error', `更新に失敗しました: ${updateError.message}`)
   }
 
+  // 既にトラックが登録されている場合は重複作成を避けるため、まだ1件も無いときだけ
+  // Tower Recordsの収録内容から取り込む(iTunes経由の登録と違いプレビュー音源・
+  // トラックIDは無いため、あくまで曲名・トラック番号のみの手がかり)
+  let tracksAdded = 0
+  if (info.tracks.length > 0) {
+    const { count: existingTrackCount } = await supabase
+      .from('track')
+      .select('id', { count: 'exact', head: true })
+      .eq('album_id', albumId)
+
+    if (!existingTrackCount) {
+      const { data: albumArtist } = await supabase.from('album').select('artist_id').eq('id', albumId).single()
+      const { error: trackError } = await supabase.from('track').insert(
+        info.tracks.map((t) => ({
+          album_id: albumId,
+          artist_id: albumArtist?.artist_id ?? null,
+          track_no: t.trackNo,
+          disc_number: t.discNumber,
+          title: t.title,
+        }))
+      )
+      if (trackError) {
+        console.error(`トラックの登録に失敗しました(album_id=${albumId}):`, trackError.message)
+      } else {
+        tracksAdded = info.tracks.length
+      }
+    }
+  }
+
   revalidatePath(`/albums/${albumId}`)
   revalidatePath(`/admin/data/albums/${albumId}/tower-lookup`)
-  redirectWith(albumId, 'success', 'Tower Recordsの情報を反映しました。')
+  redirectWith(
+    albumId,
+    'success',
+    `Tower Recordsの情報を反映しました。${tracksAdded > 0 ? `(トラック${tracksAdded}件を追加)` : ''}`
+  )
 }

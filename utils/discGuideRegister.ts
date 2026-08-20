@@ -116,6 +116,9 @@ export async function registerOneConfirmedAlbum(
             release_date: albumData.year ? `${albumData.year}-01-01` : null,
             // この時点ではトラック数が不明なため、タイトルの手がかりのみで判定する
             album_type: classifyAlbumType(albumData.title, null),
+            // Apple Musicで候補が見つからなかった作品。Tower Recordsからの手動
+            // 取込などで実データを補うまでの間、その旨を明示しておく
+            streaming_status: 'unreleased',
           })
           .select('id')
           .single();
