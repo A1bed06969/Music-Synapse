@@ -22,7 +22,7 @@ export default async function DiscGuidesAdminPage({
       .order('title'),
     supabase
       .from('disc_guide_selection')
-      .select('id, note, disc_guide:disc_guide_id(title), album:album_id(title)')
+      .select('id, note, disc_guide:disc_guide_id(title), album:album_id(id, title)')
       .order('id', { ascending: false }),
   ])
 
@@ -89,9 +89,17 @@ export default async function DiscGuidesAdminPage({
             const guide = Array.isArray(row.disc_guide) ? row.disc_guide[0] : row.disc_guide
             const album = Array.isArray(row.album) ? row.album[0] : row.album
             return (
-              <li key={row.id}>
-                {guide?.title} — {album?.title}
-                {row.note ? `(${row.note})` : ''}
+              <li key={row.id} className="flex items-center justify-between gap-2">
+                <span>
+                  {guide?.title} — {album?.title}
+                  {row.note ? `(${row.note})` : ''}
+                </span>
+                <Link
+                  href={`/admin/data/discguides/selection/${row.id}/edit`}
+                  className="shrink-0 text-xs text-white/40 hover:text-white/70"
+                >
+                  編集 →
+                </Link>
               </li>
             )
           })}

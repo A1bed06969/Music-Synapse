@@ -104,3 +104,49 @@ export async function createDiscGuideSelection(formData: FormData) {
   revalidatePath(`/albums/${albumId}`)
   redirectWith('success', '掲載データを登録しました。')
 }
+
+export async function updateDiscGuideSelection(formData: FormData) {
+  const id = String(formData.get('id') ?? '')
+  const albumId = String(formData.get('album_id') ?? '')
+  const note = String(formData.get('note') ?? '').trim()
+  const previousAlbumId = String(formData.get('previous_album_id') ?? '')
+
+  if (!id || !albumId) {
+    redirectWith('error', 'アルバムを選択してください。')
+  }
+
+  const supabase = createAdminClient()
+  const { error } = await supabase
+    .from('disc_guide_selection')
+    .update({ album_id: albumId, note: note || null })
+    .eq('id', id)
+
+  if (error) {
+    redirectWith('error', `掲載データの更新に失敗しました: ${error.message}`)
+  }
+
+  revalidatePath('/admin/data/discguides')
+  revalidatePath(`/albums/${albumId}`)
+  if (previousAlbumId && previousAlbumId !== albumId) revalidatePath(`/albums/${previousAlbumId}`)
+  redirectWith('success', '掲載データを更新しました。')
+}
+
+export async function deleteDiscGuideSelection(formData: FormData) {
+  const id = String(formData.get('id') ?? '')
+  const albumId = String(formData.get('album_id') ?? '')
+
+  if (!id) {
+    redirectWith('error', '不正なリクエストです。')
+  }
+
+  const supabase = createAdminClient()
+  const { error } = await supabase.from('disc_guide_selection').delete().eq('id', id)
+
+  if (error) {
+    redirectWith('error', `掲載データの削除に失敗しました: ${error.message}`)
+  }
+
+  revalidatePath('/admin/data/discguides')
+  if (albumId) revalidatePath(`/albums/${albumId}`)
+  redirectWith('success', '掲載データを削除しました。')
+}
