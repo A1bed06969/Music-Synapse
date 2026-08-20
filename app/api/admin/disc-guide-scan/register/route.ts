@@ -3,6 +3,8 @@
 import { createAdminClient } from '@/utils/Supabase/admin';
 import { dispatchMusicBrainzImport } from '@/utils/musicbrainzImportDispatch';
 import { classifyAlbumType } from '@/utils/albumType';
+import { findAppleMusicAlbumMatch } from '@/utils/discGuideImport';
+import { registerAlbumFromSearch } from '@/app/admin/import/search/actions';
 import { after } from 'next/server';
 import { NextRequest, NextResponse } from 'next/server';
 
@@ -54,67 +56,92 @@ export async function POST(req: NextRequest) {
       let albumId = albumData.album_id;
 
       if (!albumId && albumData.create_new_album) {
-        // Get or create artist
-        let artistId = albumData.artist_name; // Placeholder, should query
-
-        // Check if artist exists. .single()は0件・2件以上の両方でエラーになり、
-        // dataがnullのまま握りつぶされるため、既に候補が複数ある場合も
-        // 「存在しない」扱いになって重複作成されてしまう。.limit(1).maybeSingle()
-        // なら該当が2件以上あっても先頭1件を安全に拾える。
-        const { data: existingArtist } = await supabase
-          .from('artist')
-          .select('id')
-          .ilike('name', `%${albumData.artist_name}%`)
-          .limit(1)
-          .maybeSingle();
-
-        if (!existingArtist) {
-          // Create new artist
-          const { data: newArtist, error: artistError } = await supabase
-            .from('artist')
-            .insert({ name: albumData.artist_name })
-            .select('id')
-            .single();
-
-          if (artistError) {
-            console.error(
-              `Failed to create artist "${albumData.artist_name}":`,
-              artistError.message
-            );
+        // まずiTunesで実カタログを検索する。タイトル完全一致(正規化後)かつ
+        // アーティスト名一致の候補が1件だけ見つかった場合、既存の検索登録
+        // (app/admin/import/search)と同じ経路で登録する。これによりトラック・
+        // ジャケット画像・新規アーティストなら全カタログ同期まで揃った状態になる
+        // (裸のinsertだけでは名前しかない空のアルバム行になってしまうため)
+        const matched = await findAppleMusicAlbumMatch(albumData.artist_name, albumData.title);
+        if (matched) {
+          const result = await registerAlbumFromSearch(matched.collectionId);
+          if (result.success) {
+            const { data: registeredAlbum } = await supabase
+              .from('album')
+              .select('id')
+              .eq('apple_music_album_id', String(matched.collectionId))
+              .maybeSingle();
+            albumId = registeredAlbum?.id;
+          } else {
+            console.error(`iTunes経由の登録に失敗しました("${albumData.title}"): ${result.message}`);
           }
-
-          artistId = newArtist?.id || '';
-          if (artistId) {
-            bulkImportArtistIds.push(artistId);
-          }
-        } else {
-          artistId = existingArtist.id;
         }
 
-        // Create album (unregistered)
-        if (artistId) {
-          const { data: newAlbum, error: albumError } = await supabase
-            .from('album')
-            .insert({
-              artist_id: artistId,
-              title: albumData.title,
-              release_date: albumData.year
-                ? `${albumData.year}-01-01`
-                : null,
-              // この時点ではトラック数が不明なため、タイトルの手がかりのみで判定する
-              album_type: classifyAlbumType(albumData.title, null),
-            })
-            .select('id')
-            .single();
+        // iTunesに実カタログが見つからない場合のフォールバック:
+        // 従来通りOCRの手がかり(タイトル・アーティスト名のテキストのみ)で
+        // 最低限の行を作る(トラック・画像は無いまま、後で手動で肉付けする想定)
+        if (!albumId) {
+          // Get or create artist
+          let artistId = albumData.artist_name; // Placeholder, should query
 
-          if (albumError) {
-            console.error(
-              `Failed to create album "${albumData.title}":`,
-              albumError.message
-            );
+          // Check if artist exists. .single()は0件・2件以上の両方でエラーになり、
+          // dataがnullのまま握りつぶされるため、既に候補が複数ある場合も
+          // 「存在しない」扱いになって重複作成されてしまう。.limit(1).maybeSingle()
+          // なら該当が2件以上あっても先頭1件を安全に拾える。
+          const { data: existingArtist } = await supabase
+            .from('artist')
+            .select('id')
+            .ilike('name', `%${albumData.artist_name}%`)
+            .limit(1)
+            .maybeSingle();
+
+          if (!existingArtist) {
+            // Create new artist
+            const { data: newArtist, error: artistError } = await supabase
+              .from('artist')
+              .insert({ name: albumData.artist_name })
+              .select('id')
+              .single();
+
+            if (artistError) {
+              console.error(
+                `Failed to create artist "${albumData.artist_name}":`,
+                artistError.message
+              );
+            }
+
+            artistId = newArtist?.id || '';
+            if (artistId) {
+              bulkImportArtistIds.push(artistId);
+            }
+          } else {
+            artistId = existingArtist.id;
           }
 
-          albumId = newAlbum?.id;
+          // Create album (unregistered)
+          if (artistId) {
+            const { data: newAlbum, error: albumError } = await supabase
+              .from('album')
+              .insert({
+                artist_id: artistId,
+                title: albumData.title,
+                release_date: albumData.year
+                  ? `${albumData.year}-01-01`
+                  : null,
+                // この時点ではトラック数が不明なため、タイトルの手がかりのみで判定する
+                album_type: classifyAlbumType(albumData.title, null),
+              })
+              .select('id')
+              .single();
+
+            if (albumError) {
+              console.error(
+                `Failed to create album "${albumData.title}":`,
+                albumError.message
+              );
+            }
+
+            albumId = newAlbum?.id;
+          }
         }
       }
 

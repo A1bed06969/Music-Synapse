@@ -5,9 +5,52 @@ import { redirect } from 'next/navigation'
 import { after } from 'next/server'
 import { createAdminClient } from '@/utils/Supabase/admin'
 import { fetchGoogleBooksCover } from '@/utils/googleBooksApi'
+import { listImagesInFolder } from '@/utils/googleDrive'
+import { dispatchDriveImport } from '@/utils/discGuideDriveDispatch'
 
 function redirectWith(result: 'success' | 'error', message: string) {
   redirect(`/admin/data/discguides?${result}=${encodeURIComponent(message)}`)
+}
+
+/** フォルダURL(https://drive.google.com/drive/folders/XXXXX の形)または
+ * フォルダIDそのものの入力を受け付け、フォルダIDだけを取り出す */
+function extractDriveFolderId(input: string): string {
+  const trimmed = input.trim()
+  const urlMatch = trimmed.match(/\/folders\/([a-zA-Z0-9_-]+)/)
+  if (urlMatch) return urlMatch[1]
+  return trimmed
+}
+
+/** Google Driveフォルダ内の画像を、既存のディスクガイドOCRパイプライン
+ * (アップロード式と全く同じdisc_guide_scan_pending)に読み込む。1件ずつのOCR処理は
+ * チャンク分割してバックグラウンドで進む(utils/discGuideDriveDispatch.ts参照) */
+export async function startDriveImport(formData: FormData) {
+  const discGuideId = String(formData.get('disc_guide_id') ?? '')
+  const folderInput = String(formData.get('folder_url') ?? '').trim()
+
+  if (!discGuideId || !folderInput) {
+    redirectWith('error', '書籍とDriveフォルダを指定してください。')
+  }
+
+  const folderId = extractDriveFolderId(folderInput)
+
+  let files
+  try {
+    files = await listImagesInFolder(folderId)
+  } catch (err) {
+    redirectWith('error', `Driveフォルダの読み取りに失敗しました: ${(err as Error).message}`)
+    return
+  }
+
+  if (files.length === 0) {
+    redirectWith('error', '指定フォルダに画像が見つかりませんでした(共有設定もご確認ください)。')
+    return
+  }
+
+  after(() => dispatchDriveImport(discGuideId, folderId, files, 0))
+
+  revalidatePath('/admin/data/discguides')
+  redirectWith('success', `Driveフォルダから${files.length}件の画像を検出、読み取りを開始しました。`)
 }
 
 export async function createDiscGuide(formData: FormData) {

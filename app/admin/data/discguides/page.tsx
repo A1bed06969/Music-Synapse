@@ -5,6 +5,7 @@ import SearchableSelect from '../SearchableSelect'
 import { searchAlbums } from '../actions'
 import { createDiscGuide, createDiscGuideSelection } from './actions'
 import DiscGuideImageUpload from './DiscGuideImageUpload'
+import DiscGuideDriveImport from './DiscGuideDriveImport'
 
 export default async function DiscGuidesAdminPage({
   searchParams,
@@ -141,6 +142,7 @@ export default async function DiscGuidesAdminPage({
             </div>
 
             <DiscGuideImageUpload discGuideId={guide.id} />
+            <DiscGuideDriveImport discGuideId={guide.id} />
           </div>
         ))}
       </div>

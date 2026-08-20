@@ -1,6 +1,7 @@
 import Tesseract from 'tesseract.js';
 import os from 'node:os';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { searchAlbums, type ItunesAlbum } from './itunes.ts';
 
 export type AlbumExtract = {
   title: string;
@@ -195,4 +196,37 @@ export async function matchAlbumsWithCandidates(
   }
 
   return results;
+}
+
+function normalizeForMatch(s: string): string {
+  return s.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+/**
+ * OCRで読み取ったアーティスト名・タイトルをもとに、iTunes上の実カタログエントリを
+ * 検索する(管理画面で「既存カタログに一致なし・新規登録」と判断された行を、
+ * 裸のinsertではなく実データ(トラック・画像込み)で登録できるようにするため)。
+ * OCRの誤読を考慮し、タイトル完全一致(正規化後)かつアーティスト名が部分一致する
+ * 候補が1件だけ見つかった場合のみ採用する(過検出より過小検出を優先する方針、
+ * album-edition-groupingなどこのアプリの他の自動照合と同じ考え方)。
+ */
+export async function findAppleMusicAlbumMatch(artistName: string, title: string): Promise<ItunesAlbum | null> {
+  let candidates: ItunesAlbum[]
+  try {
+    candidates = await searchAlbums(`${artistName} ${title}`, 10)
+  } catch {
+    return null
+  }
+
+  const normalizedTitle = normalizeForMatch(title)
+  const normalizedArtist = normalizeForMatch(artistName)
+
+  const matches = candidates.filter(
+    (c) =>
+      normalizeForMatch(c.collectionName) === normalizedTitle &&
+      (normalizeForMatch(c.artistName).includes(normalizedArtist) ||
+        normalizedArtist.includes(normalizeForMatch(c.artistName)))
+  )
+
+  return matches.length === 1 ? matches[0] : null
 }
