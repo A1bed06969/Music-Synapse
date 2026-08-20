@@ -2,7 +2,8 @@
 
 import { createAdminClient } from '@/utils/Supabase/admin';
 import { after } from 'next/server';
-import { performOCR, parseOCRToAlbums, matchAlbumsWithCandidates } from '@/utils/discGuideImport';
+import { matchAlbumsWithCandidates } from '@/utils/discGuideImport';
+import { extractAlbumsWithGemini } from '@/utils/geminiDiscGuideExtract';
 import { NextRequest, NextResponse } from 'next/server';
 
 // 複数画像のOCRをafter()内で順次処理するため、デフォルトの関数実行時間では
@@ -31,18 +32,16 @@ export async function POST(req: NextRequest) {
       for (const file of files) {
         try {
           // 1. Upload image (for now, use a simple URL placeholder; real implementation uses Supabase Storage)
-          const imageUrl = `data:${file.type};base64,${Buffer.from(await file.arrayBuffer()).toString('base64')}`;
+          const buffer = Buffer.from(await file.arrayBuffer());
+          const imageUrl = `data:${file.type};base64,${buffer.toString('base64')}`;
 
-          // 2. Run Tesseract OCR
-          const ocrResult = await performOCR(imageUrl);
+          // 2. Gemini に画像を渡し、構造化データを直接抽出する
+          const extracted = await extractAlbumsWithGemini(buffer, file.type);
 
-          // 3. Parse OCR result to albums
-          const extracted = await parseOCRToAlbums(ocrResult.text);
-
-          // 4. Match albums
+          // 3. Match albums
           const matched = await matchAlbumsWithCandidates(supabase, extracted);
 
-          // 5. Save to pending table
+          // 4. Save to pending table
           const { data: pending } = await supabase
             .from('disc_guide_scan_pending')
             .insert({
@@ -50,7 +49,7 @@ export async function POST(req: NextRequest) {
               image_filename: file.name,
               image_url: imageUrl,
               extracted_data: extracted,
-              extraction_confidence: ocrResult.confidence,
+              extraction_confidence: null,
               matched_data: matched,
               status: 'pending',
             })

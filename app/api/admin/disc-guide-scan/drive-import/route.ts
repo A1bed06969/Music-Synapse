@@ -1,21 +1,20 @@
 // utils/discGuideDriveDispatch.tsからのみ叩かれる内部専用エンドポイント。
-// Google Driveフォルダ内の画像を1回の呼び出しにつき1枚だけOCR処理し、
+// Google Driveフォルダ内の画像を1回の呼び出しにつき1枚だけGeminiで抽出し、
 // 続きを自分自身に再ディスパッチする(理由・ホップ間遅延の必要性は
 // app/api/admin/album-sync/route.tsのコメント参照)。
 //
-// 以前は複数枚を経過時間で打ち切りながら処理していたが、実際のiPhone写真
-// (12MP)のOCRは本番のVercel CPU上で1枚あたり数十秒かかることがあり、
-// 1回のチャンクで2枚目に着手した直後にmaxDuration(60秒)へ達して関数ごと
-// 強制終了され、エラーも残らず処理が無言で止まる不具合が本番で複数回
-// 再現した(縮小処理で軽減はしたが解消しきれなかった)。1呼び出し1枚に
-// 固定することで、1枚の処理時間がどれだけ延びてもmaxDurationの範囲内に
-// 収まることを保証する。
+// 元々はtesseract.js(ローカルOCR)で処理していたが、実際のページで精度・
+// レイアウト分割の両方が実用に耐えなかったためGemini APIでの直接構造化
+// 抽出に切り替えた(utils/geminiDiscGuideExtract.ts参照)。1呼び出し1枚に
+// 固定しているのは実行時間対策ではなく、Gemini無料枠の呼び出し回数制限
+// (分間・日次)を超えないよう、既存のホップ間隔(3秒)でペース配分するため。
 import { NextRequest, NextResponse } from 'next/server'
 import { after } from 'next/server'
 import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/utils/Supabase/admin'
 import { downloadDriveFile, type DriveImageFile } from '@/utils/googleDrive'
-import { performOCR, parseOCRToAlbums, matchAlbumsWithCandidates } from '@/utils/discGuideImport'
+import { matchAlbumsWithCandidates } from '@/utils/discGuideImport'
+import { extractAlbumsWithGemini } from '@/utils/geminiDiscGuideExtract'
 import { dispatchDriveImport } from '@/utils/discGuideDriveDispatch'
 
 export const maxDuration = 60
@@ -42,8 +41,7 @@ export async function POST(request: NextRequest) {
         const buffer = await downloadDriveFile(file.id)
         const imageUrl = `data:${file.mimeType};base64,${buffer.toString('base64')}`
 
-        const ocrResult = await performOCR(imageUrl)
-        const extracted = await parseOCRToAlbums(ocrResult.text)
+        const extracted = await extractAlbumsWithGemini(buffer, file.mimeType)
         const matched = await matchAlbumsWithCandidates(supabase, extracted)
 
         const { error } = await supabase.from('disc_guide_scan_pending').insert({
@@ -51,7 +49,7 @@ export async function POST(request: NextRequest) {
           image_filename: file.name,
           image_url: imageUrl,
           extracted_data: extracted,
-          extraction_confidence: ocrResult.confidence,
+          extraction_confidence: null,
           matched_data: matched,
           status: 'pending',
         })
