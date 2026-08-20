@@ -54,7 +54,7 @@ export async function applyTowerLookup(formData: FormData) {
     }
   }
 
-  const update: Record<string, unknown> = {}
+  const update: Record<string, unknown> = { tower_url: towerUrl }
   if (info.imageUrl) update.jacket_url = info.imageUrl
   if (info.releaseDate) update.release_date = info.releaseDate
   if (labelId) update.label_id = labelId

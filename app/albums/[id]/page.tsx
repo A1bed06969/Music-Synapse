@@ -58,14 +58,28 @@ export default async function AlbumDetailPage({
       )}
 
       <div className="mt-4 flex flex-col gap-6 sm:flex-row">
-        <div className="w-full max-w-xs shrink-0 overflow-hidden rounded-md bg-white/5 sm:w-56">
-          {album.jacket_url ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={album.jacket_url} alt={album.title} className="aspect-square w-full object-cover" />
-          ) : (
-            <div className="flex aspect-square w-full items-center justify-center text-white/20">
-              No Art
-            </div>
+        <div className="w-full max-w-xs shrink-0 sm:w-56">
+          <div className="overflow-hidden rounded-md bg-white/5">
+            {album.jacket_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={album.jacket_url} alt={album.title} className="aspect-square w-full object-cover" />
+            ) : (
+              <div className="flex aspect-square w-full items-center justify-center text-white/20">
+                No Art
+              </div>
+            )}
+          </div>
+          {album.tower_url && (
+            <a
+              href={album.tower_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-2 flex items-center gap-1.5 text-xs text-white/40 hover:text-white/70"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="https://tower.jp/favicon.ico" alt="" className="h-3.5 w-3.5" />
+              TOWER RECORDS ONLINEで確認 →
+            </a>
           )}
         </div>
 
