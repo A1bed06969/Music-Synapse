@@ -26,8 +26,9 @@ export default async function AlbumDetailPage({
   const [{ data: tracks }, { data: discGuideSelections }] = await Promise.all([
     supabase
       .from('track')
-      .select('id, track_no, title, duration_seconds, preview_url')
+      .select('id, disc_number, track_no, title, duration_seconds, preview_url')
       .eq('album_id', id)
+      .order('disc_number', { ascending: true, nullsFirst: true })
       .order('track_no', { ascending: true }),
     supabase
       .from('disc_guide_selection')
@@ -152,21 +153,38 @@ export default async function AlbumDetailPage({
         {!tracks || tracks.length === 0 ? (
           <p className="mt-4 text-sm text-white/40">まだトラックが登録されていません。</p>
         ) : (
-          <ol className="mt-4 divide-y divide-white/10">
-            {tracks.map((track) => (
-              <li key={track.id} className="flex items-center gap-3 py-3 text-sm">
-                <Link
-                  href={`/tracks/${track.id}`}
-                  className="flex flex-1 items-center gap-4 transition hover:opacity-70"
-                >
-                  <span className="w-5 shrink-0 text-right text-white/30">{track.track_no ?? '-'}</span>
-                  <span className="flex-1">{track.title}</span>
-                  <span className="text-white/30">{formatDuration(track.duration_seconds)}</span>
-                </Link>
-                <PreviewButton previewUrl={track.preview_url} trackId={track.id} size="sm" />
-              </li>
-            ))}
-          </ol>
+          (() => {
+            // 複数枚組の場合はディスクごとに見出しを分けて表示する
+            // (disc_numberが無い/全て同じ値なら通常の1枚組扱いにする)
+            const discNumbers = Array.from(new Set(tracks.map((t) => t.disc_number ?? 1))).sort((a, b) => a - b)
+            const isMultiDisc = discNumbers.length > 1
+
+            return discNumbers.map((discNumber) => {
+              const discTracks = tracks.filter((t) => (t.disc_number ?? 1) === discNumber)
+              return (
+                <div key={discNumber} className="mt-4">
+                  {isMultiDisc && (
+                    <h3 className="text-sm font-medium text-white/50">Disc {discNumber}</h3>
+                  )}
+                  <ol className="divide-y divide-white/10">
+                    {discTracks.map((track) => (
+                      <li key={track.id} className="flex items-center gap-3 py-3 text-sm">
+                        <Link
+                          href={`/tracks/${track.id}`}
+                          className="flex flex-1 items-center gap-4 transition hover:opacity-70"
+                        >
+                          <span className="w-5 shrink-0 text-right text-white/30">{track.track_no ?? '-'}</span>
+                          <span className="flex-1">{track.title}</span>
+                          <span className="text-white/30">{formatDuration(track.duration_seconds)}</span>
+                        </Link>
+                        <PreviewButton previewUrl={track.preview_url} trackId={track.id} size="sm" />
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              )
+            })
+          })()
         )}
       </section>
 
