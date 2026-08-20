@@ -5,6 +5,7 @@ const NAV_LINKS = [
   { href: '/albums', label: 'アルバム' },
   { href: '/tracks', label: 'トラック' },
   { href: '/events', label: 'フェス&イベント' },
+  { href: '/discguides', label: 'ディスクガイド' },
   { href: '/map', label: 'マップ' },
   { href: '/media', label: 'メディア' },
   { href: '/relations', label: '相関図' },

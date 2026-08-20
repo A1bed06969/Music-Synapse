@@ -21,7 +21,7 @@ const STAT_ITEMS: { key: keyof SiteStats; label: string; href?: string }[] = [
   { key: 'album', label: 'アルバム', href: '/albums' },
   { key: 'track', label: 'トラック', href: '/tracks' },
   { key: 'event', label: 'イベント', href: '/events' },
-  { key: 'discGuide', label: 'ディスクガイド' },
+  { key: 'discGuide', label: 'ディスクガイド', href: '/discguides' },
   { key: 'recordShop', label: 'レコードショップ', href: '/map' },
   { key: 'livehouse', label: 'ライブハウス', href: '/map' },
 ]
