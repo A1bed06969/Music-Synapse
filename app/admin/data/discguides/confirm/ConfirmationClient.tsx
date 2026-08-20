@@ -4,7 +4,7 @@
 
 import { useState } from 'react'
 import SearchableSelect from '../../SearchableSelect'
-import { searchAlbums } from '../../actions'
+import { searchAppleMusicAlbums } from './actions'
 
 type AlbumExtract = {
   title: string
@@ -190,9 +190,9 @@ export default function ConfirmationClient({ pending }: { pending: PendingRecord
                 {searchOpen && (
                   <div className="mt-2">
                     <SearchableSelect
-                      searchAction={searchAlbums}
+                      searchAction={searchAppleMusicAlbums}
                       name={`manual_search_${i}`}
-                      placeholder="アルバム名で検索..."
+                      placeholder="アルバム名で検索(Apple Musicカタログ全体)..."
                       onSelect={(item) =>
                         setSelections({ ...selections, [i]: item ? item.id : 'new' })
                       }

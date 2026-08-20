@@ -55,7 +55,25 @@ export async function POST(req: NextRequest) {
     for (const albumData of confirmed.albums) {
       let albumId = albumData.album_id;
 
-      if (!albumId && albumData.create_new_album) {
+      // 確認画面の手動検索(Apple Musicカタログ全体を検索)で選ばれた候補は、
+      // 自前DBにまだ無いためalbum_idが`itunes:<collectionId>`の形で来る
+      // (app/admin/data/discguides/confirm/actions.ts参照)。自動マッチ済みの
+      // create_new_albumパスと同じ経路(iTunes検索登録)で実データを作る。
+      if (albumId?.startsWith('itunes:')) {
+        const collectionId = Number(albumId.slice('itunes:'.length));
+        albumId = undefined;
+        const result = await registerAlbumFromSearch(collectionId);
+        if (result.success) {
+          const { data: registeredAlbum } = await supabase
+            .from('album')
+            .select('id')
+            .eq('apple_music_album_id', String(collectionId))
+            .maybeSingle();
+          albumId = registeredAlbum?.id;
+        } else {
+          console.error(`iTunes経由の登録に失敗しました(collectionId=${collectionId}): ${result.message}`);
+        }
+      } else if (!albumId && albumData.create_new_album) {
         // まずiTunesで実カタログを検索する。タイトル完全一致(正規化後)かつ
         // アーティスト名一致の候補が1件だけ見つかった場合、既存の検索登録
         // (app/admin/import/search)と同じ経路で登録する。これによりトラック・
