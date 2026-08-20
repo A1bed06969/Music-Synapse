@@ -3,6 +3,7 @@ import os from 'node:os';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { searchAlbums, type ItunesAlbum } from './itunes.ts';
 import convertHeic from 'heic-convert';
+import sharp from 'sharp';
 
 // iPhoneの標準保存形式(HEIC/HEIF)はtesseract.jsが直接デコードできない
 // ("Error attempting to read image"で失敗する)。Google Drive経由の実データ
@@ -13,6 +14,24 @@ async function convertHeicDataUrlToJpeg(imageUrl: string): Promise<string> {
   const inputBuffer = Buffer.from(match[2], 'base64');
   const outputBuffer = await convertHeic({ buffer: inputBuffer, format: 'JPEG', quality: 0.9 });
   return `data:image/jpeg;base64,${Buffer.from(outputBuffer).toString('base64')}`;
+}
+
+// iPhoneの実写真(12MP程度)をフル解像度のままTesseractに渡すと、1枚あたり
+// ローカルでも12〜18秒かかり、Vercelの本番CPU(ローカルMacより非力)では
+// さらに長くなる。Drive一括取込で複数枚を1回のfunction呼び出し内で順に処理する
+// 際、2枚目の処理中にmaxDuration(60秒)へ達して関数ごと強制終了され、エラーも
+// 残らず「1枚成功した後、無言で停止する」という不具合として実際に発生した
+// (本番ログでも再現・確認済み)。印刷物のOCRに12MPの解像度は不要なため、
+// 長辺2200pxまで縮小してからOCRに渡し、1枚あたりの処理時間を大幅に短縮する。
+async function downscaleForOcr(imageUrl: string): Promise<string> {
+  const match = imageUrl.match(/^data:([^;]+);base64,(.+)$/);
+  if (!match) return imageUrl;
+  const inputBuffer = Buffer.from(match[2], 'base64');
+  const resized = await sharp(inputBuffer)
+    .resize({ width: 2200, height: 2200, fit: 'inside', withoutEnlargement: true })
+    .jpeg({ quality: 85 })
+    .toBuffer();
+  return `data:image/jpeg;base64,${resized.toString('base64')}`;
 }
 
 export type AlbumExtract = {
@@ -42,9 +61,10 @@ export async function performOCR(imageUrl: string): Promise<{
   confidence: number;
 }> {
   try {
-    const resolvedUrl = /^data:image\/hei[cf]/i.test(imageUrl)
+    const heicConverted = /^data:image\/hei[cf]/i.test(imageUrl)
       ? await convertHeicDataUrlToJpeg(imageUrl)
       : imageUrl;
+    const resolvedUrl = await downscaleForOcr(heicConverted);
     const result = await Tesseract.recognize(resolvedUrl, 'jpn+eng', {
       // Vercelのサーバーレス関数はcwd(デプロイパッケージ)が読み取り専用で、
       // 書き込めるのは/tmpのみ。cachePath未指定だと言語データのキャッシュ書き込みが
