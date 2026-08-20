@@ -32,11 +32,55 @@ type FuzzyAlbumRow = {
   artist_similarity: number;
 };
 
+function normalizeForMatch(s: string): string {
+  return s.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+// 自前DB(search_albums_fuzzy)には無いアルバムが大半なため、Apple Musicの
+// カタログ全体も候補として検索する。曲名・アーティスト名の近さを測る指標が
+// 無いため、正規化後タイトル完全一致=0.9、部分一致=0.6、それ以外=0.35という
+// 簡易な3段階のスコアで代用する(0.5を「要確認」の境界とする既存UIと整合させる)。
+async function searchAppleMusicCandidates(
+  artistName: string,
+  title: string
+): Promise<MatchResult['candidates']> {
+  let results: ItunesAlbum[];
+  try {
+    results = await searchAlbums(`${artistName} ${title}`, 5);
+  } catch {
+    return [];
+  }
+
+  const normalizedTitle = normalizeForMatch(title);
+
+  return results.map((r) => {
+    const normalizedCandidateTitle = normalizeForMatch(r.collectionName);
+    let similarity = 0.35;
+    if (normalizedCandidateTitle === normalizedTitle) {
+      similarity = 0.9;
+    } else if (
+      normalizedCandidateTitle.includes(normalizedTitle) ||
+      normalizedTitle.includes(normalizedCandidateTitle)
+    ) {
+      similarity = 0.6;
+    }
+    return {
+      id: `itunes:${r.collectionId}`,
+      title: r.collectionName,
+      artist_name: r.artistName,
+      similarity,
+    };
+  });
+}
+
 // タイトルの完全部分一致(ilike)だとOCRの1文字誤読・空白の有無だけで候補0件に
 // なってしまう(Phase 1検証で実測: "The Vertigo of Bliss" の表記ゆれ3パターン
 // 中2パターンが0件)。pg_trgmのトライグラム類似度によるDB側ファジー検索
 // (search_albums_fuzzy, supabase/migrations/20260817_add_fuzzy_album_search.sql)
 // に置き換え、多少の表記ゆれがあってもtitle/artist名の近さでランキングする。
+// さらにApple Musicのカタログ検索も合わせて候補に含める(自前DBはまだ
+// registeredなアルバムがごく少数のため、これだけでは大半のエントリが
+// 候補0件になってしまう)。
 export async function matchAlbumsWithCandidates(
   supabase: SupabaseClient,
   extracted: AlbumExtract[]
@@ -53,38 +97,34 @@ export async function matchAlbumsWithCandidates(
 
     if (error) {
       console.error(`Error querying albums for "${album.title}":`, error);
-      results.push({
-        extracted_index: i,
-        candidates: [],
-      });
-      continue;
     }
 
-    const candidates = ((rows ?? []) as FuzzyAlbumRow[])
-      .slice(0, 3)
-      .map((r) => ({
-        id: r.id,
-        title: r.title,
-        artist_name: r.artist_name,
-        similarity: (r.title_similarity + r.artist_similarity) / 2,
-      }));
+    const localCandidates = ((rows ?? []) as FuzzyAlbumRow[]).map((r) => ({
+      id: r.id,
+      title: r.title,
+      artist_name: r.artist_name,
+      similarity: (r.title_similarity + r.artist_similarity) / 2,
+    }));
+    const appleCandidates = await searchAppleMusicCandidates(album.artist_name, album.title);
 
-    // Primary match is the top-ranked candidate.
-    const primaryRow = (rows as FuzzyAlbumRow[] | null)?.[0];
+    const candidates = [...localCandidates, ...appleCandidates]
+      .sort((a, b) => b.similarity - a.similarity)
+      .slice(0, 5);
+
+    // Primary match is the top-ranked candidate (local DB matches carry a real
+    // album_id already; an Apple Music candidate has no local row yet, so it's
+    // only usable via the confirm UI's selection, not as a default album_id).
+    const primaryLocalRow = (rows as FuzzyAlbumRow[] | null)?.[0];
 
     results.push({
       extracted_index: i,
-      album_id: primaryRow?.id,
-      artist_id: primaryRow?.artist_id,
+      album_id: primaryLocalRow?.id,
+      artist_id: primaryLocalRow?.artist_id,
       candidates,
     });
   }
 
   return results;
-}
-
-function normalizeForMatch(s: string): string {
-  return s.trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
 /**
