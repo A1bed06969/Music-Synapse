@@ -12,7 +12,12 @@
 import { GoogleGenAI, Type } from '@google/genai';
 import type { AlbumExtract } from './discGuideImport.ts';
 
-const MODEL = 'gemini-flash-latest';
+// "gemini-flash-latest"(gemini-3.7-flashに解決される)は無料枠が1日20リクエスト
+// までと非常に少なく、本番の89枚一括取込で実際に枯渇した(429 RESOURCE_EXHAUSTED、
+// quotaId: GenerateRequestsPerDayPerProjectPerModel-FreeTier, limit: 20)。
+// モデルごとに別クォータのため、gemini-3.1-flash-liteに切り替える
+// (実物ページで精度は同等、応答速度はむしろ速い: 27秒→5.7秒で検証済み)。
+const MODEL = 'gemini-3.1-flash-lite';
 
 const PROMPT = `この画像は日本の音楽ディスクガイド本の見開き(または1ページ)です。
 ページに掲載されているアルバムレビューのエントリーをすべて抽出してください。
