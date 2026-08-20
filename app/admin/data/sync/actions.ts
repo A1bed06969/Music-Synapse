@@ -35,6 +35,37 @@ export async function createSyncWork(formData: FormData) {
   redirectWith('success', `作品「${title}」を登録しました。`)
 }
 
+export async function updateSyncWork(formData: FormData) {
+  const id = String(formData.get('id') ?? '')
+  const title = String(formData.get('title') ?? '').trim()
+  const workType = String(formData.get('work_type') ?? '')
+  const companyOrStudio = String(formData.get('company_or_studio') ?? '').trim()
+  const yearRaw = String(formData.get('year') ?? '').trim()
+
+  if (!id || !title) {
+    redirectWith('error', '作品名を入力してください。')
+  }
+
+  const supabase = createAdminClient()
+  const { error } = await supabase
+    .from('sync_work')
+    .update({
+      title,
+      work_type: workType || null,
+      company_or_studio: companyOrStudio || null,
+      year: yearRaw ? Number(yearRaw) : null,
+    })
+    .eq('id', id)
+
+  if (error) {
+    redirectWith('error', `作品の更新に失敗しました: ${error.message}`)
+  }
+
+  revalidatePath('/admin/data/sync')
+  revalidatePath(`/media/sync/${id}`)
+  redirectWith('success', `作品「${title}」を更新しました。`)
+}
+
 export async function createSyncEntry(formData: FormData) {
   const syncWorkId = String(formData.get('sync_work_id') ?? '')
   // 同じ曲がシングル/EP版とアルバム収録版など複数のtrack行に分かれている

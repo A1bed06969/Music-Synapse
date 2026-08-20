@@ -89,6 +89,25 @@ export default async function SyncAdminPage({
         </button>
       </form>
 
+      {syncWorkOptions.length > 0 && (
+        <div className="mt-8">
+          <h2 className="text-sm font-semibold text-white/60">作品一覧</h2>
+          <ul className="mt-2 space-y-1 text-sm text-white/60">
+            {syncWorkOptions.map((w) => (
+              <li key={w.id} className="flex items-center justify-between gap-2">
+                <span>
+                  {w.title}
+                  {w.year ? `(${w.year})` : ''}
+                </span>
+                <Link href={`/admin/data/sync/work/${w.id}/edit`} className="shrink-0 text-xs text-white/40 hover:text-white/70">
+                  編集 →
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {syncEntries && syncEntries.length > 0 && (
         <ul className="mt-4 space-y-1 text-sm text-white/60">
           {syncEntries.map((row) => {
