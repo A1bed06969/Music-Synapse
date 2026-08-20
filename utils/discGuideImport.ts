@@ -2,6 +2,18 @@ import Tesseract from 'tesseract.js';
 import os from 'node:os';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { searchAlbums, type ItunesAlbum } from './itunes.ts';
+import convertHeic from 'heic-convert';
+
+// iPhoneの標準保存形式(HEIC/HEIF)はtesseract.jsが直接デコードできない
+// ("Error attempting to read image"で失敗する)。Google Drive経由の実データ
+// (89枚中87枚がHEIC)で確認済み。Tesseractに渡す前にJPEGへ変換する。
+async function convertHeicDataUrlToJpeg(imageUrl: string): Promise<string> {
+  const match = imageUrl.match(/^data:([^;]+);base64,(.+)$/);
+  if (!match) return imageUrl;
+  const inputBuffer = Buffer.from(match[2], 'base64');
+  const outputBuffer = await convertHeic({ buffer: inputBuffer, format: 'JPEG', quality: 0.9 });
+  return `data:image/jpeg;base64,${Buffer.from(outputBuffer).toString('base64')}`;
+}
 
 export type AlbumExtract = {
   title: string;
@@ -30,7 +42,10 @@ export async function performOCR(imageUrl: string): Promise<{
   confidence: number;
 }> {
   try {
-    const result = await Tesseract.recognize(imageUrl, 'jpn+eng', {
+    const resolvedUrl = /^data:image\/hei[cf]/i.test(imageUrl)
+      ? await convertHeicDataUrlToJpeg(imageUrl)
+      : imageUrl;
+    const result = await Tesseract.recognize(resolvedUrl, 'jpn+eng', {
       // Vercelのサーバーレス関数はcwd(デプロイパッケージ)が読み取り専用で、
       // 書き込めるのは/tmpのみ。cachePath未指定だと言語データのキャッシュ書き込みが
       // 毎回失敗し(tesseract.js側では握りつぶされるため落ちはしないが)、

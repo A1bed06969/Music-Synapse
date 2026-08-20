@@ -4,7 +4,10 @@ const nextConfig: NextConfig = {
   // tesseract.js spawns a Node worker from its own package path. Bundling it
   // rewrites that path to /ROOT/... and the worker fails to load, so keep it
   // external and let it resolve from node_modules at runtime.
-  serverExternalPackages: ['tesseract.js'],
+  // libheif-js (used by heic-convert to decode iPhone HEIC photos before OCR)
+  // locates its .wasm file via __dirname, which breaks the same way once
+  // bundled — same fix.
+  serverExternalPackages: ['tesseract.js', 'libheif-js', 'heic-convert', 'heic-decode'],
   // serverExternalPackages alone wasn't enough in production: Vercel's automatic
   // file tracer (@vercel/nft) failed to detect tesseract.js's worker-script files
   // and several of its transitive dependencies, because they're required via
@@ -24,6 +27,11 @@ const nextConfig: NextConfig = {
       './node_modules/regenerator-runtime/**/*',
       './node_modules/wasm-feature-detect/**/*',
       './node_modules/zlibjs/**/*',
+      './node_modules/heic-convert/**/*',
+      './node_modules/heic-decode/**/*',
+      './node_modules/libheif-js/**/*',
+      './node_modules/jpeg-js/**/*',
+      './node_modules/pngjs/**/*',
     ],
     '/api/admin/disc-guide-scan/drive-import': [
       './node_modules/tesseract.js/**/*',
@@ -35,6 +43,11 @@ const nextConfig: NextConfig = {
       './node_modules/regenerator-runtime/**/*',
       './node_modules/wasm-feature-detect/**/*',
       './node_modules/zlibjs/**/*',
+      './node_modules/heic-convert/**/*',
+      './node_modules/heic-decode/**/*',
+      './node_modules/libheif-js/**/*',
+      './node_modules/jpeg-js/**/*',
+      './node_modules/pngjs/**/*',
     ],
   },
 };
