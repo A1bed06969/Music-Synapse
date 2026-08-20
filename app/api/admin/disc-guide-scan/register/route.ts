@@ -2,19 +2,22 @@
 //
 // 確認画面の「確認して登録」(このページの全件をまとめて登録)。1件ずつ登録する
 // 場合は/api/admin/disc-guide-scan/register-oneを使う。
-
+//
+// 以前この処理全体をafter()でラップして504対策にしていたが、その中から呼ばれる
+// registerOneConfirmedAlbum → registerAlbumFromSearch(app/admin/import/search/
+// actions.ts)は内部で独自にafter()を複数回呼んでMusicBrainz取込・版統合・
+// 新規アーティストの全カタログ同期をディスパッチしている。after()の中からさらに
+// after()を呼んでも効かない(実際に本番で確認: 一括登録経由で新規作成された
+// アーティストは登録した1枚のアルバムのまま止まり、MusicBrainzプロフィールも
+// 全カタログ同期も一切走らなかった)。正しさを優先し同期実行に戻す
+// (件数が多いページで504のリスクが残る場合はregister-one/route.tsの
+// 1件ずつ登録を使う)。
 import { createAdminClient } from '@/utils/Supabase/admin';
 import { dispatchMusicBrainzImport } from '@/utils/musicbrainzImportDispatch';
-import { registerOneConfirmedAlbum, type ConfirmedAlbum } from '@/utils/discGuideRegister';
-import { after } from 'next/server';
+import { registerOneConfirmedAlbum } from '@/utils/discGuideRegister';
 import { revalidatePath } from 'next/cache';
 import { NextRequest, NextResponse } from 'next/server';
 
-// 1ページのエントリ(1枚あたりiTunes検索+登録)を順番に処理するうえ、after()内で
-// 新規アーティストごとにMusicBrainzプロフィール取込も行うため、エントリ数が多い
-// ページはmaxDuration(60秒)を超えてVercelの504で強制終了することが本番で
-// 実際に発生した(1エントリの実登録に数秒〜十数秒かかりうるため、8件でも
-// 余裕で60秒を超えうる)。レスポンスはすぐ返し、実処理はafter()に切り離す。
 export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
@@ -40,20 +43,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    after(() => registerAllConfirmedAlbums(supabase, pending));
-
-    return NextResponse.json({ dispatched: true });
-  } catch (err) {
-    console.error('Register endpoint error:', err);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
-  }
-}
-
-async function registerAllConfirmedAlbums(
-  supabase: ReturnType<typeof createAdminClient>,
-  pending: { id: string; disc_guide_id: string; confirmed_data: { albums: ConfirmedAlbum[] } }
-): Promise<void> {
-  try {
     const bulkImportArtistIds: string[] = [];
     let registeredCount = 0;
 
@@ -68,15 +57,27 @@ async function registerAllConfirmedAlbums(
       .update({ status: 'registered' })
       .eq('id', pending.id);
 
-    // すでにafter()の中なので、直接awaitしてよい(呼び出し元をさらにネストする必要は無い)
+    // このバルク登録insert(裸のフォールバック)経由で作られた新規アーティストの
+    // MusicBrainz取込は、この関数自身がafter()で包まれていないただの通常リクエスト
+    // なので、ここでafter()を使って問題ない(上のregisterOneConfirmedAlbum内部の
+    // dispatchとは別枠 — こちらはitunes未ヒットのバレ挿入フォールバック専用)。
     for (const artistId of bulkImportArtistIds) {
-      await dispatchMusicBrainzImport(artistId);
+      dispatchMusicBrainzImport(artistId).catch((err) =>
+        console.error(`MusicBrainz取込のディスパッチに失敗しました(${artistId}):`, err)
+      );
     }
 
     revalidatePath('/admin/data/discguides');
     revalidatePath('/admin/data/discguides/confirm');
-    console.log(`ディスクガイド登録完了(pending_id=${pending.id}): ${registeredCount}件`);
+
+    return NextResponse.json({
+      success: true,
+      message: `Registered ${registeredCount} albums`,
+      registered_count: registeredCount,
+      new_artists: bulkImportArtistIds,
+    });
   } catch (err) {
-    console.error(`ディスクガイド登録に失敗しました(pending_id=${pending.id}):`, err);
+    console.error('Register endpoint error:', err);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

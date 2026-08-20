@@ -114,8 +114,8 @@ export default function ConfirmationClient({ pending }: { pending: PendingRecord
         return
       }
 
-      // 登録処理はバックグラウンドで進む(件数が多いページだと同期的に待つと
-      // タイムアウトすることが実際にあったため)。完了を待たずに結果を知らせる。
+      // 件数が多いページはタイムアウトのリスクがあるため、その場合は各行の
+      // 「この1件を登録」を使うほうが安全(register/route.ts参照)。
       const registerRes = await fetch('/api/admin/disc-guide-scan/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -124,11 +124,12 @@ export default function ConfirmationClient({ pending }: { pending: PendingRecord
 
       if (!registerRes.ok) {
         const body = await registerRes.json().catch(() => ({}))
-        alert(`登録に失敗しました: ${body.error ?? registerRes.status}`)
+        alert(`登録に失敗しました: ${body.error ?? registerRes.status}(件数が多い場合は各行の「この1件を登録」もお試しください)`)
         return
       }
 
-      alert('登録処理を開始しました。数秒〜数十秒ほどでディスクガイド管理ページに反映されます。')
+      const result = await registerRes.json().catch(() => ({}))
+      alert(`${result.registered_count ?? 0}件のアルバムを登録しました。`)
       window.location.href = '/admin/data/discguides/confirm'
     } finally {
       setLoading(false)
