@@ -51,10 +51,12 @@ type GeminiEntry = {
 
 // 無料枠は混雑時に503(UNAVAILABLE、"high demand")を返すことがある。実際のDrive
 // 一括取込(89枚)で複数回発生することを確認済み。一過性のため短い待機を挟んで
-// 最大2回リトライする。これによりリトライ待機の分だけホップの発火間隔も伸びる
-// ため、失敗が連続してVercelのループ検知(508)を誘発するのも副次的に緩和される。
-const MAX_ATTEMPTS = 3;
-const RETRY_DELAY_MS = 4_000;
+// 最大1回だけリトライする(3回だと待機込みで60秒のmaxDurationに迫り、実際に
+// 「Vercel Runtime Timeout Error」で呼び出しごと強制終了・チェーン停止が本番で
+// 発生した。呼び出し元(drive-import route)側にも合計処理時間の上限を別途設けて
+// あるので、ここでの粘りは最小限に留める)。
+const MAX_ATTEMPTS = 2;
+const RETRY_DELAY_MS = 2_000;
 
 function isRetryableStatus(status: unknown): boolean {
   return status === 503 || status === 429;
