@@ -7,13 +7,35 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ['tesseract.js'],
   // serverExternalPackages alone wasn't enough in production: Vercel's automatic
   // file tracer (@vercel/nft) failed to detect tesseract.js's worker-script files
-  // because they're required via a dynamic relative path at runtime, not a static
-  // one it can analyze. Confirmed live: "Cannot find module '..'" thrown from
-  // node_modules/tesseract.js/src/worker-script/node/index.js on every OCR call.
-  // Force-include the whole package for the two routes that call performOCR().
+  // and several of its transitive dependencies, because they're required via
+  // dynamic relative paths at runtime that static analysis can't follow.
+  // Confirmed live, one missing module at a time: worker-script/node/index.js
+  // itself, then bmp-js. Force-include tesseract.js and its full direct
+  // dependency tree (per its package.json) up front instead of chasing each
+  // missing module through repeated deploys.
   outputFileTracingIncludes: {
-    '/api/admin/disc-guide-scan/upload': ['./node_modules/tesseract.js/**/*'],
-    '/api/admin/disc-guide-scan/drive-import': ['./node_modules/tesseract.js/**/*'],
+    '/api/admin/disc-guide-scan/upload': [
+      './node_modules/tesseract.js/**/*',
+      './node_modules/tesseract.js-core/**/*',
+      './node_modules/bmp-js/**/*',
+      './node_modules/idb-keyval/**/*',
+      './node_modules/is-url/**/*',
+      './node_modules/node-fetch/**/*',
+      './node_modules/regenerator-runtime/**/*',
+      './node_modules/wasm-feature-detect/**/*',
+      './node_modules/zlibjs/**/*',
+    ],
+    '/api/admin/disc-guide-scan/drive-import': [
+      './node_modules/tesseract.js/**/*',
+      './node_modules/tesseract.js-core/**/*',
+      './node_modules/bmp-js/**/*',
+      './node_modules/idb-keyval/**/*',
+      './node_modules/is-url/**/*',
+      './node_modules/node-fetch/**/*',
+      './node_modules/regenerator-runtime/**/*',
+      './node_modules/wasm-feature-detect/**/*',
+      './node_modules/zlibjs/**/*',
+    ],
   },
 };
 
