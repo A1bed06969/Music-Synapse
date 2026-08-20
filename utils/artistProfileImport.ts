@@ -5,6 +5,7 @@ import { resolveArtistImageByName } from '@/utils/appleMusicImage'
 import { fetchOriginCoordinates, fetchRecordLabels } from '@/utils/wikidata'
 import { searchArtist, fetchArtistWithAlbums } from '@/utils/itunes'
 import { dispatchAlbumSync } from '@/utils/albumSyncDispatch'
+import { dispatchMemberEnrichment } from '@/utils/memberEnrichmentDispatch'
 
 export type ResolveArtistMbidResult =
   | { matched: true; mbid: string; matchedTitles: string[] }
@@ -321,9 +322,13 @@ export async function writeArtistProfileFromMusicBrainzDetails(
         console.error(`メンバー「${otherArtistRow.name}」の画像取得に失敗しました:`, err)
       }
     }
-    // 画像だけでなく、SNS/ジャンル/出身地とカタログ(アルバム・トラック)も
-    // 同じタイミングで肉付けする(詳細はenrichNewlyCreatedMemberのコメント参照)
-    await enrichNewlyCreatedMember(supabase, otherArtistId!, membership.name, membership.mbid)
+    // 画像だけでなく、SNS/ジャンル/出身地とカタログ(アルバム・トラック)も肉付けしたいが、
+    // この場でawaitして直列に行うと、メンバーの多いバンド(実例:
+    // Deerhoofの現役+元メンバー計9名)でVercelの60秒タイムアウトに引っかかり、
+    // 誰も肉付けされないまま関数ごと強制終了される不具合を実際に確認した。
+    // メンバーごとに独立したリクエストへ切り離してディスパッチする
+    // (utils/albumSyncDispatch.ts等と同じ理由・同じパターン)
+    await dispatchMemberEnrichment(otherArtistId!, membership.name, membership.mbid)
 
     const bandId = membership.subjectIsBand ? artistId : otherArtistId
     const memberId = membership.subjectIsBand ? otherArtistId : artistId
@@ -376,7 +381,7 @@ export async function writeArtistProfileFromMusicBrainzDetails(
  * (他のバンド経由で既に肉付け済み等)は内部で早期リターンし、無駄なAPI呼び出しを
  * しない。ベストエフォートで、失敗してもメンバーシップ登録自体には影響させない
  */
-async function enrichNewlyCreatedMember(
+export async function enrichNewlyCreatedMember(
   supabase: SupabaseClient,
   memberArtistId: string,
   memberName: string,
