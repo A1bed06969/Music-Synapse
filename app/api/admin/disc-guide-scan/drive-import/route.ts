@@ -22,8 +22,10 @@ export const maxDuration = 60
 // かかっても、必ずこの時間内で切り上げて次への引き継ぎ(redispatch)に進む。
 // これを設けずリトライの合計待ち時間がmaxDuration(60秒)に迫った結果、
 // 「Vercel Runtime Timeout Error」で関数ごと強制終了されチェーン全体が無言で
-// 停止する不具合が本番の89枚一括取込で実際に発生した。
-const PROCESS_TIME_BUDGET_MS = 40_000
+// 停止する不具合が本番の89枚一括取込で実際に発生した。after()はトリガーとなった
+// リクエストと同じmaxDuration予算を共有するため、ホップ間隔(20秒、下記)を
+// 差し引いても60秒に収まるよう30秒に設定する。
+const PROCESS_TIME_BUDGET_MS = 30_000
 
 async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   let timer: ReturnType<typeof setTimeout>
@@ -64,12 +66,11 @@ export async function POST(request: NextRequest) {
 
     const nextIndex = startIndex + 1
     if (nextIndex < files.length) {
-      // Geminiが即座にエラーを返すケース(無料枠の混雑503など)が連続すると、
-      // 実処理時間がほぼ無くホップの発火間隔が短くなり、Vercelのループ検知
-      // (508)を誘発することを本番の89枚一括取込で確認した(extractAlbumsWithGemini
-      // 側のリトライ待機で個々の失敗はある程度緩和したうえで、念のためここも
-      // 3秒→6秒に広げて安全マージンを確保する)。
-      await new Promise((resolve) => setTimeout(resolve, 6_000))
+      // Vercelのループ検知(508)は、ホップ間隔を数秒〜数十秒空けても「同じURLへの
+      // 自己再ディスパッチが短時間に一定回数を超えた」だけで発火することを本番の
+      // 89枚一括取込で確認した(6秒間隔でも4ホップ目で毎回発火)。間隔ではなく
+      // 単位時間あたりのホップ数を下げる必要があるため、20秒まで広げる。
+      await new Promise((resolve) => setTimeout(resolve, 20_000))
       await dispatchDriveImport(discGuideId, folderId, files, nextIndex)
     } else {
       console.log(`Drive画像取込完了(フォルダ${folderId}): ${files.length}件`)
