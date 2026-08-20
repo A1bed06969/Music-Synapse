@@ -18,7 +18,11 @@ export async function dispatchDriveImport(
     'Basic ' + Buffer.from(`${process.env.BASIC_AUTH_USER}:${process.env.BASIC_AUTH_PASSWORD}`).toString('base64')
 
   try {
-    const res = await fetch(`${baseUrl}/api/admin/disc-guide-scan/drive-import`, {
+    // startIndexをクエリ文字列にも含めてホップごとにURLを変える。ホップ間隔を
+    // 3秒→6秒→20秒と広げてもVercelのループ検知(508)が常に4ホップ目で発火する
+    // ことを本番の89枚一括取込で複数回確認しており(間隔ではなく発火条件が
+    // 「同一URLへの自己リクエスト」自体である可能性が高いため)、その回避策。
+    const res = await fetch(`${baseUrl}/api/admin/disc-guide-scan/drive-import?i=${startIndex}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: authHeader },
       body: JSON.stringify({ discGuideId, folderId, files, startIndex }),
