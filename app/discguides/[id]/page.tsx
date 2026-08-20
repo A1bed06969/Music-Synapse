@@ -12,7 +12,7 @@ export default async function DiscGuideDetailPage({
 
   const { data: guide, error } = await supabase
     .from('disc_guide')
-    .select('id, title, publisher, published_year, isbn, cover_image_url')
+    .select('id, title, publisher, published_year, isbn, cover_image_url, tower_url')
     .eq('id', id)
     .single()
 
@@ -65,6 +65,18 @@ export default async function DiscGuideDetailPage({
               <div className="flex h-full w-full items-center justify-center text-3xl">📚</div>
             )}
           </div>
+          {guide.tower_url && (
+            <a
+              href={guide.tower_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-2 flex items-center gap-1.5 text-xs text-white/40 hover:text-white/70"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="https://tower.jp/favicon.ico" alt="" className="h-3.5 w-3.5" />
+              TOWER RECORDS ONLINEで確認 →
+            </a>
+          )}
         </div>
         <div className="min-w-0">
           <h1 className="text-2xl font-bold">{guide.title}</h1>

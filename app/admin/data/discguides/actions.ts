@@ -5,8 +5,9 @@ import { redirect } from 'next/navigation'
 import { after } from 'next/server'
 import { createAdminClient } from '@/utils/Supabase/admin'
 import { fetchGoogleBooksCover } from '@/utils/googleBooksApi'
+import { fetchTowerProductInfo } from '@/utils/towerRecords'
 
-function redirectWith(result: 'success' | 'error', message: string) {
+function redirectWith(result: 'success' | 'error', message: string): never {
   redirect(`/admin/data/discguides?${result}=${encodeURIComponent(message)}`)
 }
 
@@ -78,6 +79,49 @@ export async function createDiscGuide(formData: FormData) {
 
   revalidatePath('/admin/data/discguides')
   redirectWith('success', `「${title}」を登録しました。`)
+}
+
+/** Google Books(ISBN検索)で表紙が見つからない/レート制限の書籍向けに、
+ * Tower Recordsの商品ページURLから表紙画像を取り込む(album側のTower Records
+ * 取込utils/towerRecords.tsと同じ仕組みを流用) */
+export async function applyTowerCoverToDiscGuide(formData: FormData) {
+  const discGuideId = String(formData.get('disc_guide_id') ?? '')
+  const towerUrl = String(formData.get('tower_url') ?? '').trim()
+
+  if (!discGuideId || !towerUrl) {
+    redirectWith('error', '書籍とURLを指定してください。')
+  }
+
+  let info
+  try {
+    info = await fetchTowerProductInfo(towerUrl)
+  } catch (err) {
+    redirectWith('error', `取得に失敗しました: ${(err as Error).message}`)
+  }
+
+  if (!info.imageUrl) {
+    redirectWith('error', '商品ページから表紙画像を読み取れませんでした。URLをご確認ください。')
+  }
+
+  const supabase = createAdminClient()
+  const { error } = await supabase
+    .from('disc_guide')
+    .update({
+      cover_image_url: info.imageUrl,
+      cover_image_fetched_at: new Date().toISOString(),
+      isbn_lookup_error: null,
+      tower_url: towerUrl,
+    })
+    .eq('id', discGuideId)
+
+  if (error) {
+    redirectWith('error', `更新に失敗しました: ${error.message}`)
+  }
+
+  revalidatePath('/admin/data/discguides')
+  revalidatePath('/discguides')
+  revalidatePath(`/discguides/${discGuideId}`)
+  redirectWith('success', 'Tower Recordsから表紙を取り込みました。')
 }
 
 export async function createDiscGuideSelection(formData: FormData) {

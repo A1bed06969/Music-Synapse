@@ -3,7 +3,7 @@ import { createClient } from '@/utils/Supabase/server'
 import { inputClass, buttonClass } from '../adminUi'
 import SearchableSelect from '../SearchableSelect'
 import { searchAlbums } from '../actions'
-import { createDiscGuide, createDiscGuideSelection } from './actions'
+import { createDiscGuide, createDiscGuideSelection, applyTowerCoverToDiscGuide } from './actions'
 import DiscGuideImageUpload from './DiscGuideImageUpload'
 import DiscGuideDriveImport from './DiscGuideDriveImport'
 
@@ -146,6 +146,17 @@ export default async function DiscGuidesAdminPage({
                     表紙取得エラー: {guide.isbn_lookup_error}
                   </p>
                 )}
+                <form action={applyTowerCoverToDiscGuide} className="mt-2 flex flex-wrap items-center gap-2">
+                  <input type="hidden" name="disc_guide_id" value={guide.id} />
+                  <input
+                    name="tower_url"
+                    placeholder="Tower Recordsの商品ページURLから表紙を取込"
+                    className={`${inputClass} max-w-xs text-xs`}
+                  />
+                  <button type="submit" className="rounded-md border border-white/15 px-2 py-1 text-xs hover:bg-white/5">
+                    取込
+                  </button>
+                </form>
               </div>
             </div>
 
