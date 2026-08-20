@@ -49,6 +49,21 @@ type GeminiEntry = {
   release_year?: unknown;
 };
 
+// 無料枠は混雑時に503(UNAVAILABLE、"high demand")を返すことがある。実際のDrive
+// 一括取込(89枚)で複数回発生することを確認済み。一過性のため短い待機を挟んで
+// 最大2回リトライする。これによりリトライ待機の分だけホップの発火間隔も伸びる
+// ため、失敗が連続してVercelのループ検知(508)を誘発するのも副次的に緩和される。
+const MAX_ATTEMPTS = 3;
+const RETRY_DELAY_MS = 4_000;
+
+function isRetryableStatus(status: unknown): boolean {
+  return status === 503 || status === 429;
+}
+
+async function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export async function extractAlbumsWithGemini(imageBuffer: Buffer, mimeType: string): Promise<AlbumExtract[]> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
@@ -56,19 +71,36 @@ export async function extractAlbumsWithGemini(imageBuffer: Buffer, mimeType: str
   }
 
   const ai = new GoogleGenAI({ apiKey });
-  const response = await ai.models.generateContent({
-    model: MODEL,
-    contents: [
-      {
-        role: 'user',
-        parts: [{ inlineData: { mimeType, data: imageBuffer.toString('base64') } }, { text: PROMPT }],
-      },
-    ],
-    config: {
-      responseMimeType: 'application/json',
-      responseSchema: RESPONSE_SCHEMA,
-    },
-  });
+
+  let lastErr: unknown;
+  let response: Awaited<ReturnType<typeof ai.models.generateContent>> | undefined;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      response = await ai.models.generateContent({
+        model: MODEL,
+        contents: [
+          {
+            role: 'user',
+            parts: [{ inlineData: { mimeType, data: imageBuffer.toString('base64') } }, { text: PROMPT }],
+          },
+        ],
+        config: {
+          responseMimeType: 'application/json',
+          responseSchema: RESPONSE_SCHEMA,
+        },
+      });
+      break;
+    } catch (err) {
+      lastErr = err;
+      const status = (err as { status?: unknown })?.status;
+      if (attempt < MAX_ATTEMPTS && isRetryableStatus(status)) {
+        await sleep(RETRY_DELAY_MS);
+        continue;
+      }
+      throw err;
+    }
+  }
+  if (!response) throw lastErr;
 
   const text = response.text;
   if (!text) return [];

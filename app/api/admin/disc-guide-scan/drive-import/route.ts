@@ -65,7 +65,12 @@ export async function POST(request: NextRequest) {
 
     const nextIndex = startIndex + 1
     if (nextIndex < files.length) {
-      await new Promise((resolve) => setTimeout(resolve, 3_000))
+      // Geminiが即座にエラーを返すケース(無料枠の混雑503など)が連続すると、
+      // 実処理時間がほぼ無くホップの発火間隔が3秒ちょうどまで詰まり、Vercelの
+      // ループ検知(508)を誘発することを本番の89枚一括取込で確認した
+      // (extractAlbumsWithGemini側のリトライ待機で個々の失敗はある程度緩和した
+      // うえで、念のためここも3秒→6秒に広げて安全マージンを確保する)。
+      await new Promise((resolve) => setTimeout(resolve, 6_000))
       await dispatchDriveImport(discGuideId, folderId, files, nextIndex)
     } else {
       console.log(`Drive画像取込完了(フォルダ${folderId}): ${files.length}件`)
