@@ -40,6 +40,35 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+// iTunes Search/Lookup APIは非公式かつ無認証で、明文化されたレート制限が無い。
+// これまでfetchTracksForAlbumだけ個別にsleep(400)していたが、それ以外の呼び出し元
+// (ディスクガイドの自動マッチングなど、1エントリごとに複数回呼ぶ経路)には何も
+// 挟んでおらず、間隔なしで連続アクセスした結果403 Forbiddenが実際に発生した
+// (このファイルの全関数からのアクセスが数分間ブロックされた)。呼び出し元を問わず
+// プロセス全体で最低限の間隔を強制する共通fetchに一本化し、403/429時は
+// 指数バックオフで数回リトライする。
+const MIN_REQUEST_INTERVAL_MS = 400
+let lastRequestAt = 0
+
+async function fetchItunes(url: string, label: string): Promise<any> {
+  const maxAttempts = 4
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const waitMs = MIN_REQUEST_INTERVAL_MS - (Date.now() - lastRequestAt)
+    if (waitMs > 0) await sleep(waitMs)
+    lastRequestAt = Date.now()
+
+    const res = await fetch(url)
+    if (res.ok) return res.json()
+
+    if ((res.status === 403 || res.status === 429) && attempt < maxAttempts) {
+      await sleep(2000 * attempt)
+      continue
+    }
+    throw new Error(`iTunes API error (${label}): ${res.status}`)
+  }
+  throw new Error(`iTunes API error (${label}): retries exhausted`)
+}
+
 /**
  * Apple Music(iTunes)のアーティストURLからアーティストIDを抽出する
  * 例: https://music.apple.com/jp/artist/tatsuro-yamashita/78500557 -> 78500557
@@ -62,11 +91,7 @@ export async function fetchArtistWithAlbums(artistId: string): Promise<{
   albums: ItunesAlbum[]
 }> {
   const url = `${ITUNES_LOOKUP_BASE}?id=${artistId}&entity=album&limit=200&country=JP`
-  const res = await fetch(url)
-  if (!res.ok) {
-    throw new Error(`iTunes API error (artist lookup): ${res.status}`)
-  }
-  const data = await res.json()
+  const data = await fetchItunes(url, 'artist lookup')
 
   const artist = data.results.find((r: any) => r.wrapperType === 'artist') ?? null
   const albums = data.results.filter((r: any) => r.wrapperType === 'collection')
@@ -111,13 +136,8 @@ export async function fetchTracksForAlbum(albumId: number): Promise<{
   tracks: ItunesTrack[]
   localizedCollectionName: string | null
 }> {
-  await sleep(400) // 連続呼び出しでの403対策(GAS時代と同じ考え方)
   const url = `${ITUNES_LOOKUP_BASE}?id=${albumId}&entity=song&limit=200&country=JP`
-  const res = await fetch(url)
-  if (!res.ok) {
-    throw new Error(`iTunes API error (album lookup): ${res.status}`)
-  }
-  const data = await res.json()
+  const data = await fetchItunes(url, 'album lookup (tracks)')
   const tracks = data.results.filter((r: any) => r.wrapperType === 'track')
   const localizedCollectionName = tracks.length > 0 ? (tracks[0].collectionName ?? null) : null
   return { tracks, localizedCollectionName }
@@ -144,11 +164,7 @@ export type ItunesArtistSearchResult = {
  */
 export async function fetchAlbumById(collectionId: number): Promise<ItunesAlbum | null> {
   const url = `${ITUNES_LOOKUP_BASE}?id=${collectionId}&entity=album&country=JP`
-  const res = await fetch(url)
-  if (!res.ok) {
-    throw new Error(`iTunes API error (album lookup): ${res.status}`)
-  }
-  const data = await res.json()
+  const data = await fetchItunes(url, 'album lookup')
   return data.results.find((r: any) => r.wrapperType === 'collection') ?? null
 }
 
@@ -159,11 +175,7 @@ export async function fetchAlbumById(collectionId: number): Promise<ItunesAlbum 
  */
 export async function searchAlbums(term: string, limit = 10): Promise<ItunesAlbum[]> {
   const url = `https://itunes.apple.com/search?term=${encodeURIComponent(term)}&entity=album&limit=${limit}&country=JP`
-  const res = await fetch(url)
-  if (!res.ok) {
-    throw new Error(`iTunes API error (album search): ${res.status}`)
-  }
-  const data = await res.json()
+  const data = await fetchItunes(url, 'album search')
   return (data.results ?? []).filter((r: any) => r.wrapperType === 'collection')
 }
 
@@ -183,11 +195,7 @@ export type ItunesTrackSearchResult = {
  */
 export async function searchTracks(term: string, limit = 10): Promise<ItunesTrackSearchResult[]> {
   const url = `https://itunes.apple.com/search?term=${encodeURIComponent(term)}&entity=song&limit=${limit}&country=JP`
-  const res = await fetch(url)
-  if (!res.ok) {
-    throw new Error(`iTunes API error (track search): ${res.status}`)
-  }
-  const data = await res.json()
+  const data = await fetchItunes(url, 'track search')
   return (data.results ?? [])
     .filter((r: any) => r.wrapperType === 'track')
     .map((r: any) => ({
@@ -207,11 +215,7 @@ export async function searchTracks(term: string, limit = 10): Promise<ItunesTrac
  */
 export async function searchArtist(name: string): Promise<ItunesArtistSearchResult[]> {
   const url = `https://itunes.apple.com/search?term=${encodeURIComponent(name)}&entity=musicArtist&limit=5&country=JP`
-  const res = await fetch(url)
-  if (!res.ok) {
-    throw new Error(`iTunes API error (artist search): ${res.status}`)
-  }
-  const data = await res.json()
+  const data = await fetchItunes(url, 'artist search')
   return (data.results ?? [])
     .filter((r: any) => r.wrapperType === 'artist')
     .map((r: any) => ({
