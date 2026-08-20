@@ -14,8 +14,16 @@ const EVENT_TYPE_LABEL: Record<string, string> = {
   other: 'その他',
 }
 
+// DBにはJST(+09:00)付きで保存されているが、event_appearance.start_time/end_timeは
+// timestamptz列のためSupabase/PostgRESTはUTCのISO文字列として返す(+09:00が
+// 失われる)。素の.slice(11,16)だとUTC時刻がそのまま「JSTの時刻」として表示され、
+// 実際より9時間早い時刻になってしまう(app/admin/data/events/appearance/[id]/edit/
+// page.tsxのtoJstDatetimeLocalと対になる変換が必要)。
 function toHHMM(isoStr: string): string {
-  return isoStr.slice(11, 16)
+  const date = new Date(isoStr)
+  const jst = new Date(date.getTime() + 9 * 60 * 60 * 1000)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${pad(jst.getUTCHours())}:${pad(jst.getUTCMinutes())}`
 }
 
 /** イベントの画像を、出典(公式サイト or 公式YouTube)へのリンク付きで表示する。
