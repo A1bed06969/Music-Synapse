@@ -27,7 +27,7 @@ export const STREAMING_STATUS_LABEL: Record<string, { label: string; icon: strin
   // Apple Musicで見つからず(検索で候補なし)、Tower Records等から手がかりのみ
   // 登録した作品用。「配信なし」(none, 配信終了・非公開など理由を問わない)とは
   // 区別し、権利者の意向でサブスク非解禁になっている旧譜であることを示す。
-  unreleased: { label: '未解禁', icon: '🔒' },
+  unreleased: { label: 'サブスク未解禁', icon: '' },
 }
 
 export const ARTIST_STREAMING_STATUS_LABEL: Record<string, string> = {
