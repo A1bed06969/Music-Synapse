@@ -199,3 +199,115 @@ export async function fetchReleaseCredits(discogsReleaseId: number): Promise<Dis
 
   return { credits }
 }
+
+// Apple Musicに存在しない作品(サブスク未配信の旧譜等)のジャケット画像・発売日・
+// レーベル・トラックリストを、リリースページURLから直接取り込むための機能
+// (utils/towerRecords.tsのDiscogs版)。既存のfetchDiscogs(認証・レート制限込み)を流用する。
+
+export type DiscogsTrack = {
+  discNumber: number
+  trackNo: number
+  title: string
+}
+
+export type DiscogsReleaseInfo = {
+  imageUrl?: string
+  releaseDate?: string // YYYY-MM-DD
+  labelName?: string
+  tracks: DiscogsTrack[]
+}
+
+function extractReleaseRef(url: string): { kind: 'release' | 'master'; id: number } | null {
+  const releaseMatch = url.match(/discogs\.com\/(?:[a-z]{2}\/)?release\/(\d+)/)
+  if (releaseMatch) return { kind: 'release', id: parseInt(releaseMatch[1], 10) }
+  const masterMatch = url.match(/discogs\.com\/(?:[a-z]{2}\/)?master\/(\d+)/)
+  if (masterMatch) return { kind: 'master', id: parseInt(masterMatch[1], 10) }
+  return null
+}
+
+// Discogsの`released`は"1987-07-00"のように月日が不明(00)なことがある。
+// 不明な月日は01で補い、releasedが無ければ`year`から1月1日として代用する。
+function parseReleaseDate(released: string | undefined, year: number | undefined): string | undefined {
+  if (released) {
+    const m = released.match(/^(\d{4})(?:-(\d{2}))?(?:-(\d{2}))?/)
+    if (m) {
+      const mo = m[2] && m[2] !== '00' ? m[2] : '01'
+      const d = m[3] && m[3] !== '00' ? m[3] : '01'
+      return `${m[1]}-${mo}-${d}`
+    }
+  }
+  return year ? `${year}-01-01` : undefined
+}
+
+// tracklistの`position`はリリース形態によって表記がバラバラ("1", "1-1"(CD2枚組),
+// "A"/"B1"(アナログ盤の面))なため、パターンごとにディスク番号・トラック番号を
+// 割り出す。アナログ盤は面A/Bが同一ディスク、C/Dが2枚目...という慣習に合わせ、
+// 面の文字を2つずつディスク番号にまとめる。
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function buildTrackList(raw: any[]): DiscogsTrack[] {
+  const tracks: DiscogsTrack[] = []
+  const letterGroups: string[] = []
+  const seqByDisc = new Map<number, number>()
+
+  for (const item of raw) {
+    if (item.type_ !== 'track') continue
+    const title = (item.title ?? '').trim()
+    if (!title) continue
+    const pos = (item.position ?? '').trim()
+
+    const numDash = pos.match(/^(\d+)-(\d+)$/)
+    const letterNum = pos.match(/^([A-Za-z]+)(\d+)?$/)
+    const plainNum = pos.match(/^(\d+)$/)
+
+    let discNumber: number
+    let trackNo: number
+
+    if (numDash) {
+      discNumber = parseInt(numDash[1], 10)
+      trackNo = parseInt(numDash[2], 10)
+    } else if (letterNum) {
+      const letter = letterNum[1].toUpperCase()
+      if (!letterGroups.includes(letter)) letterGroups.push(letter)
+      discNumber = Math.floor(letterGroups.indexOf(letter) / 2) + 1
+      const next = (seqByDisc.get(discNumber) ?? 0) + 1
+      seqByDisc.set(discNumber, next)
+      trackNo = letterNum[2] ? parseInt(letterNum[2], 10) : next
+    } else if (plainNum) {
+      discNumber = 1
+      trackNo = parseInt(plainNum[1], 10)
+    } else {
+      continue
+    }
+
+    tracks.push({ discNumber, trackNo, title })
+  }
+
+  return tracks
+}
+
+export async function fetchDiscogsReleaseInfo(url: string): Promise<DiscogsReleaseInfo> {
+  const ref = extractReleaseRef(url)
+  if (!ref) {
+    throw new Error('DiscogsのリリースページのURL(discogs.com/release/... または /master/...)を指定してください')
+  }
+
+  let releaseId = ref.id
+  if (ref.kind === 'master') {
+    const master = await fetchDiscogs(`${DISCOGS_BASE}/masters/${ref.id}`, 'master lookup')
+    if (!master.main_release) {
+      throw new Error('このmasterページには紐づくreleaseがありません')
+    }
+    releaseId = master.main_release
+  }
+
+  const data = await fetchDiscogs(`${DISCOGS_BASE}/releases/${releaseId}`, 'release info')
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const primaryImage = (data.images ?? []).find((i: any) => i.type === 'primary') ?? data.images?.[0]
+  const imageUrl: string | undefined = primaryImage?.uri
+  const releaseDate = parseReleaseDate(data.released, data.year)
+  const labelName: string | undefined = data.labels?.[0]?.name
+  const tracks = buildTrackList(data.tracklist ?? [])
+
+  return { imageUrl, releaseDate, labelName, tracks }
+}

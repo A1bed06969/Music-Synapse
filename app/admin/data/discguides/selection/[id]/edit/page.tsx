@@ -35,12 +35,20 @@ export default async function EditDiscGuideSelectionPage({ params }: { params: P
       <p className="mt-2 text-sm text-white/50">{guide?.title}</p>
 
       {selection.album_id && (
-        <Link
-          href={`/admin/data/albums/${selection.album_id}/tower-lookup`}
-          className="mt-2 inline-block text-xs text-white/40 hover:text-white/70"
-        >
-          Apple Musicに無い作品の場合: Tower Recordsから画像・発売日を取込 →
-        </Link>
+        <div className="mt-2 flex flex-wrap gap-3">
+          <Link
+            href={`/admin/data/albums/${selection.album_id}/tower-lookup`}
+            className="inline-block text-xs text-white/40 hover:text-white/70"
+          >
+            Apple Musicに無い作品の場合: Tower Recordsから画像・発売日を取込 →
+          </Link>
+          <Link
+            href={`/admin/data/albums/${selection.album_id}/discogs-lookup`}
+            className="inline-block text-xs text-white/40 hover:text-white/70"
+          >
+            Discogsから取込 →
+          </Link>
+        </div>
       )}
 
       <form action={updateDiscGuideSelection} className="mt-6 flex flex-wrap items-center gap-2">

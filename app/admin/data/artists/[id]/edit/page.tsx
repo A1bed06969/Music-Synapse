@@ -244,6 +244,13 @@ export default async function ArtistEditPage({
                   >
                     Tower Records取込 →
                   </Link>
+                  <Link
+                    href={`/admin/data/albums/${album.id}/discogs-lookup`}
+                    prefetch={false}
+                    className="text-xs text-white/40 hover:text-white/70"
+                  >
+                    Discogs取込 →
+                  </Link>
                 </div>
               </li>
             ))}

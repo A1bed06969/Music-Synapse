@@ -82,6 +82,22 @@ export default async function AlbumDetailPage({
               TOWER RECORDS ONLINEで確認 →
             </a>
           )}
+          {album.discogs_url && (
+            <a
+              href={album.discogs_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-2 flex items-center gap-1.5 text-xs text-white/40 hover:text-white/70"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="https://www.google.com/s2/favicons?domain=discogs.com&sz=64"
+                alt=""
+                className="h-3.5 w-3.5"
+              />
+              Discogsで確認 →
+            </a>
+          )}
         </div>
 
         <div>
