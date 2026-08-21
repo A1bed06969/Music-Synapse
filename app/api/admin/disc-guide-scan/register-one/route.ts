@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
 
     const { data: pending } = await supabase
       .from('disc_guide_scan_pending')
-      .select('id, disc_guide_id')
+      .select('id, disc_guide_id, extracted_data, registered_indices')
       .eq('id', pending_id)
       .single();
 
@@ -43,6 +43,20 @@ export async function POST(req: NextRequest) {
         { status: 500 }
       );
     }
+
+    // このページの全件が(1件ずつ登録経由で)登録し終わったら、確認待ちページ
+    // 一覧(status='pending'で絞り込み)から消えるようにstatusを進める。
+    // 一括登録(register/route.ts)は自身でstatus='registered'にするため、
+    // ここでは1件ずつ登録の経路だけを扱う。
+    const totalCount = Array.isArray(pending.extracted_data) ? pending.extracted_data.length : 0;
+    const registeredIndices = Array.from(
+      new Set([...(pending.registered_indices ?? []), album.extracted_index])
+    );
+    const update: Record<string, unknown> = { registered_indices: registeredIndices };
+    if (totalCount > 0 && registeredIndices.length >= totalCount) {
+      update.status = 'registered';
+    }
+    await supabase.from('disc_guide_scan_pending').update(update).eq('id', pending.id);
 
     return NextResponse.json({ success: true, album_id: result.albumId });
   } catch (err) {

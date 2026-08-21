@@ -35,7 +35,7 @@ export default async function DiscGuideScanConfirmPage({
     // 確認画面を開くたびに毎回これを読み込むことになる)。
     const { data: pending } = await supabase
       .from('disc_guide_scan_pending')
-      .select('id, extracted_data, matched_data')
+      .select('id, extracted_data, matched_data, registered_indices')
       .eq('id', pending_id)
       .single()
     selectedPending = pending

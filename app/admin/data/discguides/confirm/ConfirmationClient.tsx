@@ -43,6 +43,7 @@ type PendingRecord = {
   id: string
   extracted_data: AlbumExtract[]
   matched_data: MatchResult[]
+  registered_indices?: number[]
 }
 
 export default function ConfirmationClient({ pending }: { pending: PendingRecord }) {
@@ -74,7 +75,12 @@ export default function ConfirmationClient({ pending }: { pending: PendingRecord
     )
   )
   const [loading, setLoading] = useState(false)
-  const [registeredRows, setRegisteredRows] = useState<Record<number, boolean>>({})
+  // サーバー側で保持しているregistered_indices(register-one/route.ts参照)から
+  // 初期化する。これが無いと、1件ずつ登録した後にページを再読み込みすると
+  // 「✓ 登録済み」の情報が失われ、「確認して登録」で同じ行を重複登録してしまう。
+  const [registeredRows, setRegisteredRows] = useState<Record<number, boolean>>(
+    Object.fromEntries((pending.registered_indices ?? []).map((i) => [i, true]))
+  )
   const [registeringRow, setRegisteringRow] = useState<number | null>(null)
   const [rowError, setRowError] = useState<Record<number, string>>({})
 
@@ -106,10 +112,20 @@ export default function ConfirmationClient({ pending }: { pending: PendingRecord
   }
 
   const handleSaveConfirmation = async () => {
+    // 「この1件を登録」で既に登録済みの行を一括登録に含めると、新規作成扱いの
+    // 行がもう一度登録されて重複アルバムが作られてしまう(実際に発生した不具合)。
+    // 既に登録済みの行は送信対象から除外する。
+    const albums = extracted
+      .map((_, i) => buildAlbumPayload(i))
+      .filter((_, i) => !registeredRows[i])
+
+    if (albums.length === 0) {
+      alert('未登録の行はありません。')
+      return
+    }
+
     setLoading(true)
     try {
-      const albums = extracted.map((_, i) => buildAlbumPayload(i))
-
       const response = await fetch('/api/admin/disc-guide-scan/confirm', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -260,7 +276,7 @@ export default function ConfirmationClient({ pending }: { pending: PendingRecord
 
       <button
         onClick={handleSaveConfirmation}
-        disabled={loading || extracted.length === 0}
+        disabled={loading || extracted.every((_, i) => registeredRows[i])}
         className="mt-6 rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
       >
         {loading ? '登録中...' : '確認して登録'}
