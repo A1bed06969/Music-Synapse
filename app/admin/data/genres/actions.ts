@@ -64,9 +64,9 @@ export async function applyWikipediaGenreLookup(formData: FormData) {
   const sourceUrl = String(formData.get('source_url') ?? '')
   const originYearRaw = String(formData.get('origin_year') ?? '').trim()
   const originPlace = String(formData.get('origin_place') ?? '').trim()
-  const stylisticOrigins: string[] = JSON.parse(String(formData.get('stylistic_origins_json') ?? '[]'))
-  const subgenres: string[] = JSON.parse(String(formData.get('subgenres_json') ?? '[]'))
-  const derivatives: string[] = JSON.parse(String(formData.get('derivatives_json') ?? '[]'))
+  const stylisticOrigins = formData.getAll('stylistic_origins').map(String)
+  const subgenres = formData.getAll('subgenres').map(String)
+  const derivatives = formData.getAll('derivatives').map(String)
 
   if (!genreId) {
     redirectWith('error', '対象ジャンルを選択してください。')

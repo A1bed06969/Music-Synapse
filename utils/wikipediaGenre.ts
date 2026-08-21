@@ -22,15 +22,19 @@ async function fetchWikitext(
   lang: 'ja' | 'en',
   title: string
 ): Promise<{ wikitext: string; resolvedTitle: string } | null> {
-  const url = `https://${lang}.wikipedia.org/w/api.php?action=parse&page=${encodeURIComponent(title)}&format=json&prop=wikitext&section=0&redirects=1`
-  const res = await fetch(url, { headers: { 'User-Agent': USER_AGENT } })
-  if (!res.ok) return null
-  const data = await res.json()
-  if (data.error) return null
-  const wikitext = data.parse?.wikitext?.['*']
-  const resolvedTitle = data.parse?.title
-  if (!wikitext || !resolvedTitle) return null
-  return { wikitext, resolvedTitle }
+  try {
+    const url = `https://${lang}.wikipedia.org/w/api.php?action=parse&page=${encodeURIComponent(title)}&format=json&prop=wikitext&section=0&redirects=1`
+    const res = await fetch(url, { headers: { 'User-Agent': USER_AGENT } })
+    if (!res.ok) return null
+    const data = await res.json()
+    if (data.error) return null
+    const wikitext = data.parse?.wikitext?.['*']
+    const resolvedTitle = data.parse?.title
+    if (!wikitext || !resolvedTitle) return null
+    return { wikitext, resolvedTitle }
+  } catch {
+    return null
+  }
 }
 
 // {{...}}はネストしうる(インフォボックス内に{{hlist|...}}や{{cite news|...}}が
@@ -59,10 +63,16 @@ function extractInfobox(wikitext: string): string | null {
   return wikitext.slice(match.index, end)
 }
 
+// <ref>タグ(出典)は表示用の名前ではないため、フィールドの生テキストから
+// 取り除いておく。自己終了型<ref .../>とペア型<ref ...>...</ref>の両方に対応。
+function stripRefTags(text: string): string {
+  return text.replace(/<ref[^>]*\/>/gi, '').replace(/<ref[^>]*>[\s\S]*?<\/ref>/gi, '')
+}
+
 function extractFieldRaw(infobox: string, field: string): string | null {
   const re = new RegExp(`\\|\\s*${field}\\s*=([\\s\\S]*?)(?=\\n\\s*\\|\\s*[a-zA-Z_]+\\s*=|\\n\\}\\}\\s*$)`, 'i')
   const m = infobox.match(re)
-  return m ? m[1].trim() : null
+  return m ? stripRefTags(m[1].trim()) : null
 }
 
 // [[記事名|表示名]] または [[記事名]] から表示用の名前だけを順番に取り出す。
@@ -74,6 +84,8 @@ function extractLinkNames(text: string): string[] {
   const re = /\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g
   let m: RegExpExecArray | null
   while ((m = re.exec(text))) {
+    const target = m[1].trim()
+    if (/^#/.test(target) || /^(File|ファイル|Category|カテゴリ):/i.test(target)) continue
     const name = (m[2] ?? m[1]).trim()
     if (name) names.push(name)
   }

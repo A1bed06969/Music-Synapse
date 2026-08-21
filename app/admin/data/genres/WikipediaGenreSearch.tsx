@@ -57,40 +57,82 @@ export default function WikipediaGenreSearch({ genreOptions }: { genreOptions: {
       {info === null && <p className="mt-3 text-sm text-white/40">Wikipediaにインフォボックスが見つかりませんでした。</p>}
 
       {info && (
-        <div className="mt-3 space-y-1.5 text-sm">
+        <form action={applyWikipediaGenreLookup} className="mt-3 space-y-2 text-sm">
+          <input type="hidden" name="genre_id" value={genreId} />
+          <input type="hidden" name="source_url" value={info.sourceUrl} />
           <p>
             出典:{' '}
             <a href={info.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-blue-300 hover:text-blue-200">
               {info.sourceUrl}
             </a>
           </p>
-          <p className="text-white/70">
-            発祥: {info.originYear ?? '不明'}
-            {info.originPlace ? ` / ${info.originPlace}` : ''}
-          </p>
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="flex items-center gap-1.5 text-white/70">
+              発祥年:
+              <input
+                type="number"
+                name="origin_year"
+                defaultValue={info.originYear ?? ''}
+                className="w-24 rounded-md border border-white/15 bg-white/5 px-2 py-1 text-sm text-white focus:border-white/30 focus:outline-none"
+              />
+            </label>
+            <label className="flex items-center gap-1.5 text-white/70">
+              発祥地:
+              <input
+                type="text"
+                name="origin_place"
+                defaultValue={info.originPlace ?? ''}
+                className="w-56 rounded-md border border-white/15 bg-white/5 px-2 py-1 text-sm text-white focus:border-white/30 focus:outline-none"
+              />
+            </label>
+          </div>
           {info.stylisticOrigins.length > 0 && (
-            <p className="text-white/50">起源ジャンル: {info.stylisticOrigins.join(', ')}</p>
+            <div>
+              <p className="text-white/50">起源ジャンル(不要なものはチェックを外す):</p>
+              <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
+                {info.stylisticOrigins.map((name, i) => (
+                  <label key={`${name}-${i}`} className="flex items-center gap-1 text-white/70">
+                    <input type="checkbox" name="stylistic_origins" value={name} defaultChecked />
+                    {name}
+                  </label>
+                ))}
+              </div>
+            </div>
           )}
-          {info.subgenres.length > 0 && <p className="text-white/50">サブジャンル: {info.subgenres.join(', ')}</p>}
-          {info.derivatives.length > 0 && <p className="text-white/50">派生ジャンル: {info.derivatives.join(', ')}</p>}
-
-          <form action={applyWikipediaGenreLookup} className="pt-1">
-            <input type="hidden" name="genre_id" value={genreId} />
-            <input type="hidden" name="source_url" value={info.sourceUrl} />
-            <input type="hidden" name="origin_year" value={info.originYear ?? ''} />
-            <input type="hidden" name="origin_place" value={info.originPlace ?? ''} />
-            <input type="hidden" name="stylistic_origins_json" value={JSON.stringify(info.stylisticOrigins)} />
-            <input type="hidden" name="subgenres_json" value={JSON.stringify(info.subgenres)} />
-            <input type="hidden" name="derivatives_json" value={JSON.stringify(info.derivatives)} />
-            <button
-              type="submit"
-              disabled={!genreId}
-              className="rounded-md border border-white/15 px-3 py-1 text-xs hover:bg-white/5 disabled:opacity-40"
-            >
-              この内容で取込
-            </button>
-          </form>
-        </div>
+          {info.subgenres.length > 0 && (
+            <div>
+              <p className="text-white/50">サブジャンル(不要なものはチェックを外す):</p>
+              <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
+                {info.subgenres.map((name, i) => (
+                  <label key={`${name}-${i}`} className="flex items-center gap-1 text-white/70">
+                    <input type="checkbox" name="subgenres" value={name} defaultChecked />
+                    {name}
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+          {info.derivatives.length > 0 && (
+            <div>
+              <p className="text-white/50">派生ジャンル(不要なものはチェックを外す):</p>
+              <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
+                {info.derivatives.map((name, i) => (
+                  <label key={`${name}-${i}`} className="flex items-center gap-1 text-white/70">
+                    <input type="checkbox" name="derivatives" value={name} defaultChecked />
+                    {name}
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+          <button
+            type="submit"
+            disabled={!genreId}
+            className="rounded-md border border-white/15 px-3 py-1 text-xs hover:bg-white/5 disabled:opacity-40"
+          >
+            この内容で取込
+          </button>
+        </form>
       )}
     </div>
   )
