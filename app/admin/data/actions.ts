@@ -54,6 +54,14 @@ export async function searchAlbums(query: string): Promise<PickerItem[]> {
   })
 }
 
+export async function searchArtists(query: string): Promise<PickerItem[]> {
+  const trimmed = query.trim()
+  if (!trimmed) return []
+  const supabase = await createClient()
+  const { data } = await supabase.from('artist').select('id, name').ilike('name', `%${trimmed}%`).limit(20)
+  return (data ?? []).map((a) => ({ id: a.id, label: a.name }))
+}
+
 export async function updateArtist(formData: FormData) {
   const artistId = String(formData.get('artist_id') ?? '')
 

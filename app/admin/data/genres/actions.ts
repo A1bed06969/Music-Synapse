@@ -117,3 +117,50 @@ export async function applyWikipediaGenreLookup(formData: FormData) {
   if (unmatched.length > 0) parts.push(`未登録のジャンル名: ${unmatched.join(', ')}`)
   redirectWith('success', parts.join(''))
 }
+
+export async function addGenreHighlight(formData: FormData) {
+  const genreId = String(formData.get('genre_id') ?? '')
+  const artistId = String(formData.get('artist_id') ?? '').trim()
+  const albumId = String(formData.get('album_id') ?? '').trim()
+  const note = String(formData.get('note') ?? '').trim()
+
+  if (!genreId || (!artistId && !albumId)) {
+    redirectWith('error', 'ジャンルと、アーティストまたはアルバムを指定してください。')
+  }
+
+  const supabase = createAdminClient()
+  const { error } = await supabase.from('genre_highlight').insert({
+    genre_id: genreId,
+    artist_id: artistId || null,
+    album_id: albumId || null,
+    note: note || null,
+  })
+
+  if (error) {
+    redirectWith('error', `代表アーティスト/作品の登録に失敗しました: ${error.message}`)
+  }
+
+  revalidatePath('/admin/data/genres')
+  revalidatePath(`/genres/${genreId}`)
+  redirectWith('success', '代表アーティスト/作品を登録しました。')
+}
+
+export async function deleteGenreHighlight(formData: FormData) {
+  const id = String(formData.get('id') ?? '')
+  const genreId = String(formData.get('genre_id') ?? '')
+
+  if (!id) {
+    redirectWith('error', '不正なリクエストです。')
+  }
+
+  const supabase = createAdminClient()
+  const { error } = await supabase.from('genre_highlight').delete().eq('id', id)
+
+  if (error) {
+    redirectWith('error', `削除に失敗しました: ${error.message}`)
+  }
+
+  revalidatePath('/admin/data/genres')
+  if (genreId) revalidatePath(`/genres/${genreId}`)
+  redirectWith('success', '削除しました。')
+}
