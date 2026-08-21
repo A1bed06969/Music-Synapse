@@ -23,7 +23,7 @@ export default async function AlbumDetailPage({
     notFound()
   }
 
-  const [{ data: tracks }, { data: discGuideSelections }] = await Promise.all([
+  const [{ data: tracks }, { data: discGuideSelections }, { data: coArtistRows }] = await Promise.all([
     supabase
       .from('track')
       .select('id, disc_number, track_no, title, duration_seconds, preview_url')
@@ -36,6 +36,11 @@ export default async function AlbumDetailPage({
         'id, note, disc_guide:disc_guide_id(id, title, publisher, published_year, cover_image_url)'
       )
       .eq('album_id', id),
+    supabase
+      .from('album_artist')
+      .select('artist_id, role, billing_order, artist:artist_id(id, name)')
+      .eq('album_id', id)
+      .order('billing_order', { ascending: true, nullsFirst: false }),
   ])
 
   const groupAnchorId = album.primary_album_id ?? album.id
@@ -48,6 +53,12 @@ export default async function AlbumDetailPage({
 
   const artist = Array.isArray(album.artist) ? album.artist[0] : album.artist
   const label = Array.isArray(album.label) ? album.label[0] : album.label
+
+  type ArtistRef = { id: string; name: string }
+  const additionalArtists: ArtistRef[] = (coArtistRows ?? [])
+    .map((row) => (Array.isArray(row.artist) ? row.artist[0] : row.artist))
+    .filter((a): a is ArtistRef => a !== null)
+  const allArtists: ArtistRef[] = artist ? [artist, ...additionalArtists] : additionalArtists
   const status = album.streaming_status ? STREAMING_STATUS_LABEL[album.streaming_status] : null
 
   return (
@@ -102,10 +113,17 @@ export default async function AlbumDetailPage({
 
         <div>
           <h1 className="text-2xl font-bold">{album.title}</h1>
-          {artist && (
-            <Link href={`/artists/${artist.id}`} className="mt-1 block text-sm text-white/60 hover:text-white">
-              {artist.name}
-            </Link>
+          {allArtists.length > 0 && (
+            <p className="mt-1 flex flex-wrap items-center gap-x-1 text-sm text-white/60">
+              {allArtists.map((a, i) => (
+                <span key={a.id} className="flex items-center">
+                  <Link href={`/artists/${a.id}`} className="hover:text-white">
+                    {a.name}
+                  </Link>
+                  {i < allArtists.length - 1 && <span className="text-white/40">,</span>}
+                </span>
+              ))}
+            </p>
           )}
 
           <div className="mt-3 flex flex-wrap gap-2 text-xs text-white/60">
