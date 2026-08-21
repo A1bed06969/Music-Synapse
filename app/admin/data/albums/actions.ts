@@ -17,8 +17,11 @@ export async function linkAlbumArtist(formData: FormData) {
   const artistId = String(formData.get('artist_id') ?? '')
   const role = String(formData.get('role') ?? '')
 
-  if (!albumId || !artistId || (role !== 'featured' && role !== 'main')) {
+  if (!albumId) {
     redirect('/admin/data')
+  }
+  if (!artistId || (role !== 'featured' && role !== 'main')) {
+    redirectWith(albumId, 'error', 'アーティストと関係性を選択してください。')
   }
 
   const supabase = createAdminClient()
@@ -66,7 +69,7 @@ export async function unlinkAlbumArtist(formData: FormData) {
   }
 
   const supabase = createAdminClient()
-  const { error } = await supabase.from('album_artist').delete().eq('id', id)
+  const { error } = await supabase.from('album_artist').delete().eq('id', id).eq('album_id', albumId)
 
   if (error) {
     redirectWith(albumId, 'error', `削除に失敗しました: ${error.message}`)
