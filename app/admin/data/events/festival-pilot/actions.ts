@@ -117,12 +117,18 @@ async function findOrCreateFestivalEdition(
   supabase: SupabaseClient,
   input: EditionInput
 ): Promise<{ editionId: string | null; errorMessage: string | null }> {
-  const { data: existingEvent } = await supabase
+  // 完全一致(.eq)だと大文字小文字・前後の空白の違いだけで別イベントとして
+  // 新規作成されてしまう(実際に発生した不具合: Coachella/Coachella Festival、
+  // 風とロック芋煮会/風とロック芋煮会 in September JAM が別イベントになった)。
+  // ilikeで大小文字を無視した完全一致にする(部分一致ではないので、名前が
+  // 本当に違う別フェスを誤って同一視するリスクは無い)。2件以上ヒットする
+  // 場合は既存の重複防止方針と同様にどれとも断定せず新規作成にフォールバックする。
+  const { data: existingEvents } = await supabase
     .from('event')
     .select('id')
-    .eq('name', input.festivalName)
-    .maybeSingle()
-  let eventId = existingEvent?.id as string | undefined
+    .ilike('name', input.festivalName.trim())
+    .limit(2)
+  let eventId = existingEvents?.length === 1 ? existingEvents[0].id : undefined
   if (!eventId) {
     // country/description等はフェスごとに異なるため、ここでは決め打ちせずnullのまま
     // 作成し(誤った国名で他フェスに登録されるのを防ぐ)、管理画面(/admin/data/events)から

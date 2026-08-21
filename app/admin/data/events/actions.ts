@@ -423,6 +423,121 @@ export async function updateMusicEvent(formData: FormData) {
   redirectWith('success', `単独公演「${name}」を更新しました。`)
 }
 
+/** 重複イベント(source)をcanonical(target)へ統合する。festival-pilot経由の
+ * 名前完全一致(findOrCreateFestivalEdition)で、既存イベントと微妙に違う名前
+ * (例:「Coachella」と「Coachella Festival」)のせいで別イベントが作られて
+ * しまうことがあるため、その復旧に使う。event_editionは(event_id, year)が
+ * target側に既にあればそちらへevent_appearance/event_edition_date/setlistを
+ * 付け替えてsource側のeditionを削除、無ければeditionごとtargetへ付け替える。
+ * 取り消せない操作。 */
+export async function mergeEvent(formData: FormData) {
+  const sourceId = String(formData.get('source_event_id') ?? '')
+  const targetId = String(formData.get('target_event_id') ?? '')
+
+  if (!sourceId || !targetId || sourceId === targetId) {
+    redirectWith('error', '統合元と統合先には異なるイベントを選んでください。')
+  }
+
+  const supabase = createAdminClient()
+
+  const { data: source } = await supabase
+    .from('event')
+    .select(
+      'name, name_ja, founded_year, country, prefecture, description, genre_id, image_url, official_site_url, official_youtube_url'
+    )
+    .eq('id', sourceId)
+    .single()
+  const { data: target } = await supabase
+    .from('event')
+    .select(
+      'id, name, name_ja, founded_year, country, prefecture, description, genre_id, image_url, official_site_url, official_youtube_url'
+    )
+    .eq('id', targetId)
+    .single()
+
+  if (!source || !target) {
+    redirectWith('error', '指定のイベントが見つかりませんでした。')
+  }
+
+  // メタデータ補完(統合先が未設定の項目のみ、統合元の値で埋める)
+  const metaFill: Record<string, string | number> = {}
+  if (!target!.name_ja && source!.name_ja) metaFill.name_ja = source!.name_ja
+  if (!target!.founded_year && source!.founded_year) metaFill.founded_year = source!.founded_year
+  if (!target!.country && source!.country) metaFill.country = source!.country
+  if (!target!.prefecture && source!.prefecture) metaFill.prefecture = source!.prefecture
+  if (!target!.description && source!.description) metaFill.description = source!.description
+  if (!target!.genre_id && source!.genre_id) metaFill.genre_id = source!.genre_id
+  if (!target!.image_url && source!.image_url) metaFill.image_url = source!.image_url
+  if (!target!.official_site_url && source!.official_site_url) metaFill.official_site_url = source!.official_site_url
+  if (!target!.official_youtube_url && source!.official_youtube_url) {
+    metaFill.official_youtube_url = source!.official_youtube_url
+  }
+  if (Object.keys(metaFill).length > 0) {
+    await supabase.from('event').update(metaFill).eq('id', targetId)
+  }
+
+  // event_genre: (genre_id, target)が既にあれば重複させず削除、無ければ付け替え
+  const { data: sourceGenres } = await supabase.from('event_genre').select('id, genre_id').eq('event_id', sourceId)
+  const { data: targetGenres } = await supabase.from('event_genre').select('genre_id').eq('event_id', targetId)
+  const targetGenreIds = new Set((targetGenres ?? []).map((r) => r.genre_id))
+  for (const row of sourceGenres ?? []) {
+    if (targetGenreIds.has(row.genre_id)) {
+      await supabase.from('event_genre').delete().eq('id', row.id)
+    } else {
+      await supabase.from('event_genre').update({ event_id: targetId }).eq('id', row.id)
+    }
+  }
+
+  // event_edition: (event_id, year)が既にtarget側にあれば、そのeditionへ
+  // event_appearance/event_edition_date/setlistを付け替えてsource側のeditionを
+  // 削除。無ければeditionごとtargetへ付け替える。
+  const { data: sourceEditions } = await supabase
+    .from('event_edition')
+    .select('id, year, start_date, end_date, venue, description')
+    .eq('event_id', sourceId)
+  const { data: targetEditions } = await supabase
+    .from('event_edition')
+    .select('id, year, start_date, end_date, venue, description')
+    .eq('event_id', targetId)
+  const targetEditionByYear = new Map((targetEditions ?? []).map((e) => [e.year, e]))
+
+  for (const sourceEdition of sourceEditions ?? []) {
+    const matchingTarget = targetEditionByYear.get(sourceEdition.year)
+    if (matchingTarget) {
+      const editionFill: Record<string, string> = {}
+      if (!matchingTarget.venue && sourceEdition.venue) editionFill.venue = sourceEdition.venue
+      if (!matchingTarget.start_date && sourceEdition.start_date) editionFill.start_date = sourceEdition.start_date
+      if (!matchingTarget.end_date && sourceEdition.end_date) editionFill.end_date = sourceEdition.end_date
+      if (!matchingTarget.description && sourceEdition.description) editionFill.description = sourceEdition.description
+      if (Object.keys(editionFill).length > 0) {
+        await supabase.from('event_edition').update(editionFill).eq('id', matchingTarget.id)
+      }
+
+      await supabase
+        .from('event_appearance')
+        .update({ event_edition_id: matchingTarget.id })
+        .eq('event_edition_id', sourceEdition.id)
+      await supabase
+        .from('event_edition_date')
+        .update({ event_edition_id: matchingTarget.id })
+        .eq('event_edition_id', sourceEdition.id)
+      await supabase.from('setlist').update({ event_edition_id: matchingTarget.id }).eq('event_edition_id', sourceEdition.id)
+      await supabase.from('event_edition').delete().eq('id', sourceEdition.id)
+    } else {
+      await supabase.from('event_edition').update({ event_id: targetId }).eq('id', sourceEdition.id)
+    }
+  }
+
+  const { error: deleteError } = await supabase.from('event').delete().eq('id', sourceId)
+  if (deleteError) {
+    redirectWith('error', `統合元イベントの削除に失敗しました(付け替えは完了しています): ${deleteError.message}`)
+  }
+
+  revalidatePath('/admin/data/events')
+  revalidatePath('/admin/data/events/festival-pilot')
+  redirectWith('success', `「${source!.name}」を「${target!.name}」へ統合しました。`)
+}
+
 export async function deleteMusicEvent(formData: FormData) {
   const id = String(formData.get('id') ?? '')
   const artistId = String(formData.get('artist_id') ?? '')

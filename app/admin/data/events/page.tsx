@@ -7,6 +7,7 @@ import {
   createEventEditionDate,
   createEventAppearance,
   createMusicEvent,
+  mergeEvent,
 } from './actions'
 
 const EVENT_TYPE_OPTIONS = [
@@ -331,6 +332,40 @@ export default async function EventsAdminPage({
           })}
         </ul>
       )}
+
+      <div className="mt-10 rounded-md border border-red-500/20 p-4">
+        <h2 className="text-sm font-semibold">イベント統合</h2>
+        <p className="mt-1 text-xs text-white/40">
+          表記違いなどで重複登録されたイベント(フェス出演者パイロットで、既存イベントと名前が完全一致せず別イベントが作られてしまった場合など)を1件へまとめる。統合元の開催回・出演情報は全て統合先へ付け替わり、統合元は削除される。取り消せない操作。
+        </p>
+        <form action={mergeEvent} className="mt-3 flex flex-wrap items-center gap-2">
+          <select name="source_event_id" required className={`${inputClass} max-w-xs`} defaultValue="">
+            <option value="" disabled>
+              統合元(削除する方)
+            </option>
+            {eventOptions.map((e) => (
+              <option key={e.id} value={e.id}>
+                {e.name}
+              </option>
+            ))}
+          </select>
+          <span className="text-xs text-white/40">を</span>
+          <select name="target_event_id" required className={`${inputClass} max-w-xs`} defaultValue="">
+            <option value="" disabled>
+              統合先(残す方)
+            </option>
+            {eventOptions.map((e) => (
+              <option key={e.id} value={e.id}>
+                {e.name}
+              </option>
+            ))}
+          </select>
+          <span className="text-xs text-white/40">へ統合</span>
+          <button type="submit" className="rounded-md border border-red-500/30 px-4 py-2 text-sm hover:bg-red-500/10">
+            統合を実行
+          </button>
+        </form>
+      </div>
     </div>
   )
 }
