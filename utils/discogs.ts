@@ -249,7 +249,7 @@ function parseReleaseDate(released: string | undefined, year: number | undefined
 // 割り出す。アナログ盤は面A/Bが同一ディスク、C/Dが2枚目...という慣習に合わせ、
 // 面の文字を2つずつディスク番号にまとめる。
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function buildTrackList(raw: any[]): DiscogsTrack[] {
+export function buildTrackList(raw: any[]): DiscogsTrack[] {
   const tracks: DiscogsTrack[] = []
   const letterGroups: string[] = []
   const seqByDisc = new Map<number, number>()
@@ -274,9 +274,13 @@ function buildTrackList(raw: any[]): DiscogsTrack[] {
       const letter = letterNum[1].toUpperCase()
       if (!letterGroups.includes(letter)) letterGroups.push(letter)
       discNumber = Math.floor(letterGroups.indexOf(letter) / 2) + 1
+      // 面ごとに"A1"〜"A4","B1"〜"B4"のように独自の番号を振っている盤(2枚組LP等)
+      // では、その番号をそのまま使うとB面以降でトラック番号が1に巻き戻ってしまう
+      // (実際に発生した不具合: 渚にて「本当の世界」で確認)。面の番号表記の有無に
+      // 関わらず、ディスク単位で通し番号を振る。
       const next = (seqByDisc.get(discNumber) ?? 0) + 1
       seqByDisc.set(discNumber, next)
-      trackNo = letterNum[2] ? parseInt(letterNum[2], 10) : next
+      trackNo = next
     } else if (plainNum) {
       discNumber = 1
       trackNo = parseInt(plainNum[1], 10)
