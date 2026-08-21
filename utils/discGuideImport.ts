@@ -55,12 +55,14 @@ async function searchAppleMusicCandidates(
 
   return results.map((r) => {
     const normalizedCandidateTitle = normalizeForMatch(r.collectionName);
+    // 空文字列はどんな文字列に対してもincludes()が常にtrueになるため、
+    // タイトルが空(OCR失敗等)の場合に無関係な候補まで0.6点になるのを防ぐ
     let similarity = 0.35;
-    if (normalizedCandidateTitle === normalizedTitle) {
+    if (normalizedTitle && normalizedCandidateTitle === normalizedTitle) {
       similarity = 0.9;
     } else if (
-      normalizedCandidateTitle.includes(normalizedTitle) ||
-      normalizedTitle.includes(normalizedCandidateTitle)
+      normalizedTitle &&
+      (normalizedCandidateTitle.includes(normalizedTitle) || normalizedTitle.includes(normalizedCandidateTitle))
     ) {
       similarity = 0.6;
     }
@@ -136,15 +138,22 @@ export async function matchAlbumsWithCandidates(
  * album-edition-groupingなどこのアプリの他の自動照合と同じ考え方)。
  */
 export async function findAppleMusicAlbumMatch(artistName: string, title: string): Promise<ItunesAlbum | null> {
+  const normalizedTitle = normalizeForMatch(title)
+  const normalizedArtist = normalizeForMatch(artistName)
+
+  // 空文字列は他のどんな文字列に対しても String.includes('') が常にtrueを
+  // 返すため、artistNameが空/OCRで読み取れなかった場合、下のアーティスト名
+  // チェックが実質スルーされ「タイトルの完全一致さえあれば誰の作品でも
+  // マッチ扱い」になってしまう(実際に無関係な作品が誤登録される事例で確認)。
+  // タイトルもアーティスト名もどちらも空判定にならないようここで弾く。
+  if (!normalizedTitle || !normalizedArtist) return null
+
   let candidates: ItunesAlbum[]
   try {
     candidates = await searchAlbums(`${artistName} ${title}`, 10)
   } catch {
     return null
   }
-
-  const normalizedTitle = normalizeForMatch(title)
-  const normalizedArtist = normalizeForMatch(artistName)
 
   const matches = candidates.filter(
     (c) =>
