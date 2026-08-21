@@ -42,6 +42,21 @@ export default async function ArtistDetailPage({
   // アーティスト名に依存しないためPromise.allと並行して先行取得しておく
   const newsItemsPromise = fetchAllNews(NEWS_SOURCES)
 
+  // ディスコグラフィーに、代表アーティスト(album.artist_id)だけでなく
+  // album_artist経由で追加アーティストとして紐づいているアルバムも含めるため、
+  // 先にそのアルバムID一覧を取得しておく(下のalbumQuery構築で使う)。
+  const { data: coArtistLinks } = await supabase.from('album_artist').select('album_id').eq('artist_id', id)
+  const coArtistAlbumIds = (coArtistLinks ?? []).map((r) => r.album_id)
+
+  let albumQuery = supabase
+    .from('album')
+    .select('id, title, jacket_url, release_date, album_type, streaming_status')
+  albumQuery =
+    coArtistAlbumIds.length > 0
+      ? albumQuery.or(`artist_id.eq.${id},id.in.(${coArtistAlbumIds.join(',')})`)
+      : albumQuery.eq('artist_id', id)
+  albumQuery = albumQuery.is('primary_album_id', null).order('release_date', { ascending: false, nullsFirst: false })
+
   const [
     [
       { data: artist, error },
@@ -59,12 +74,7 @@ export default async function ArtistDetailPage({
   ] = await Promise.all([
     Promise.all([
       supabase.from('artist').select('*').eq('id', id).single(),
-      supabase
-        .from('album')
-        .select('id, title, jacket_url, release_date, album_type, streaming_status')
-        .eq('artist_id', id)
-        .is('primary_album_id', null)
-        .order('release_date', { ascending: false, nullsFirst: false }),
+      albumQuery,
       supabase
         .from('music_event')
         .select('id, name, event_date, venue')
