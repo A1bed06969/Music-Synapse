@@ -57,8 +57,13 @@ export default async function AlbumDetailPage({
   type ArtistRef = { id: string; name: string }
   const additionalArtists: ArtistRef[] = (coArtistRows ?? [])
     .map((row) => (Array.isArray(row.artist) ? row.artist[0] : row.artist))
-    .filter((a): a is ArtistRef => a !== null)
-  const allArtists: ArtistRef[] = artist ? [artist, ...additionalArtists] : additionalArtists
+    .filter((a): a is ArtistRef => a != null)
+  const seenArtistIds = new Set<string>()
+  const allArtists: ArtistRef[] = (artist ? [artist, ...additionalArtists] : additionalArtists).filter((a) => {
+    if (seenArtistIds.has(a.id)) return false
+    seenArtistIds.add(a.id)
+    return true
+  })
   const status = album.streaming_status ? STREAMING_STATUS_LABEL[album.streaming_status] : null
 
   return (
