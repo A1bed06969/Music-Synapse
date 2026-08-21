@@ -12,12 +12,22 @@ import ArtistCreditQuadrantGraph from '@/app/components/ArtistCreditQuadrants'
 import { buildArtistCreditQuadrants } from '@/utils/relationGraphData'
 import ArtistLinkIcons from '@/app/components/ArtistLinkIcons'
 import { resolveArtistPageKind, hasOwnRelease } from '@/utils/artistPageKind'
+import { buildArtistAlbumQuery } from '@/utils/artistAlbumQuery'
 import MemberProfile from './MemberProfile'
 import { NEWS_SOURCES } from '@/utils/newsFeeds'
 import { fetchAllNews, findRelatedNews, formatRelativeTime } from '@/utils/newsParser'
 import { ALBUM_TYPE_LABEL_JA, ALBUM_TYPE_ORDER, type AlbumType } from '@/utils/albumType'
 import { fetchArtistMediaSelections } from '@/utils/fetchArtistMediaSelections'
 import ArtistTimeline from './ArtistTimeline'
+
+type ArtistAlbumRow = {
+  id: string
+  title: string
+  jacket_url: string | null
+  release_date: string | null
+  album_type: string | null
+  streaming_status: string | null
+}
 
 function SectionDivider({ label }: { label: string }) {
   return (
@@ -43,19 +53,13 @@ export default async function ArtistDetailPage({
   const newsItemsPromise = fetchAllNews(NEWS_SOURCES)
 
   // ディスコグラフィーに、代表アーティスト(album.artist_id)だけでなく
-  // album_artist経由で追加アーティストとして紐づいているアルバムも含めるため、
-  // 先にそのアルバムID一覧を取得しておく(下のalbumQuery構築で使う)。
-  const { data: coArtistLinks } = await supabase.from('album_artist').select('album_id').eq('artist_id', id)
-  const coArtistAlbumIds = (coArtistLinks ?? []).map((r) => r.album_id)
-
-  let albumQuery = supabase
-    .from('album')
-    .select('id, title, jacket_url, release_date, album_type, streaming_status')
-  albumQuery =
-    coArtistAlbumIds.length > 0
-      ? albumQuery.or(`artist_id.eq.${id},id.in.(${coArtistAlbumIds.join(',')})`)
-      : albumQuery.eq('artist_id', id)
-  albumQuery = albumQuery.is('primary_album_id', null).order('release_date', { ascending: false, nullsFirst: false })
+  // album_artist経由で追加アーティストとして紐づいているアルバムも含める。
+  // 全リリース年表ページ(/artists/[id]/timeline)と同じ集合を返す共通ヘルパーを使う。
+  const albumQuery = buildArtistAlbumQuery<ArtistAlbumRow>(
+    supabase,
+    id,
+    'id, title, jacket_url, release_date, album_type, streaming_status'
+  )
 
   const [
     [

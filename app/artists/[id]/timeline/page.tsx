@@ -2,7 +2,10 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/utils/Supabase/server'
 import { fetchArtistMediaSelections } from '@/utils/fetchArtistMediaSelections'
+import { buildArtistAlbumQuery } from '@/utils/artistAlbumQuery'
 import ArtistTimeline from '../ArtistTimeline'
+
+type TimelineAlbumRow = { id: string; title: string; jacket_url: string | null; release_date: string | null }
 
 /** アーティスト年表の詳細表示。アーティスト詳細ページの簡易版年表(主要リリースのみ)
  * と違い、シングル・EPも含めた全リリースを年ごとにまとめて表示する。表示形式は
@@ -25,12 +28,7 @@ export default async function ArtistTimelinePage({
     mediaSelections,
   ] = await Promise.all([
     supabase.from('artist').select('id, name').eq('id', id).single(),
-    supabase
-      .from('album')
-      .select('id, title, jacket_url, release_date')
-      .eq('artist_id', id)
-      .is('primary_album_id', null)
-      .order('release_date', { ascending: false, nullsFirst: false }),
+    buildArtistAlbumQuery<TimelineAlbumRow>(supabase, id, 'id, title, jacket_url, release_date'),
     supabase
       .from('music_event')
       .select('id, name, event_date, venue')
