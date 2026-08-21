@@ -116,12 +116,24 @@ export async function matchAlbumsWithCandidates(
     // Primary match is the top-ranked candidate (local DB matches carry a real
     // album_id already; an Apple Music candidate has no local row yet, so it's
     // only usable via the confirm UI's selection, not as a default album_id).
+    //
+    // ただしprimaryLocalRow(生のsearch_albums_fuzzy結果の1位)は、Apple Music候補と
+    // マージ後の上位candidatesに入っているとは限らない(ローカルDBの類似度が低く、
+    // Apple Music側の一律0.35点に負けてcandidatesから溢れることがある)。その場合
+    // candidatesに存在しないalbum_idを default として返すと、確認画面の<select>は
+    // どのoptionとも一致せず先頭の「新規作成」を表示するが、実際のstateは無関係な
+    // 既存アルバムのIDのまま残り、気づかず登録すると誤って既存アルバムにリンク
+    // されてしまう(実例: 「ハイポジ/Body Meets Sing」がtrigram類似度だけで無関係な
+    // 既存アルバム「Body On Me」にマッチしてしまった)。candidatesに実在するIDのみ
+    // デフォルト選択として採用する。
     const primaryLocalRow = (rows as FuzzyAlbumRow[] | null)?.[0];
+    const defaultMatch =
+      primaryLocalRow && candidates.some((c) => c.id === primaryLocalRow.id) ? primaryLocalRow : undefined;
 
     results.push({
       extracted_index: i,
-      album_id: primaryLocalRow?.id,
-      artist_id: primaryLocalRow?.artist_id,
+      album_id: defaultMatch?.id,
+      artist_id: defaultMatch?.artist_id,
       candidates,
     });
   }

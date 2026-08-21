@@ -52,8 +52,19 @@ export default function ConfirmationClient({ pending }: { pending: PendingRecord
   const [editing, setEditing] = useState<Record<number, AlbumExtract>>(
     Object.fromEntries(extracted.map((_, i) => [i, extracted[i]]))
   )
+  // m.album_idはドロップダウンのcandidates一覧に無い値を指していることがある
+  // (バックエンド側の対策と別に、既に保存済みのmatched_dataにも同じ不整合が
+  // 残っている場合があるため、ここでも防御的にチェックする)。candidatesに
+  // 存在しないIDをそのままselectのvalueに渡すと、<select>はどのoptionとも
+  // 一致せず先頭の「新規作成」を表示するが、実際のstateは無関係な既存アルバムの
+  // IDのままになり、気づかず登録すると誤って既存アルバムにリンクされてしまう。
   const [selections, setSelections] = useState<Record<number, string>>(
-    Object.fromEntries(matched.map((m) => [m.extracted_index, m.album_id || 'new']))
+    Object.fromEntries(
+      matched.map((m) => {
+        const isValidDefault = m.album_id && m.candidates?.some((c) => c.id === m.album_id)
+        return [m.extracted_index, isValidDefault ? m.album_id! : 'new']
+      })
+    )
   )
   // 自動マッチング候補が0件、または最有力候補の類似度が低い行(=要確認)は
   // デフォルトで検索欄を開いておく。
