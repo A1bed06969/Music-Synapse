@@ -217,11 +217,16 @@ export type DiscogsReleaseInfo = {
   tracks: DiscogsTrack[]
 }
 
-function extractReleaseRef(url: string): { kind: 'release' | 'master'; id: number } | null {
+function extractReleaseRef(url: string): { kind: 'release' | 'master' | 'listing'; id: number } | null {
   const releaseMatch = url.match(/discogs\.com\/(?:[a-z]{2}\/)?release\/(\d+)/)
   if (releaseMatch) return { kind: 'release', id: parseInt(releaseMatch[1], 10) }
   const masterMatch = url.match(/discogs\.com\/(?:[a-z]{2}\/)?master\/(\d+)/)
   if (masterMatch) return { kind: 'master', id: parseInt(masterMatch[1], 10) }
+  // マーケットプレイスの出品ページ(discogs.com/sell/item/... または
+  // discogs.com/shop/item/...、どちらも同じ出品IDを指す別表記)。
+  // release自体ではなく出品IDなので、まずmarketplace/listingsから紐づくrelease.idを引く。
+  const listingMatch = url.match(/discogs\.com\/(?:[a-z]{2}\/)?(?:sell|shop)\/item\/(\d+)/)
+  if (listingMatch) return { kind: 'listing', id: parseInt(listingMatch[1], 10) }
   return null
 }
 
@@ -288,7 +293,9 @@ function buildTrackList(raw: any[]): DiscogsTrack[] {
 export async function fetchDiscogsReleaseInfo(url: string): Promise<DiscogsReleaseInfo> {
   const ref = extractReleaseRef(url)
   if (!ref) {
-    throw new Error('DiscogsのリリースページのURL(discogs.com/release/... または /master/...)を指定してください')
+    throw new Error(
+      'DiscogsのリリースページのURL(discogs.com/release/... 、/master/... 、/sell(shop)/item/...)を指定してください'
+    )
   }
 
   let releaseId = ref.id
@@ -298,6 +305,12 @@ export async function fetchDiscogsReleaseInfo(url: string): Promise<DiscogsRelea
       throw new Error('このmasterページには紐づくreleaseがありません')
     }
     releaseId = master.main_release
+  } else if (ref.kind === 'listing') {
+    const listing = await fetchDiscogs(`${DISCOGS_BASE}/marketplace/listings/${ref.id}`, 'marketplace listing lookup')
+    if (!listing.release?.id) {
+      throw new Error('この出品ページには紐づくreleaseがありません')
+    }
+    releaseId = listing.release.id
   }
 
   const data = await fetchDiscogs(`${DISCOGS_BASE}/releases/${releaseId}`, 'release info')
