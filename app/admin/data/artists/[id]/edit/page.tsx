@@ -251,6 +251,13 @@ export default async function ArtistEditPage({
                   >
                     Discogs取込 →
                   </Link>
+                  <Link
+                    href={`/admin/data/albums/${album.id}/co-artists`}
+                    prefetch={false}
+                    className="text-xs text-white/40 hover:text-white/70"
+                  >
+                    追加アーティストを紐付け →
+                  </Link>
                 </div>
               </li>
             ))}

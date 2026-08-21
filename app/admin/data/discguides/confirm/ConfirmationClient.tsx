@@ -3,6 +3,7 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import SearchableSelect from '../../SearchableSelect'
 import { searchAppleMusicAlbums } from './actions'
 
@@ -81,6 +82,10 @@ export default function ConfirmationClient({ pending }: { pending: PendingRecord
   const [registeredRows, setRegisteredRows] = useState<Record<number, boolean>>(
     Object.fromEntries((pending.registered_indices ?? []).map((i) => [i, true]))
   )
+  // 今回のセッションで登録したalbum_idだけを保持する(register_indicesはindexしか
+  // 持たないため、ページ再読み込み後に登録済みになった行の「追加アーティストを
+  // 紐付け」リンクは出せない。その場合はアーティスト編集ページの同機能を使う)。
+  const [registeredAlbumIds, setRegisteredAlbumIds] = useState<Record<number, string>>({})
   const [registeringRow, setRegisteringRow] = useState<number | null>(null)
   const [rowError, setRowError] = useState<Record<number, string>>({})
 
@@ -106,6 +111,9 @@ export default function ConfirmationClient({ pending }: { pending: PendingRecord
         return
       }
       setRegisteredRows({ ...registeredRows, [i]: true })
+      if (body.album_id) {
+        setRegisteredAlbumIds({ ...registeredAlbumIds, [i]: body.album_id })
+      }
     } finally {
       setRegisteringRow(null)
     }
@@ -256,7 +264,17 @@ export default function ConfirmationClient({ pending }: { pending: PendingRecord
 
               <div className="mt-3 flex items-center gap-3">
                 {registeredRows[i] ? (
-                  <span className="text-xs font-semibold text-green-400">✓ 登録済み</span>
+                  <>
+                    <span className="text-xs font-semibold text-green-400">✓ 登録済み</span>
+                    {registeredAlbumIds[i] && (
+                      <Link
+                        href={`/admin/data/albums/${registeredAlbumIds[i]}/co-artists`}
+                        className="text-xs text-blue-400 hover:text-blue-300"
+                      >
+                        追加アーティストを紐付け →
+                      </Link>
+                    )}
+                  </>
                 ) : (
                   <button
                     type="button"
