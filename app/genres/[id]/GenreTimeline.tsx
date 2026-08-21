@@ -5,6 +5,7 @@ type ChildGenreRow = {
   id: string
   name: string
   origin_year: number | null
+  origin_year_label: string | null
   origin_country: string | null
   origin_city: string | null
 }
@@ -38,6 +39,7 @@ export default function GenreTimeline({
   genreId,
   genreName,
   originYear,
+  originYearLabel,
   originCountry,
   originCity,
   children,
@@ -47,6 +49,7 @@ export default function GenreTimeline({
   genreId: string
   genreName: string
   originYear: number | null
+  originYearLabel: string | null
   originCountry: string | null
   originCity: string | null
   children: ChildGenreRow[]
@@ -57,11 +60,13 @@ export default function GenreTimeline({
     genreId,
     genreName,
     originYear,
+    originYearLabel,
     originPlace: [originCountry, originCity].filter(Boolean).join(' / ') || null,
     children: children.map((c) => ({
       genreId: c.id,
       genreName: c.name,
       originYear: c.origin_year,
+      originYearLabel: c.origin_year_label,
       originPlace: [c.origin_country, c.origin_city].filter(Boolean).join(' / ') || null,
     })),
     highlights: highlights

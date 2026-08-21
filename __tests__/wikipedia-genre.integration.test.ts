@@ -25,6 +25,13 @@ describe('searchWikipediaGenre', () => {
     assert.ok(info!.sourceUrl.includes('wikipedia.org'))
   })
 
+  test('finds ジャズ on Japanese Wikipedia with a century-based (諸説あり) origin, not a 4-digit year', async () => {
+    const info = await searchWikipediaGenre('ジャズ')
+    assert.ok(info, 'expected a result')
+    assert.ok(info!.originYearLabel?.includes('世紀'), `expected originYearLabel to mention 世紀, got: ${info!.originYearLabel}`)
+    assert.ok(info!.originYear, 'expected an approximate originYear for sorting purposes')
+  })
+
   test('returns null for a nonexistent genre name', async () => {
     const info = await searchWikipediaGenre('zzzznonexistentgenrexyz123')
     assert.equal(info, null)

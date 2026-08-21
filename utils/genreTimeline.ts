@@ -19,8 +19,17 @@ export type GenreTimelineInput = {
   genreId: string
   genreName: string
   originYear: number | null
+  // 「19世紀後半」のように年が特定されていない場合の元の表記。あればoriginYear
+  // (並び替え専用の概算値)より優先して表示する。
+  originYearLabel: string | null
   originPlace: string | null
-  children: { genreId: string; genreName: string; originYear: number | null; originPlace: string | null }[]
+  children: {
+    genreId: string
+    genreName: string
+    originYear: number | null
+    originYearLabel: string | null
+    originPlace: string | null
+  }[]
   highlights: {
     genreId: string
     artistId: string | null
@@ -43,11 +52,12 @@ export function buildGenreTimeline(input: GenreTimelineInput): GenreTimelineEntr
   const entries: GenreTimelineEntry[] = []
 
   if (input.originYear) {
+    const subtitle = [input.originYearLabel, input.originPlace].filter((s): s is string => Boolean(s)).join(' ・ ')
     entries.push({
       date: `${input.originYear}-01-01`,
       kind: 'origin',
       title: `${input.genreName} 発祥`,
-      subtitle: input.originPlace,
+      subtitle: subtitle || null,
       href: null,
       indent: false,
     })
@@ -55,11 +65,12 @@ export function buildGenreTimeline(input: GenreTimelineInput): GenreTimelineEntr
 
   for (const child of input.children) {
     if (!child.originYear) continue
+    const subtitle = [child.originYearLabel, child.originPlace].filter((s): s is string => Boolean(s)).join(' ・ ')
     entries.push({
       date: `${child.originYear}-01-01`,
       kind: 'derived',
       title: `${child.genreName}が派生`,
-      subtitle: child.originPlace,
+      subtitle: subtitle || null,
       href: `/genres/${child.genreId}`,
       indent: true,
     })

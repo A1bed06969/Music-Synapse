@@ -39,11 +39,23 @@ const CITY_POP_WIKITEXT = `{{Infobox music genre
 }}
 シティ・ポップは1970年代の日本で生まれた音楽ジャンル...`
 
+// ja.wikipedia.org/ジャズのcultural_originsから採取した実データ。西暦4桁が
+// 無く「19世紀」という世紀表記+諸説ある旨の注記のみのケース。
+const JAZZ_WIKITEXT = `{{Infobox music genre
+|name= ジャズ
+|stylistic_origins = {{Hlist-comma|[[ブルース]]|[[ラグタイム]]}}
+|cultural_origins = [[19世紀]]、アメリカ南部（諸説あり）
+|derivatives =
+|subgenres =
+}}
+ジャズは...`
+
 describe('parseGenreInfobox', () => {
   test('parses English infobox (Techno): year from free text, place from wikilinks, link lists', () => {
     const info = parseGenreInfobox(TECHNO_WIKITEXT, 'https://en.wikipedia.org/wiki/Techno')
     assert.ok(info)
     assert.equal(info!.originYear, 1980)
+    assert.equal(info!.originYearLabel, null)
     assert.equal(info!.originPlace, 'Detroit, Michigan')
     assert.deepEqual(info!.stylisticOrigins, ['House', 'electro', 'synth-pop'])
     assert.deepEqual(info!.subgenres, ['Acid techno', 'Detroit techno', 'Minimal techno'])
@@ -55,10 +67,38 @@ describe('parseGenreInfobox', () => {
     const info = parseGenreInfobox(CITY_POP_WIKITEXT, 'https://ja.wikipedia.org/wiki/シティ・ポップ')
     assert.ok(info)
     assert.equal(info!.originYear, 1970)
+    assert.equal(info!.originYearLabel, null)
     assert.equal(info!.originPlace, '日本')
     assert.deepEqual(info!.stylisticOrigins, ['ニューミュージック', 'AOR', '湘南サウンド'])
     assert.deepEqual(info!.derivatives, ['渋谷系', 'ヴェイパーウェイヴ'])
     assert.deepEqual(info!.subgenres, [])
+  })
+
+  test('parses a century-only cultural_origins (ジャズ: 諸説あり, no 4-digit year) into an approximate year plus the original label', () => {
+    const info = parseGenreInfobox(JAZZ_WIKITEXT, 'https://ja.wikipedia.org/wiki/ジャズ')
+    assert.ok(info)
+    assert.equal(info!.originYear, 1850)
+    assert.equal(info!.originYearLabel, '19世紀')
+    assert.equal(info!.originPlace, 'アメリカ南部（諸説あり）')
+  })
+
+  test('century qualifiers (前半/後半/半ば/末/初頭) shift the approximate year within the century', () => {
+    const wikitext = (cultural: string) =>
+      `{{Infobox music genre\n|cultural_origins = ${cultural}\n}}\ntext`
+    assert.equal(parseGenreInfobox(wikitext('19世紀初頭'), 'u')!.originYear, 1810)
+    assert.equal(parseGenreInfobox(wikitext('19世紀前半'), 'u')!.originYear, 1825)
+    assert.equal(parseGenreInfobox(wikitext('19世紀半ば'), 'u')!.originYear, 1850)
+    assert.equal(parseGenreInfobox(wikitext('19世紀後半'), 'u')!.originYear, 1875)
+    assert.equal(parseGenreInfobox(wikitext('19世紀末'), 'u')!.originYear, 1890)
+    assert.equal(parseGenreInfobox(wikitext('19世紀後半'), 'u')!.originYearLabel, '19世紀後半')
+  })
+
+  test('English century notation (mid-20th century) is also recognized', () => {
+    const wikitext = `{{Infobox music genre\n|cultural_origins = mid-20th century, [[United States]]\n}}\ntext`
+    const info = parseGenreInfobox(wikitext, 'u')
+    assert.ok(info)
+    assert.equal(info!.originYear, 1950)
+    assert.equal(info!.originYearLabel, 'mid-20th century')
   })
 
   test('returns null when no Infobox music genre template is present', () => {

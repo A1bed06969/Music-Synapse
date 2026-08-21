@@ -77,6 +77,16 @@ export default function WikipediaGenreSearch({ genreOptions }: { genreOptions: {
               />
             </label>
             <label className="flex items-center gap-1.5 text-white/70">
+              表記(任意。「19世紀後半」等、年が特定できない場合の表示用):
+              <input
+                type="text"
+                name="origin_year_label"
+                defaultValue={info.originYearLabel ?? ''}
+                placeholder="例: 19世紀後半"
+                className="w-40 rounded-md border border-white/15 bg-white/5 px-2 py-1 text-sm text-white placeholder:text-white/25 focus:border-white/30 focus:outline-none"
+              />
+            </label>
+            <label className="flex items-center gap-1.5 text-white/70">
               発祥地:
               <input
                 type="text"

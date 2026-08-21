@@ -12,6 +12,11 @@ const USER_AGENT = 'MusicSynapse/1.0 (https://github.com/A1bed06969/Music-Synaps
 export type WikipediaGenreInfo = {
   sourceUrl: string
   originYear: number | null
+  // 「19世紀後半」のように諸説あり/年が特定されていない場合、originYearには
+  // 年表の並び替え専用の概算値(下のparseCenturyExpression参照)を入れ、
+  // originYearLabelに元の表記をそのまま残す。表示側はoriginYearLabelがあれば
+  // そちらを優先し、無ければoriginYearをそのまま「◯◯年」として表示する。
+  originYearLabel: string | null
   originPlace: string | null
   stylisticOrigins: string[]
   subgenres: string[]
@@ -92,6 +97,53 @@ function extractLinkNames(text: string): string[] {
   return names
 }
 
+// 西暦4桁が特定できない場合(諸説ある古いジャンル等でよく見られる)、「19世紀」
+// 「19世紀後半」のような世紀表記を年表の並び替え用に概算年へ変換する。元の表記
+//自体はlabelとしてそのまま保持し、表示は概算値ではなく元の表記を優先させる。
+const JA_CENTURY_OFFSET: [RegExp, number][] = [
+  [/初頭|初め/, 10],
+  [/前半/, 25],
+  [/半ば|中頃|中盤/, 50],
+  [/後半/, 75],
+  [/末/, 90],
+]
+
+function parseJaCentury(text: string): { year: number; label: string } | null {
+  const m = text.match(/(\d{1,2})世紀(初頭|初め|前半|半ば|中頃|中盤|後半|末)?/)
+  if (!m) return null
+  const century = parseInt(m[1], 10)
+  const base = (century - 1) * 100
+  let offset = 50
+  if (m[2]) {
+    const found = JA_CENTURY_OFFSET.find(([re]) => re.test(m[2]!))
+    if (found) offset = found[1]
+  }
+  return { year: base + offset, label: m[0] }
+}
+
+const EN_CENTURY_OFFSET: [RegExp, number][] = [
+  [/early/i, 10],
+  [/mid/i, 50],
+  [/late/i, 75],
+]
+
+function parseEnCentury(text: string): { year: number; label: string } | null {
+  const m = text.match(/(early|mid|late)?[\s-]*(\d{1,2})(?:st|nd|rd|th)[\s-]century/i)
+  if (!m) return null
+  const century = parseInt(m[2], 10)
+  const base = (century - 1) * 100
+  let offset = 50
+  if (m[1]) {
+    const found = EN_CENTURY_OFFSET.find(([re]) => re.test(m[1]!))
+    if (found) offset = found[1]
+  }
+  return { year: base + offset, label: m[0].trim() }
+}
+
+function parseCenturyExpression(text: string): { year: number; label: string } | null {
+  return parseJaCentury(text) ?? parseEnCentury(text)
+}
+
 const COUNTRY_TEMPLATE_JA: Record<string, string> = {
   JPN: '日本',
   USA: 'アメリカ合衆国',
@@ -107,7 +159,7 @@ const COUNTRY_TEMPLATE_JA: Record<string, string> = {
 // どちらのパターンにも対応するため、リンク由来の年/地名、国旗テンプレート由来の
 // 国名、自由文由来の年をそれぞれ試し、取れたものを組み合わせるベストエフォート方式にする
 // (都市までは分離しない場合がある、という前提はspec通り)。
-function extractCulturalOrigin(fieldRaw: string): { year: number | null; place: string | null } {
+function extractCulturalOrigin(fieldRaw: string): { year: number | null; yearLabel: string | null; place: string | null } {
   const countryNames: string[] = []
   const templateRe = /\{\{\s*([A-Za-z]{2,5})\s*\}\}/g
   let tm: RegExpExecArray | null
@@ -118,26 +170,43 @@ function extractCulturalOrigin(fieldRaw: string): { year: number | null; place: 
 
   const linkNames = extractLinkNames(fieldRaw)
   const yearLink = linkNames.find((n) => /^\d{4}/.test(n))
-  const placeFromLinks = linkNames.filter((n) => !/^\d{4}/.test(n))
+  const placeFromLinks = linkNames.filter((n) => !/^\d{4}/.test(n) && !parseCenturyExpression(n))
 
   const plainText = fieldRaw
     .replace(/\{\{[^{}]*\}\}/g, '')
     .replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_m, a, d) => d ?? a)
   const plainYearMatch = plainText.match(/\d{4}/)
 
-  const yearSource = yearLink ?? (plainYearMatch ? plainYearMatch[0] : null)
-  const year = yearSource ? parseInt(yearSource.slice(0, 4), 10) : null
+  let year: number | null = null
+  let yearLabel: string | null = null
+
+  if (yearLink) {
+    year = parseInt(yearLink.slice(0, 4), 10)
+  } else if (plainYearMatch) {
+    year = parseInt(plainYearMatch[0], 10)
+  } else {
+    // 西暦4桁が見つからない場合、「19世紀」「19世紀後半」のような世紀表記を試す
+    const century =
+      linkNames.map(parseCenturyExpression).find((c): c is NonNullable<typeof c> => c !== null) ??
+      parseCenturyExpression(plainText)
+    if (century) {
+      year = century.year
+      yearLabel = century.label
+    }
+  }
 
   const placeParts = [...countryNames, ...placeFromLinks]
   if (placeParts.length === 0) {
     const withoutYear = plainText
       .replace(/\d{4}s?/, '')
-      .replace(/^[,*\s]+|[,*\s]+$/g, '')
+      .replace(/\d{1,2}世紀(初頭|初め|前半|半ば|中頃|中盤|後半|末)?/, '')
+      .replace(/(early|mid|late)?[\s-]*\d{1,2}(?:st|nd|rd|th)[\s-]century/i, '')
+      .replace(/^[,、*\s]+|[,、*\s]+$/g, '')
       .trim()
     if (withoutYear) placeParts.push(withoutYear)
   }
 
-  return { year, place: placeParts.length > 0 ? placeParts.join(', ') : null }
+  return { year, yearLabel, place: placeParts.length > 0 ? placeParts.join(', ') : null }
 }
 
 export function parseGenreInfobox(wikitext: string, sourceUrl: string): WikipediaGenreInfo | null {
@@ -145,11 +214,14 @@ export function parseGenreInfobox(wikitext: string, sourceUrl: string): Wikipedi
   if (!infobox) return null
 
   const culturalRaw = extractFieldRaw(infobox, 'cultural_origins')
-  const { year, place } = culturalRaw ? extractCulturalOrigin(culturalRaw) : { year: null, place: null }
+  const { year, yearLabel, place } = culturalRaw
+    ? extractCulturalOrigin(culturalRaw)
+    : { year: null, yearLabel: null, place: null }
 
   return {
     sourceUrl,
     originYear: year,
+    originYearLabel: yearLabel,
     originPlace: place,
     stylisticOrigins: extractLinkNames(extractFieldRaw(infobox, 'stylistic_origins') ?? ''),
     subgenres: extractLinkNames(extractFieldRaw(infobox, 'subgenres') ?? ''),

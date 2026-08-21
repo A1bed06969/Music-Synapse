@@ -63,6 +63,7 @@ export async function applyWikipediaGenreLookup(formData: FormData) {
   const genreId = String(formData.get('genre_id') ?? '')
   const sourceUrl = String(formData.get('source_url') ?? '')
   const originYearRaw = String(formData.get('origin_year') ?? '').trim()
+  const originYearLabel = String(formData.get('origin_year_label') ?? '').trim()
   const originPlace = String(formData.get('origin_place') ?? '').trim()
   const stylisticOrigins = formData.getAll('stylistic_origins').map(String)
   const subgenres = formData.getAll('subgenres').map(String)
@@ -76,6 +77,9 @@ export async function applyWikipediaGenreLookup(formData: FormData) {
 
   const update: Record<string, unknown> = { wikipedia_url: sourceUrl || null }
   if (originYearRaw) update.origin_year = Number(originYearRaw)
+  // origin_year_labelは「19世紀後半」等の表記。空にした場合は西暦年が特定できた
+  // ということなのでnullへ戻す(前回インポート時の古い表記が残らないようにする)。
+  update.origin_year_label = originYearLabel || null
   if (originPlace) update.origin_country = originPlace
 
   const { error: updateError } = await supabase.from('genre').update(update).eq('id', genreId)

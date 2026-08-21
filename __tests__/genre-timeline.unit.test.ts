@@ -14,8 +14,11 @@ describe('buildGenreTimeline', () => {
       genreId: 'g1',
       genreName: 'Techno',
       originYear: 1985,
+      originYearLabel: null,
       originPlace: 'Detroit, Michigan',
-      children: [{ genreId: 'g2', genreName: 'Acid Techno', originYear: 1987, originPlace: 'Chicago' }],
+      children: [
+        { genreId: 'g2', genreName: 'Acid Techno', originYear: 1987, originYearLabel: null, originPlace: 'Chicago' },
+      ],
       highlights: [
         { genreId: 'g1', artistId: 'a1', artistName: 'Juan Atkins', albumId: null, albumTitle: null, note: null },
       ],
@@ -51,6 +54,7 @@ describe('buildGenreTimeline', () => {
       genreId: 'g1',
       genreName: 'X',
       originYear: null,
+      originYearLabel: null,
       originPlace: null,
       children: [],
       highlights: [],
@@ -64,8 +68,11 @@ describe('buildGenreTimeline', () => {
       genreId: 'g1',
       genreName: 'X',
       originYear: 1970,
+      originYearLabel: null,
       originPlace: null,
-      children: [{ genreId: 'g2', genreName: 'Y (no year)', originYear: null, originPlace: null }],
+      children: [
+        { genreId: 'g2', genreName: 'Y (no year)', originYear: null, originYearLabel: null, originPlace: null },
+      ],
       highlights: [
         { genreId: 'g3', artistId: 'a1', artistName: 'Unrelated', albumId: null, albumTitle: null, note: null },
       ],
@@ -79,6 +86,7 @@ describe('buildGenreTimeline', () => {
       genreId: 'g1',
       genreName: 'X',
       originYear: 1970,
+      originYearLabel: null,
       originPlace: null,
       children: [],
       highlights: [
@@ -94,6 +102,7 @@ describe('buildGenreTimeline', () => {
       genreId: 'g1',
       genreName: 'X',
       originYear: 1970,
+      originYearLabel: null,
       originPlace: null,
       children: [],
       highlights: [
@@ -104,11 +113,29 @@ describe('buildGenreTimeline', () => {
     assert.equal(entries[1].title, '代表: 「Album A」')
   })
 
+  test('origin/derived subtitles show originYearLabel ahead of originPlace when the year is only approximate', () => {
+    const entries = buildGenreTimeline({
+      genreId: 'g1',
+      genreName: 'ジャズ',
+      originYear: 1850,
+      originYearLabel: '19世紀',
+      originPlace: 'アメリカ南部（諸説あり）',
+      children: [
+        { genreId: 'g2', genreName: 'ビバップ', originYear: 1875, originYearLabel: '19世紀後半', originPlace: null },
+      ],
+      highlights: [],
+      releases: [],
+    })
+    assert.equal(entries[0].subtitle, '19世紀 ・ アメリカ南部（諸説あり）')
+    assert.equal(entries[1].subtitle, '19世紀後半')
+  })
+
   test('release entries with no releaseDate are omitted', () => {
     const entries = buildGenreTimeline({
       genreId: 'g1',
       genreName: 'X',
       originYear: null,
+      originYearLabel: null,
       originPlace: null,
       children: [],
       highlights: [],

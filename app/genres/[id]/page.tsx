@@ -14,7 +14,7 @@ export default async function GenreDetailPage({ params }: { params: Promise<{ id
 
   const { data: lineageRows } = await supabase
     .from('genre_lineage')
-    .select('child:child_genre_id(id, name, origin_year, origin_country, origin_city)')
+    .select('child:child_genre_id(id, name, origin_year, origin_year_label, origin_country, origin_city)')
     .eq('parent_genre_id', id)
 
   function firstOf<T>(value: T | T[] | null | undefined): T | null {
@@ -22,7 +22,14 @@ export default async function GenreDetailPage({ params }: { params: Promise<{ id
     return value ?? null
   }
 
-  type ChildGenre = { id: string; name: string; origin_year: number | null; origin_country: string | null; origin_city: string | null }
+  type ChildGenre = {
+    id: string
+    name: string
+    origin_year: number | null
+    origin_year_label: string | null
+    origin_country: string | null
+    origin_city: string | null
+  }
   const children = (lineageRows ?? [])
     .map((r) => firstOf(r.child))
     .filter((c): c is ChildGenre => c !== null)
@@ -52,7 +59,9 @@ export default async function GenreDetailPage({ params }: { params: Promise<{ id
     <div className="mx-auto max-w-[1600px] px-6 py-12">
       <h1 className="text-2xl font-bold">{genre.name}</h1>
       <div className="mt-1 flex flex-wrap gap-x-3 text-sm text-white/50">
-        {genre.origin_year && <span>発祥 {genre.origin_year}年</span>}
+        {(genre.origin_year_label || genre.origin_year) && (
+          <span>発祥 {genre.origin_year_label || `${genre.origin_year}年`}</span>
+        )}
         {(genre.origin_country || genre.origin_city) && (
           <span>{[genre.origin_country, genre.origin_city].filter(Boolean).join(' / ')}</span>
         )}
@@ -80,6 +89,7 @@ export default async function GenreDetailPage({ params }: { params: Promise<{ id
           genreId={id}
           genreName={genre.name}
           originYear={genre.origin_year}
+          originYearLabel={genre.origin_year_label}
           originCountry={genre.origin_country}
           originCity={genre.origin_city}
           // eslint-disable-next-line react/no-children-prop -- `children` here is a data prop (child genres), not renderable content
