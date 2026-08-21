@@ -43,7 +43,9 @@ export default async function GenreDetailPage({ params }: { params: Promise<{ id
         .from('album')
         .select('id, title, release_date, artist:artist_id(id, name)')
         .in('artist_id', artistIds)
-        .order('release_date', { ascending: true, nullsFirst: false })
+        .is('primary_album_id', null)
+        .order('release_date', { ascending: false, nullsFirst: false })
+        .limit(200)
     : { data: [] }
 
   return (
