@@ -61,13 +61,13 @@ export default function GenreTimeline({
     genreName,
     originYear,
     originYearLabel,
-    originPlace: [originCountry, originCity].filter(Boolean).join(' / ') || null,
+    originCountry,
     children: children.map((c) => ({
       genreId: c.id,
       genreName: c.name,
       originYear: c.origin_year,
       originYearLabel: c.origin_year_label,
-      originPlace: [c.origin_country, c.origin_city].filter(Boolean).join(' / ') || null,
+      originCountry: c.origin_country,
     })),
     highlights: highlights
       .map((h) => {
@@ -94,34 +94,52 @@ export default function GenreTimeline({
       .filter((r): r is NonNullable<typeof r> => r !== null),
   }
 
-  const entries = buildGenreTimeline(input)
+  const groups = buildGenreTimeline(input)
 
-  if (entries.length === 0) {
+  if (groups.length === 0) {
     return <p className="mt-4 text-sm text-white/40">まだ年表に表示できる出来事が登録されていません。</p>
   }
 
+  // originCityは発祥国と別に取得済みだが、Wikipedia取込の現状では発祥地欄の
+  // テキストがまるごとorigin_countryに入るため、都市情報が別途あるケースのみ
+  // このジャンル自身の見出し行に補足として添える(エリアのグルーピング自体は
+  // originCountryのテキストで行う)。
+  const homeAreaNote = originCity ? `(${originCity})` : null
+
   return (
-    <ul className="mt-4 space-y-3 border-l border-white/10 pl-4 text-sm">
-      {entries.map((entry, i) => {
-        const year = entry.date.slice(0, 4)
-        const prevYear = i > 0 ? entries[i - 1].date.slice(0, 4) : null
-        return (
-          <li key={i} className={entry.indent ? 'ml-4' : undefined}>
-            {year !== prevYear && <p className="-ml-4 mb-1 text-xs font-semibold text-white/40">{year}</p>}
-            <div className="relative">
-              <span className="absolute -left-[21px] top-0.5 text-xs">{KIND_ICON[entry.kind]}</span>
-              {entry.href ? (
-                <Link href={entry.href} className="text-white/80 hover:text-white">
-                  {entry.title}
-                </Link>
-              ) : (
-                <span className="text-white/80">{entry.title}</span>
-              )}
-              {entry.subtitle && <span className="ml-2 text-xs text-white/40">{entry.subtitle}</span>}
-            </div>
-          </li>
-        )
-      })}
-    </ul>
+    <div className="mt-4 space-y-6">
+      {groups.map((group) => (
+        <div key={group.area}>
+          <h3 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-white/50">
+            🌍 {group.area}
+            {group.area === originCountry && homeAreaNote}
+          </h3>
+          <ul className="mt-2 space-y-3 border-l border-white/10 pl-4 text-sm">
+            {group.entries.map((entry, i) => {
+              const year = entry.date.slice(0, 4)
+              const prevYear = i > 0 ? group.entries[i - 1].date.slice(0, 4) : null
+              return (
+                <li key={i} className={entry.indent ? 'ml-4' : undefined}>
+                  {year !== prevYear && (
+                    <p className="-ml-4 mb-1 text-xs font-semibold text-white/40">{year}</p>
+                  )}
+                  <div className="relative">
+                    <span className="absolute -left-[21px] top-0.5 text-xs">{KIND_ICON[entry.kind]}</span>
+                    {entry.href ? (
+                      <Link href={entry.href} className="text-white/80 hover:text-white">
+                        {entry.title}
+                      </Link>
+                    ) : (
+                      <span className="text-white/80">{entry.title}</span>
+                    )}
+                    {entry.subtitle && <span className="ml-2 text-xs text-white/40">{entry.subtitle}</span>}
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+        </div>
+      ))}
+    </div>
   )
 }
