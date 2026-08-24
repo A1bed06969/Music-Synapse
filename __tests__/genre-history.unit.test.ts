@@ -5,7 +5,7 @@
 
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
-import { getDescendantGenreIds, buildEraCards, type GenreRow, type LineageEdge, type HighlightRow } from '../utils/genreHistory.ts'
+import { getDescendantGenreIds, buildEraCards, buildGenreEvolutionTree, type GenreRow, type LineageEdge, type HighlightRow } from '../utils/genreHistory.ts'
 
 describe('getDescendantGenreIds', () => {
   test('a simple chain returns root + all descendants in BFS order', () => {
@@ -157,5 +157,67 @@ describe('buildEraCards', () => {
     const genres: GenreRow[] = [genre({ id: 'blues', originYear: 1875, originYearLabel: '19世紀後半' })]
     const cards = buildEraCards('blues', genres, [], [])
     assert.equal(cards[0].period, '19世紀後半')
+  })
+})
+
+describe('buildGenreEvolutionTree', () => {
+  test('assigns depth 0 to root, incrementing depth down a chain', () => {
+    const genres: GenreRow[] = [
+      genre({ id: 'A', name: 'Blues' }),
+      genre({ id: 'B', name: 'Country Blues' }),
+      genre({ id: 'C', name: 'Delta Blues' }),
+    ]
+    const edges: LineageEdge[] = [
+      { parentGenreId: 'A', childGenreId: 'B', relationType: 'derivation' },
+      { parentGenreId: 'B', childGenreId: 'C', relationType: 'derivation' },
+    ]
+    const { nodes } = buildGenreEvolutionTree('A', genres, edges)
+    assert.deepEqual(
+      nodes.map((n) => [n.genreId, n.depth]),
+      [
+        ['A', 0],
+        ['B', 1],
+        ['C', 2],
+      ]
+    )
+  })
+
+  test('branches produce siblings at the same depth, in pre-order', () => {
+    const genres: GenreRow[] = [
+      genre({ id: 'A' }),
+      genre({ id: 'B' }),
+      genre({ id: 'C' }),
+      genre({ id: 'D' }),
+    ]
+    const edges: LineageEdge[] = [
+      { parentGenreId: 'A', childGenreId: 'B', relationType: 'derivation' },
+      { parentGenreId: 'B', childGenreId: 'C', relationType: 'derivation' },
+      { parentGenreId: 'B', childGenreId: 'D', relationType: 'influence' },
+    ]
+    const { nodes, edges: resultEdges } = buildGenreEvolutionTree('A', genres, edges)
+    assert.deepEqual(
+      nodes.map((n) => [n.genreId, n.depth]),
+      [
+        ['A', 0],
+        ['B', 1],
+        ['C', 2],
+        ['D', 2],
+      ]
+    )
+    assert.deepEqual(
+      resultEdges.map((e) => [e.fromGenreId, e.toGenreId, e.relationType]),
+      [
+        ['A', 'B', 'derivation'],
+        ['B', 'C', 'derivation'],
+        ['B', 'D', 'influence'],
+      ]
+    )
+  })
+
+  test('a root with no children returns a single node and no edges', () => {
+    const genres: GenreRow[] = [genre({ id: 'A' })]
+    const { nodes, edges } = buildGenreEvolutionTree('A', genres, [])
+    assert.deepEqual(nodes, [{ genreId: 'A', name: 'A', depth: 0 }])
+    assert.deepEqual(edges, [])
   })
 })

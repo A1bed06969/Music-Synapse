@@ -130,3 +130,50 @@ export function buildEraCards(
     }
   })
 }
+
+export type GenreEvolutionNode = {
+  genreId: string
+  name: string
+  depth: number
+}
+
+export type GenreEvolutionEdgeData = {
+  fromGenreId: string
+  toGenreId: string
+  relationType: 'derivation' | 'influence' | 'crossover'
+}
+
+/** rootIdを根とする系統ツリーを、深さ優先(pre-order)でノード列とエッジ列に変換する。
+ * pre-order(親の直後にその子が並ぶ)にしておくことで、UI側は単純な配列の
+ * map()だけで入れ子リスト表示ができる。 */
+export function buildGenreEvolutionTree(
+  rootId: string,
+  genres: GenreRow[],
+  edges: LineageEdge[]
+): { nodes: GenreEvolutionNode[]; edges: GenreEvolutionEdgeData[] } {
+  const genreById = new Map(genres.map((g) => [g.id, g]))
+  const childrenByParent = new Map<string, LineageEdge[]>()
+  for (const edge of edges) {
+    const list = childrenByParent.get(edge.parentGenreId) ?? []
+    list.push(edge)
+    childrenByParent.set(edge.parentGenreId, list)
+  }
+
+  const nodes: GenreEvolutionNode[] = []
+  const resultEdges: GenreEvolutionEdgeData[] = []
+  const seen = new Set<string>()
+
+  function visit(genreId: string, depth: number) {
+    if (seen.has(genreId)) return
+    seen.add(genreId)
+    const genreRow = genreById.get(genreId)
+    nodes.push({ genreId, name: genreRow?.name ?? genreId, depth })
+    for (const edge of childrenByParent.get(genreId) ?? []) {
+      resultEdges.push({ fromGenreId: edge.parentGenreId, toGenreId: edge.childGenreId, relationType: edge.relationType })
+      visit(edge.childGenreId, depth + 1)
+    }
+  }
+  visit(rootId, 0)
+
+  return { nodes, edges: resultEdges }
+}
