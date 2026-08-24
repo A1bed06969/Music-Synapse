@@ -7,6 +7,7 @@ export default async function GenresPage() {
   const { data: genres } = await supabase
     .from('genre')
     .select('id, name, origin_year, origin_year_label, origin_country')
+    .not('origin_year', 'is', null)
     .order('name')
 
   return (
