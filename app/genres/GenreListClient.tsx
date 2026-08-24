@@ -9,6 +9,28 @@ type GenreRow = {
   origin_year: number | null
   origin_year_label: string | null
   origin_country: string | null
+  isSub: boolean
+}
+
+function GenreGrid({ genres }: { genres: GenreRow[] }) {
+  return (
+    <ul className="mt-4 grid grid-cols-1 gap-x-6 gap-y-1 sm:grid-cols-2 lg:grid-cols-3">
+      {genres.map((genre) => (
+        <li key={genre.id} className="border-b border-white/5 py-2.5">
+          <Link href={`/genres/${genre.id}`} className="text-sm font-medium hover:opacity-70">
+            {genre.name}
+          </Link>
+          {(genre.origin_year_label || genre.origin_year || genre.origin_country) && (
+            <p className="text-xs text-white/40">
+              {[genre.origin_year_label || (genre.origin_year ? `${genre.origin_year}年` : null), genre.origin_country]
+                .filter(Boolean)
+                .join(' / ')}
+            </p>
+          )}
+        </li>
+      ))}
+    </ul>
+  )
 }
 
 export default function GenreListClient({ genres }: { genres: GenreRow[] }) {
@@ -19,6 +41,9 @@ export default function GenreListClient({ genres }: { genres: GenreRow[] }) {
     if (!q) return genres
     return genres.filter((g) => g.name.toLowerCase().includes(q))
   }, [genres, query])
+
+  const mainGenres = filtered.filter((g) => !g.isSub)
+  const subGenres = filtered.filter((g) => g.isSub)
 
   return (
     <>
@@ -35,22 +60,20 @@ export default function GenreListClient({ genres }: { genres: GenreRow[] }) {
       {filtered.length === 0 ? (
         <p className="mt-8 text-sm text-white/40">該当するジャンルが見つかりませんでした。</p>
       ) : (
-        <ul className="mt-4 grid grid-cols-1 gap-x-6 gap-y-1 sm:grid-cols-2 lg:grid-cols-3">
-          {filtered.map((genre) => (
-            <li key={genre.id} className="border-b border-white/5 py-2.5">
-              <Link href={`/genres/${genre.id}`} className="text-sm font-medium hover:opacity-70">
-                {genre.name}
-              </Link>
-              {(genre.origin_year_label || genre.origin_year || genre.origin_country) && (
-                <p className="text-xs text-white/40">
-                  {[genre.origin_year_label || (genre.origin_year ? `${genre.origin_year}年` : null), genre.origin_country]
-                    .filter(Boolean)
-                    .join(' / ')}
-                </p>
-              )}
-            </li>
-          ))}
-        </ul>
+        <>
+          {mainGenres.length > 0 && (
+            <section className="mt-6">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-white/50">メインジャンル</h2>
+              <GenreGrid genres={mainGenres} />
+            </section>
+          )}
+          {subGenres.length > 0 && (
+            <section className="mt-10">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-white/50">サブジャンル</h2>
+              <GenreGrid genres={subGenres} />
+            </section>
+          )}
+        </>
       )}
     </>
   )
