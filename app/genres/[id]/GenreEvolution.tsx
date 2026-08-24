@@ -1,25 +1,120 @@
 import type { GenreEvolutionNode as GenreEvolutionNodeData, GenreEvolutionEdgeData } from '@/utils/genreHistory'
 import GenreEvolutionNode, { EDGE_STYLE_LABEL } from './GenreEvolutionNode'
 
+type RelationType = 'derivation' | 'influence' | 'crossover'
+
+function borderStyleFor(relationType: RelationType | null): 'solid' | 'dotted' | 'dashed' {
+  if (relationType === 'influence') return 'dotted'
+  if (relationType === 'crossover') return 'dashed'
+  return 'solid'
+}
+
+/** 各子ジャンルの「ツリー上の親」を1つだけ確定させる。
+ * 複数のエッジが同じ子を指す(ダイヤモンド構造)場合は、pre-order(edges配列)で
+ * 最初に到達したエッジが親になる — これはutils/genreHistory.tsのbuildGenreEvolutionTreeが
+ * 各ノードのincomingRelationTypeを決めたのと同じルールなので、線のスタイルと
+ * ツリー構造の親子関係が必ず一致する。 */
+function buildChildrenByParent(nodes: GenreEvolutionNodeData[], edges: GenreEvolutionEdgeData[]) {
+  const rootId = nodes.find((n) => n.depth === 0)?.genreId ?? null
+  const claimed = new Set<string>(rootId ? [rootId] : [])
+  const childrenByParent = new Map<string, string[]>()
+  for (const edge of edges) {
+    if (claimed.has(edge.toGenreId)) continue
+    claimed.add(edge.toGenreId)
+    const list = childrenByParent.get(edge.fromGenreId) ?? []
+    list.push(edge.toGenreId)
+    childrenByParent.set(edge.fromGenreId, list)
+  }
+  return { rootId, childrenByParent }
+}
+
+function TreeRow({
+  genreId,
+  nodeById,
+  childrenByParent,
+  ancestorContinues,
+  isLast,
+}: {
+  genreId: string
+  nodeById: Map<string, GenreEvolutionNodeData>
+  childrenByParent: Map<string, string[]>
+  ancestorContinues: boolean[]
+  isLast: boolean
+}) {
+  const node = nodeById.get(genreId)
+  if (!node) return null
+  const children = childrenByParent.get(genreId) ?? []
+  const lineStyle = borderStyleFor(node.incomingRelationType)
+
+  return (
+    <li>
+      <div className="flex h-8 items-center">
+        {ancestorContinues.map((continues, i) => (
+          <span key={i} className="relative h-8 w-6 shrink-0">
+            {continues && (
+              <span
+                className="absolute left-1/2 top-0 h-full"
+                style={{ borderLeftWidth: 1, borderLeftStyle: 'solid', borderLeftColor: 'rgba(255,255,255,0.15)' }}
+              />
+            )}
+          </span>
+        ))}
+        {node.depth > 0 && (
+          <span className="relative h-8 w-6 shrink-0">
+            <span
+              className="absolute left-1/2"
+              style={{
+                top: 0,
+                height: isLast ? '50%' : '100%',
+                borderLeftWidth: 1,
+                borderLeftStyle: lineStyle,
+                borderLeftColor: 'rgba(255,255,255,0.35)',
+              }}
+            />
+            <span
+              className="absolute left-1/2 w-1/2"
+              style={{ top: '50%', borderTopWidth: 1, borderTopStyle: lineStyle, borderTopColor: 'rgba(255,255,255,0.35)' }}
+            />
+          </span>
+        )}
+        <GenreEvolutionNode genreId={node.genreId} name={node.name} />
+      </div>
+
+      {children.length > 0 && (
+        <ul>
+          {children.map((childId, i) => (
+            <TreeRow
+              key={childId}
+              genreId={childId}
+              nodeById={nodeById}
+              childrenByParent={childrenByParent}
+              ancestorContinues={node.depth > 0 ? [...ancestorContinues, !isLast] : ancestorContinues}
+              isLast={i === children.length - 1}
+            />
+          ))}
+        </ul>
+      )}
+    </li>
+  )
+}
+
 export default function GenreEvolution({
   nodes,
+  edges,
 }: {
   nodes: GenreEvolutionNodeData[]
   edges: GenreEvolutionEdgeData[]
 }) {
+  const nodeById = new Map(nodes.map((n) => [n.genreId, n]))
+  const { rootId, childrenByParent } = buildChildrenByParent(nodes, edges)
+
   return (
     <div className="mt-4">
-      <ul className="space-y-2">
-        {nodes.map((node) => (
-          <li key={node.genreId} style={{ marginLeft: `${node.depth * 1.5}rem` }}>
-            <GenreEvolutionNode
-              genreId={node.genreId}
-              name={node.name}
-              incomingRelationType={node.incomingRelationType ?? undefined}
-            />
-          </li>
-        ))}
-      </ul>
+      {rootId && (
+        <ul>
+          <TreeRow genreId={rootId} nodeById={nodeById} childrenByParent={childrenByParent} ancestorContinues={[]} isLast={true} />
+        </ul>
+      )}
 
       <div className="mt-4 flex flex-wrap gap-4 text-[11px] text-white/40">
         {(Object.keys(EDGE_STYLE_LABEL) as (keyof typeof EDGE_STYLE_LABEL)[]).map((relationType) => (
