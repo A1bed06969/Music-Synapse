@@ -3,6 +3,10 @@
 import { useState } from 'react'
 import type { EraCardData, EraColorToken } from '@/utils/genreHistory'
 
+// 100vw-3rem(ページ左右のpx-6分)を上限にすることで狭い画面では画面幅いっぱいまで広がり、
+// 広い画面では28rem(448px)で頭打ちにしてカード1枚が間延びしないようにする
+export const CARD_WIDTH_CLASS = 'w-[min(calc(100vw-3rem),28rem)]'
+
 const COLOR_CLASSES: Record<EraColorToken, { ring: string; border: string; text: string; triangle: string }> = {
   amber: { ring: 'ring-amber-400/50', border: 'border-amber-400/60', text: 'text-amber-400', triangle: 'border-t-amber-400' },
   yellow: { ring: 'ring-yellow-300/50', border: 'border-yellow-300/60', text: 'text-yellow-300', triangle: 'border-t-yellow-300' },
@@ -50,7 +54,7 @@ export default function EraCard({
     <button
       type="button"
       onClick={onSelect}
-      className={`group flex w-56 shrink-0 snap-start flex-col rounded-lg border bg-[#141414] p-4 text-left transition duration-200 hover:-translate-y-1 hover:border-white/40 ${
+      className={`group flex ${CARD_WIDTH_CLASS} shrink-0 snap-start flex-col rounded-lg border bg-[#141414] p-4 text-left transition duration-200 hover:-translate-y-1 hover:border-white/40 ${
         isSelected ? `${colors.border} ring-2 ${colors.ring}` : 'border-white/10'
       }`}
     >

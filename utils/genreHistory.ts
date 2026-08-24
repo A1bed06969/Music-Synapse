@@ -44,7 +44,7 @@ export type EraCardData = {
   colorToken: EraColorToken
   description: string | null
   representativeArtists: { id: string; name: string; imageUrl: string | null }[]
-  representativeWorks: { id: string; title: string; year: number | null; artistName: string | null }[]
+  representativeWorks: { id: string; title: string; year: number | null; artistName: string | null; imageUrl: string | null }[]
   imageUrl: string | null
 }
 
@@ -110,6 +110,7 @@ export function buildEraCards(
         title: h.albumTitle,
         year: h.eventYear ?? genreRow.originYear,
         artistName: h.artistName,
+        imageUrl: h.albumJacketUrl,
       }))
 
     const imageUrl =
