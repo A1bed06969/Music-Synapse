@@ -145,7 +145,7 @@ export default async function ArtistDetailPage({
     }
   }
 
-  const pageKind = resolveArtistPageKind(artist.page_override, belongsToBands.length > 0, ownsRelease)
+  const pageKind = resolveArtistPageKind(artist.page_override, ownsRelease)
 
   if (pageKind === 'member') {
     const { data: productionRows } = await supabase
