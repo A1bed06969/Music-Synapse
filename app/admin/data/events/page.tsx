@@ -52,7 +52,7 @@ export default async function EventsAdminPage({
     supabase
       .from('event_appearance')
       .select(
-        'id, stage, venue, is_headliner, artist:artist_id(name), event_edition:event_edition_id(year, event:event_id(name))'
+        'id, stage, venue, is_headliner, display_name, artist:artist_id(name), event_edition:event_edition_id(year, event:event_id(name))'
       )
       .order('id', { ascending: false }),
     supabase
@@ -274,7 +274,7 @@ export default async function EventsAdminPage({
             return (
               <li key={row.id} className="flex items-center justify-between gap-2">
                 <span>
-                  {artist?.name} — {event?.name}({edition?.year})
+                  {row.display_name ?? artist?.name} — {event?.name}({edition?.year})
                   {row.stage ? ` / ${row.stage}` : ''}
                   {row.venue ? ` @ ${row.venue}` : ''}
                   {row.is_headliner && <span className="text-white/30"> ★ヘッドライナー</span>}

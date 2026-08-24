@@ -152,16 +152,37 @@ export default async function EventDetailPage({
 
     const { data: appearanceRows } = await supabase
       .from('event_appearance')
-      .select('id, stage, venue, is_headliner, start_time, end_time, artist:artist_id(id, name, image_url)')
+      .select('id, stage, venue, is_headliner, start_time, end_time, display_name, artist:artist_id(id, name, image_url)')
       .eq('event_edition_id', selectedEdition.id)
       .order('is_headliner', { ascending: false })
       .order('start_time', { ascending: true, nullsFirst: false })
       .order('id', { ascending: true })
 
+    // 出演に紐づく全アーティスト(単独出演も含め、コラボの場合は2件以上)を
+    // event_appearance_artist経由でまとめて取得し、event_appearance_idごとに束ねる
+    const appearanceIds = (appearanceRows ?? []).map((row) => row.id)
+    const artistsByAppearanceId = new Map<number, { id: string; name: string; imageUrl: string | null }[]>()
+    if (appearanceIds.length > 0) {
+      const { data: linkRows } = await supabase
+        .from('event_appearance_artist')
+        .select('event_appearance_id, billing_order, artist:artist_id(id, name, image_url)')
+        .in('event_appearance_id', appearanceIds)
+        .order('billing_order', { ascending: true })
+      for (const link of linkRows ?? []) {
+        const artist = Array.isArray(link.artist) ? link.artist[0] : link.artist
+        if (!artist) continue
+        const list = artistsByAppearanceId.get(link.event_appearance_id) ?? []
+        list.push({ id: artist.id, name: artist.name, imageUrl: artist.image_url })
+        artistsByAppearanceId.set(link.event_appearance_id, list)
+      }
+    }
+
     appearances = (appearanceRows ?? []).map((row) => {
       const artist = Array.isArray(row.artist) ? row.artist[0] : row.artist
       // 開催回登録時の仮時刻(正午固定)は「時刻不明」と同じ扱いにする
       const hasRealTime = row.start_time && row.end_time
+      const linkedArtists = artistsByAppearanceId.get(row.id)
+      const artists = linkedArtists && linkedArtists.length > 0 ? linkedArtists : [{ id: artist?.id ?? '', name: artist?.name ?? '?', imageUrl: artist?.image_url ?? null }]
       return {
         id: row.id,
         stage: row.stage,
@@ -169,9 +190,8 @@ export default async function EventDetailPage({
         isHeadliner: row.is_headliner,
         performanceDate: row.start_time ? row.start_time.slice(0, 10) : null,
         timeLabel: hasRealTime ? `${toHHMM(row.start_time!)}-${toHHMM(row.end_time!)}` : null,
-        artistId: artist?.id ?? '',
-        artistName: artist?.name ?? '?',
-        artistImageUrl: artist?.image_url ?? null,
+        displayName: row.display_name,
+        artists,
       }
     })
   }

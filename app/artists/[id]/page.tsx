@@ -13,6 +13,7 @@ import { buildArtistCreditQuadrants } from '@/utils/relationGraphData'
 import ArtistLinkIcons from '@/app/components/ArtistLinkIcons'
 import { resolveArtistPageKind, hasOwnRelease } from '@/utils/artistPageKind'
 import { buildArtistAlbumQuery } from '@/utils/artistAlbumQuery'
+import { buildArtistAppearanceQuery } from '@/utils/artistAppearanceQuery'
 import MemberProfile from './MemberProfile'
 import { NEWS_SOURCES } from '@/utils/newsFeeds'
 import { fetchAllNews, findRelatedNews, formatRelativeTime } from '@/utils/newsParser'
@@ -27,6 +28,16 @@ type ArtistAlbumRow = {
   release_date: string | null
   album_type: string | null
   streaming_status: string | null
+}
+
+type ArtistAppearanceRow = {
+  id: number
+  stage: string | null
+  venue: string | null
+  is_headliner: boolean
+  display_name: string | null
+  start_time: string | null
+  event_edition: { year: number | null; venue: string | null; event: { name: string } | { name: string }[] | null } | { year: number | null; venue: string | null; event: { name: string } | { name: string }[] | null }[] | null
 }
 
 function SectionDivider({ label }: { label: string }) {
@@ -84,10 +95,11 @@ export default async function ArtistDetailPage({
         .select('id, name, event_date, venue')
         .eq('artist_id', id)
         .order('event_date', { ascending: false, nullsFirst: false }),
-      supabase
-        .from('event_appearance')
-        .select('id, stage, venue, is_headliner, start_time, event_edition:event_edition_id(year, venue, event:event_id(name))')
-        .eq('artist_id', id),
+      buildArtistAppearanceQuery<ArtistAppearanceRow>(
+        supabase,
+        id,
+        'id, stage, venue, is_headliner, display_name, start_time, event_edition:event_edition_id(year, venue, event:event_id(name))'
+      ),
       supabase
         .from('sync_entry')
         .select('id, usage_detail, sync_work:sync_work_id(title, work_type, year), track:track_id!inner(title, album_id, artist_id)')
@@ -188,6 +200,7 @@ export default async function ArtistDetailPage({
         isHeadliner: row.is_headliner,
         eventName: event?.name ?? '—',
         year: edition?.year ?? 0,
+        displayName: row.display_name,
       }
     })
     .sort((a, b) => b.year - a.year)
@@ -307,6 +320,7 @@ export default async function ArtistDetailPage({
                     {a.venue ? ` @ ${a.venue}` : ''}
                     {a.isHeadliner ? ' ・ ★ヘッドライナー' : ''}
                   </p>
+                  {a.displayName && <p className="text-xs text-white/30">{a.displayName} 名義で出演</p>}
                 </li>
               ))}
             </ul>

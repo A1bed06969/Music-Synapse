@@ -439,6 +439,24 @@ export async function mergeArtist(formData: FormData) {
     'artist_id'
   )
 
+  // event_appearance_artist: UNIQUE(event_appearance_id, artist_id)。コラボ出演で
+  // 統合元・統合先が同じevent_appearanceに両方紐づいている場合(同じフェスへの
+  // 別名義出演が実は同一人物だった等)は重複させず削除する
+  const [{ data: sourceApArtistLinks }, { data: targetApArtistLinks }] = await Promise.all([
+    supabase.from('event_appearance_artist').select('id, event_appearance_id').eq('artist_id', sourceId),
+    supabase.from('event_appearance_artist').select('event_appearance_id').eq('artist_id', targetId),
+  ])
+  const targetApArtistAppearanceIds = new Set((targetApArtistLinks ?? []).map((r) => r.event_appearance_id))
+  await reassignOrDropDuplicates(
+    supabase,
+    'event_appearance_artist',
+    'id',
+    (sourceApArtistLinks ?? []).map((r) => ({ id: r.id, dedupeKey: r.event_appearance_id })),
+    targetApArtistAppearanceIds,
+    targetId,
+    'artist_id'
+  )
+
   // artist_external_link: UNIQUE(artist_id, link_type, url)。MusicBrainzプロフィール
   // 自動取込等で同じリンクが両方の行に付いていることが多いため、重複は付け替えず削除する
   // (実際にCibo Matto/CIBO MATTOの統合で遭遇: 付け替えが制約違反で失敗し、統合元の削除が

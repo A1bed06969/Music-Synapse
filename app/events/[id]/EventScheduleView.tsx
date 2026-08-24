@@ -15,6 +15,8 @@ function formatDayHeading(dateStr: string): string {
 
 export type EditionDateEntry = { id: string; date: string; venue: string; region: string | null }
 
+export type AppearanceArtist = { id: string; name: string; imageUrl: string | null }
+
 export type Appearance = {
   id: number
   stage: string | null
@@ -22,9 +24,11 @@ export type Appearance = {
   isHeadliner: boolean
   performanceDate: string | null
   timeLabel: string | null
-  artistId: string
-  artistName: string
-  artistImageUrl: string | null
+  // コラボ出演(例:「THE SPELLBOUND × BOOM BOOM SATELLITES」)ではdisplayNameに
+  // フェス表記の合体名義が入り、artistsに紐づく全アーティストが並ぶ(2件以上)。
+  // 単独出演ではdisplayNameはnull、artistsは常に1件。
+  displayName: string | null
+  artists: AppearanceArtist[]
 }
 
 const NO_DATE = '__no_date__'
@@ -214,39 +218,84 @@ export default function EventScheduleView({
                         <h4 className="text-xs font-medium uppercase tracking-wide text-white/40">{stageKey}</h4>
                       )}
                       <div className="mt-2 flex flex-wrap gap-2">
-                        {stageRows.map((a) => (
-                          <Link
-                            key={a.id}
-                            href={`/artists/${a.artistId}`}
-                            className={`flex items-center gap-2 rounded-full border py-1 pl-1 pr-3 text-sm transition hover:border-white/40 hover:bg-white/[0.08] ${
-                              a.isHeadliner
-                                ? 'border-white/40 bg-white/[0.06] font-semibold'
-                                : 'border-white/15 bg-white/[0.03] text-white/85'
-                            }`}
-                          >
-                            {a.artistImageUrl ? (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img
-                                src={a.artistImageUrl}
-                                alt=""
-                                className="h-10 w-10 shrink-0 rounded-full object-cover"
-                              />
-                            ) : (
-                              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/10 text-base">
-                                🎤
-                              </span>
-                            )}
-                            <span className="leading-tight">
-                              <span className="block">{a.artistName}</span>
+                        {stageRows.map((a) => {
+                          const pillClass = `flex items-center gap-2 rounded-full border py-1 pl-1 pr-3 text-sm transition hover:border-white/40 hover:bg-white/[0.08] ${
+                            a.isHeadliner
+                              ? 'border-white/40 bg-white/[0.06] font-semibold'
+                              : 'border-white/15 bg-white/[0.03] text-white/85'
+                          }`
+                          const meta = (
+                            <>
                               {a.isHeadliner && (
                                 <span className="block text-[10px] font-semibold tracking-wide text-amber-400">
                                   ★ ヘッドライナー
                                 </span>
                               )}
                               {a.timeLabel && <span className="block text-xs text-white/40">{a.timeLabel}</span>}
+                            </>
+                          )
+
+                          // 単独出演: 従来通り1つのLinkで全体を包む
+                          if (!a.displayName && a.artists.length <= 1) {
+                            const artist = a.artists[0]
+                            return (
+                              <Link key={a.id} href={`/artists/${artist?.id ?? ''}`} className={pillClass}>
+                                {artist?.imageUrl ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img src={artist.imageUrl} alt="" className="h-10 w-10 shrink-0 rounded-full object-cover" />
+                                ) : (
+                                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/10 text-base">
+                                    🎤
+                                  </span>
+                                )}
+                                <span className="leading-tight">
+                                  <span className="block">{artist?.name ?? '?'}</span>
+                                  {meta}
+                                </span>
+                              </Link>
+                            )
+                          }
+
+                          // コラボ出演: 合体名義を見出しにし、構成アーティストそれぞれに個別リンクを張る
+                          return (
+                            <span key={a.id} className={pillClass.replace('hover:border-white/40 hover:bg-white/[0.08]', '')}>
+                              <span className="flex -space-x-2">
+                                {a.artists.map((artist) =>
+                                  artist.imageUrl ? (
+                                    // eslint-disable-next-line @next/next/no-img-element
+                                    <img
+                                      key={artist.id}
+                                      src={artist.imageUrl}
+                                      alt=""
+                                      className="h-10 w-10 shrink-0 rounded-full border-2 border-black object-cover"
+                                    />
+                                  ) : (
+                                    <span
+                                      key={artist.id}
+                                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-2 border-black bg-white/10 text-base"
+                                    >
+                                      🎤
+                                    </span>
+                                  )
+                                )}
+                              </span>
+                              <span className="leading-tight">
+                                <span className="block">{a.displayName}</span>
+                                <span className="block text-xs text-white/50">
+                                  {a.artists.map((artist, i) => (
+                                    <span key={artist.id}>
+                                      {i > 0 && ' / '}
+                                      <Link href={`/artists/${artist.id}`} className="hover:underline">
+                                        {artist.name}
+                                      </Link>
+                                    </span>
+                                  ))}
+                                </span>
+                                {meta}
+                              </span>
                             </span>
-                          </Link>
-                        ))}
+                          )
+                        })}
                       </div>
                     </div>
                   ))}

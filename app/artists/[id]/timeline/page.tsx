@@ -3,9 +3,16 @@ import { notFound } from 'next/navigation'
 import { createClient } from '@/utils/Supabase/server'
 import { fetchArtistMediaSelections } from '@/utils/fetchArtistMediaSelections'
 import { buildArtistAlbumQuery } from '@/utils/artistAlbumQuery'
+import { buildArtistAppearanceQuery } from '@/utils/artistAppearanceQuery'
 import ArtistTimeline from '../ArtistTimeline'
 
 type TimelineAlbumRow = { id: string; title: string; jacket_url: string | null; release_date: string | null }
+type TimelineAppearanceRow = {
+  id: number
+  venue: string | null
+  start_time: string | null
+  event_edition: { venue: string | null; event: { name: string } | { name: string }[] | null } | { venue: string | null; event: { name: string } | { name: string }[] | null }[] | null
+}
 
 /** アーティスト年表の詳細表示。アーティスト詳細ページの簡易版年表(主要リリースのみ)
  * と違い、シングル・EPも含めた全リリースを年ごとにまとめて表示する。表示形式は
@@ -34,10 +41,11 @@ export default async function ArtistTimelinePage({
       .select('id, name, event_date, venue')
       .eq('artist_id', id)
       .order('event_date', { ascending: false, nullsFirst: false }),
-    supabase
-      .from('event_appearance')
-      .select('id, venue, start_time, event_edition:event_edition_id(venue, event:event_id(name))')
-      .eq('artist_id', id),
+    buildArtistAppearanceQuery<TimelineAppearanceRow>(
+      supabase,
+      id,
+      'id, venue, start_time, event_edition:event_edition_id(venue, event:event_id(name))'
+    ),
     supabase
       .from('sync_entry')
       .select('id, usage_detail, sync_work:sync_work_id(title, work_type, year), track:track_id!inner(title, album_id, artist_id)')

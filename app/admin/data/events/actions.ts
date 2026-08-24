@@ -119,19 +119,32 @@ export async function createEventAppearance(formData: FormData) {
   }
 
   const supabase = createAdminClient()
-  const { error } = await supabase.from('event_appearance').insert({
-    event_edition_id: eventEditionId,
-    artist_id: artistId,
-    stage: stage || null,
-    venue: venue || null,
-    // datetime-local からの入力はタイムゾーン情報を持たないため、日本時間として保存する
-    start_time: startTime ? `${startTime}:00+09:00` : null,
-    end_time: endTime ? `${endTime}:00+09:00` : null,
-    is_headliner: isHeadliner,
-  })
+  const { data: inserted, error } = await supabase
+    .from('event_appearance')
+    .insert({
+      event_edition_id: eventEditionId,
+      artist_id: artistId,
+      stage: stage || null,
+      venue: venue || null,
+      // datetime-local からの入力はタイムゾーン情報を持たないため、日本時間として保存する
+      start_time: startTime ? `${startTime}:00+09:00` : null,
+      end_time: endTime ? `${endTime}:00+09:00` : null,
+      is_headliner: isHeadliner,
+    })
+    .select('id')
+    .single()
 
-  if (error) {
-    redirectWith('error', `出演情報の登録に失敗しました: ${error.message}`)
+  if (error || !inserted) {
+    redirectWith('error', `出演情報の登録に失敗しました: ${error?.message}`)
+  }
+
+  // アーティストページ側はevent_appearance_artist経由でのみ出演を引くため、
+  // ここで作成した行も必ず紐づけておく(単独出演でも1件登録する)
+  const { error: linkError } = await supabase
+    .from('event_appearance_artist')
+    .insert({ event_appearance_id: inserted!.id, artist_id: artistId, billing_order: 0 })
+  if (linkError) {
+    redirectWith('error', `出演情報のアーティスト紐付けに失敗しました: ${linkError.message}`)
   }
 
   revalidatePath('/admin/data/events')
@@ -345,7 +358,11 @@ export async function updateEventAppearance(formData: FormData) {
     redirectWith('error', '開催回とアーティストを選択してください。')
   }
 
+  const displayName = String(formData.get('display_name') ?? '').trim()
+
   const supabase = createAdminClient()
+  const { data: before } = await supabase.from('event_appearance').select('artist_id').eq('id', id).single()
+
   const { error } = await supabase
     .from('event_appearance')
     .update({
@@ -356,6 +373,7 @@ export async function updateEventAppearance(formData: FormData) {
       start_time: startTime ? `${startTime}:00+09:00` : null,
       end_time: endTime ? `${endTime}:00+09:00` : null,
       is_headliner: isHeadliner,
+      display_name: displayName || null,
     })
     .eq('id', id)
 
@@ -363,9 +381,93 @@ export async function updateEventAppearance(formData: FormData) {
     redirectWith('error', `出演情報の更新に失敗しました: ${error.message}`)
   }
 
+  // 代表アーティストを差し替えた場合、event_appearance_artist側の代表行
+  // (billing_order=0)も追従させる(そうしないと旧アーティストのページに
+  // 出演情報が残り続け、新アーティストのページには反映されない)
+  if (before && before.artist_id !== artistId) {
+    await supabase
+      .from('event_appearance_artist')
+      .update({ artist_id: artistId })
+      .eq('event_appearance_id', id)
+      .eq('artist_id', before.artist_id)
+      .eq('billing_order', 0)
+  }
+
   revalidatePath('/admin/data/events')
+  revalidatePath(`/admin/data/events/appearance/${id}/edit`)
   revalidatePath(`/artists/${artistId}`)
+  if (before && before.artist_id !== artistId) revalidatePath(`/artists/${before.artist_id}`)
   redirectWith('success', '出演情報を更新しました。')
+}
+
+function redirectToEdit(appearanceId: string, result: 'success' | 'error', message: string): never {
+  redirect(`/admin/data/events/appearance/${appearanceId}/edit?${result}=${encodeURIComponent(message)}`)
+}
+
+/** コラボ出演に構成アーティストを1名追加する(billing_orderは既存の最大値+1) */
+export async function addAppearanceArtist(formData: FormData) {
+  const appearanceId = String(formData.get('event_appearance_id') ?? '')
+  const artistId = String(formData.get('artist_id') ?? '')
+
+  if (!appearanceId || !artistId) {
+    redirectWith('error', 'アーティストを選択してください。')
+  }
+
+  const supabase = createAdminClient()
+  const { data: existing } = await supabase
+    .from('event_appearance_artist')
+    .select('billing_order')
+    .eq('event_appearance_id', appearanceId)
+    .order('billing_order', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  const nextOrder = (existing?.billing_order ?? -1) + 1
+
+  const { error } = await supabase
+    .from('event_appearance_artist')
+    .insert({ event_appearance_id: appearanceId, artist_id: artistId, billing_order: nextOrder })
+
+  if (error) {
+    redirectToEdit(appearanceId, 'error', `構成アーティストの追加に失敗しました: ${error.message}`)
+  }
+
+  revalidatePath(`/admin/data/events/appearance/${appearanceId}/edit`)
+  revalidatePath(`/artists/${artistId}`)
+  redirectToEdit(appearanceId, 'success', '構成アーティストを追加しました。')
+}
+
+/** コラボ出演から構成アーティストを1名外す(最後の1名は外せない=単独出演の
+ * event_appearance_artist行を空にはできない) */
+export async function removeAppearanceArtist(formData: FormData) {
+  const appearanceId = String(formData.get('event_appearance_id') ?? '')
+  const artistId = String(formData.get('artist_id') ?? '')
+
+  if (!appearanceId || !artistId) {
+    redirectWith('error', '不正なリクエストです。')
+  }
+
+  const supabase = createAdminClient()
+  const { count } = await supabase
+    .from('event_appearance_artist')
+    .select('id', { count: 'exact', head: true })
+    .eq('event_appearance_id', appearanceId)
+  if ((count ?? 0) <= 1) {
+    redirectToEdit(appearanceId, 'error', '最後の1名は削除できません(出演情報自体を削除してください)。')
+  }
+
+  const { error } = await supabase
+    .from('event_appearance_artist')
+    .delete()
+    .eq('event_appearance_id', appearanceId)
+    .eq('artist_id', artistId)
+
+  if (error) {
+    redirectToEdit(appearanceId, 'error', `構成アーティストの削除に失敗しました: ${error.message}`)
+  }
+
+  revalidatePath(`/admin/data/events/appearance/${appearanceId}/edit`)
+  revalidatePath(`/artists/${artistId}`)
+  redirectToEdit(appearanceId, 'success', '構成アーティストを削除しました。')
 }
 
 export async function deleteEventAppearance(formData: FormData) {

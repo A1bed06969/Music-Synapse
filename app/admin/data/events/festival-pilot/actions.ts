@@ -421,3 +421,118 @@ export async function importAndRegisterFestivalArtist(
     message: `「${itunesArtist.artistName}」を登録しました(アルバム${itunesAlbums.length}件は裏で取込中です)。`,
   }
 }
+
+export type RegisterCollabAppearanceInput = {
+  // フェス表記の合体名義そのもの(例:「THE SPELLBOUND × BOOM BOOM SATELLITES」)を
+  // event_appearance.display_nameへそのまま保持する
+  pickArtistName: string
+  members: { appleMusicArtistId: number }[]
+  festivalName: string
+  editionYear: number
+  startDate: string | null
+  endDate: string | null
+  stage: string | null
+  performanceDate: string | null
+  startAt: string | null
+  endAt: string | null
+  datasetKey?: string
+  region?: string | null
+}
+
+/**
+ * コラボ名義(例:「THE SPELLBOUND × BOOM BOOM SATELLITES」)でのフェス出演を登録する。
+ * importAndRegisterFestivalArtistと違い、event_appearance.artist_idは先頭メンバーを
+ * 代表として指すのみで、実際に出演した全メンバーはevent_appearance_artist経由で
+ * 紐づける(両アーティストのページに出演情報が出るようにするため)。display_nameに
+ * フェス表記の合体名義を保持するため、どのメンバーのページでも「この名義で出演」と
+ * わかる。
+ */
+export async function registerCollabFestivalAppearance(
+  input: RegisterCollabAppearanceInput
+): Promise<ImportAndRegisterResult> {
+  const supabase = createAdminClient()
+
+  if (input.members.length < 2) {
+    return { success: false, message: 'コラボ登録には2名以上のメンバーを選択してください。' }
+  }
+
+  const resolvedArtistIds: string[] = []
+  const resolvedNames: string[] = []
+  for (const member of input.members) {
+    const { artist: itunesArtist, albums: itunesAlbums } = await fetchArtistWithAlbums(String(member.appleMusicArtistId))
+    if (!itunesArtist) {
+      return { success: false, message: 'メンバーの1人がApple Musicに見つかりませんでした。' }
+    }
+    const { artistId, errorMessage: artistError } = await upsertArtistFromItunes(supabase, itunesArtist)
+    if (!artistId) {
+      return { success: false, message: `メンバーの登録に失敗しました: ${artistError}` }
+    }
+    resolvedArtistIds.push(artistId)
+    resolvedNames.push(itunesArtist.artistName)
+    // アルバム・トラックの取込はメンバーごとにレスポンス後へ回す(importAndRegisterFestivalArtistと同じ理由)
+    after(() => dispatchAlbumSync(artistId, itunesArtist.artistName, String(itunesArtist.artistId), itunesAlbums))
+  }
+
+  const { editionId, errorMessage } = await findOrCreateFestivalEdition(supabase, {
+    festivalName: input.festivalName,
+    editionYear: input.editionYear,
+    startDate: input.startDate,
+    endDate: input.endDate,
+    datasetKey: input.datasetKey,
+  })
+  if (!editionId) {
+    return { success: false, message: errorMessage ?? '開催回の登録に失敗しました。' }
+  }
+
+  const venue = await resolveVenueForRegion(supabase, editionId, input.region)
+  const primaryArtistId = resolvedArtistIds[0]
+
+  const { data: inserted, error: appearanceError } = await supabase
+    .from('event_appearance')
+    .insert({
+      event_edition_id: editionId,
+      artist_id: primaryArtistId,
+      display_name: input.pickArtistName,
+      stage: input.stage || null,
+      venue,
+      start_time: input.startAt || (input.performanceDate ? `${input.performanceDate}T12:00:00+00:00` : null),
+      end_time: input.endAt || null,
+      is_headliner: false,
+    })
+    .select('id')
+    .single()
+  if (appearanceError || !inserted) {
+    return { success: false, message: `出演情報の登録に失敗しました: ${appearanceError?.message}` }
+  }
+
+  const { error: linkError } = await supabase.from('event_appearance_artist').insert(
+    resolvedArtistIds.map((artistId, i) => ({
+      event_appearance_id: inserted.id,
+      artist_id: artistId,
+      billing_order: i,
+    }))
+  )
+  if (linkError) {
+    return { success: false, message: `メンバーの紐付けに失敗しました: ${linkError.message}` }
+  }
+
+  if (input.datasetKey) {
+    await supabase
+      .from('festival_pilot_artist_link')
+      .upsert(
+        { dataset_key: input.datasetKey, pick_name: input.pickArtistName.trim().toUpperCase(), artist_id: primaryArtistId },
+        { onConflict: 'dataset_key,pick_name' }
+      )
+  }
+
+  revalidatePath('/admin/data/events/festival-pilot')
+  revalidatePath('/admin/data/events')
+  for (const artistId of resolvedArtistIds) revalidatePath(`/artists/${artistId}`)
+
+  return {
+    success: true,
+    artistId: primaryArtistId,
+    registeredName: input.pickArtistName,
+    message: `「${input.pickArtistName}」(${resolvedNames.join(' × ')})を登録しました。`,
+  }
+}
