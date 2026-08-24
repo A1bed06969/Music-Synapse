@@ -217,7 +217,34 @@ describe('buildGenreEvolutionTree', () => {
   test('a root with no children returns a single node and no edges', () => {
     const genres: GenreRow[] = [genre({ id: 'A' })]
     const { nodes, edges } = buildGenreEvolutionTree('A', genres, [])
-    assert.deepEqual(nodes, [{ genreId: 'A', name: 'A', depth: 0 }])
+    assert.deepEqual(nodes, [{ genreId: 'A', name: 'A', depth: 0, incomingRelationType: null }])
     assert.deepEqual(edges, [])
+  })
+
+  test('when two edges point to the same node (a diamond), its incomingRelationType comes from whichever edge is walked first in pre-order, not the last edge in the input array', () => {
+    const genres: GenreRow[] = [
+      genre({ id: 'A' }),
+      genre({ id: 'B' }),
+      genre({ id: 'C' }),
+      genre({ id: 'D' }),
+    ]
+    // A -> B -> D [influence]   (D is reached this way first, in array/pre-order)
+    // A -> C -> D [derivation]  (second incoming edge into D)
+    const edges: LineageEdge[] = [
+      { parentGenreId: 'A', childGenreId: 'B', relationType: 'derivation' },
+      { parentGenreId: 'A', childGenreId: 'C', relationType: 'derivation' },
+      { parentGenreId: 'B', childGenreId: 'D', relationType: 'influence' },
+      { parentGenreId: 'C', childGenreId: 'D', relationType: 'derivation' },
+    ]
+    const { nodes, edges: resultEdges } = buildGenreEvolutionTree('A', genres, edges)
+
+    const nodeD = nodes.find((n) => n.genreId === 'D')
+    assert.equal(nodeD?.incomingRelationType, 'influence')
+
+    // D must appear exactly once in nodes even though two edges point to it
+    assert.equal(nodes.filter((n) => n.genreId === 'D').length, 1)
+
+    // both incoming edges are still preserved in the edge list
+    assert.equal(resultEdges.filter((e) => e.toGenreId === 'D').length, 2)
   })
 })

@@ -3,14 +3,10 @@ import GenreEvolutionNode, { EDGE_STYLE_LABEL } from './GenreEvolutionNode'
 
 export default function GenreEvolution({
   nodes,
-  edges,
 }: {
   nodes: GenreEvolutionNodeData[]
   edges: GenreEvolutionEdgeData[]
 }) {
-  // 各ノードへの「入ってくる」エッジの種類(親から見た自分向けの関係)を引けるようにする
-  const incomingRelationByGenreId = new Map(edges.map((e) => [e.toGenreId, e.relationType]))
-
   return (
     <div className="mt-4">
       <ul className="space-y-2">
@@ -19,7 +15,7 @@ export default function GenreEvolution({
             <GenreEvolutionNode
               genreId={node.genreId}
               name={node.name}
-              incomingRelationType={incomingRelationByGenreId.get(node.genreId)}
+              incomingRelationType={node.incomingRelationType ?? undefined}
             />
           </li>
         ))}

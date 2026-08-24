@@ -5,7 +5,7 @@ import type { EraCardData } from '@/utils/genreHistory'
 
 export default function EraDetailPanel({ card }: { card: EraCardData }) {
   return (
-    <div key={card.genreId} className="mt-6 rounded-lg border border-white/10 bg-white/[0.02] p-6 transition-opacity duration-200">
+    <div className="mt-6 rounded-lg border border-white/10 bg-white/[0.02] p-6 animate-[fadein_0.2s_ease-in]">
       <p className="text-xs uppercase tracking-wide text-white/40">選択中</p>
       <h2 className="mt-1 text-lg font-bold">
         {card.period} ・ {card.title}

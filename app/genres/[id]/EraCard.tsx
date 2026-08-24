@@ -3,13 +3,13 @@
 import { useState } from 'react'
 import type { EraCardData, EraColorToken } from '@/utils/genreHistory'
 
-const COLOR_CLASSES: Record<EraColorToken, { ring: string; border: string; text: string; dot: string }> = {
-  amber: { ring: 'ring-amber-400/50', border: 'border-amber-400/60', text: 'text-amber-400', dot: 'bg-amber-400' },
-  yellow: { ring: 'ring-yellow-300/50', border: 'border-yellow-300/60', text: 'text-yellow-300', dot: 'bg-yellow-300' },
-  green: { ring: 'ring-emerald-400/50', border: 'border-emerald-400/60', text: 'text-emerald-400', dot: 'bg-emerald-400' },
-  blue: { ring: 'ring-sky-400/50', border: 'border-sky-400/60', text: 'text-sky-400', dot: 'bg-sky-400' },
-  coral: { ring: 'ring-orange-400/50', border: 'border-orange-400/60', text: 'text-orange-400', dot: 'bg-orange-400' },
-  purple: { ring: 'ring-violet-400/50', border: 'border-violet-400/60', text: 'text-violet-400', dot: 'bg-violet-400' },
+const COLOR_CLASSES: Record<EraColorToken, { ring: string; border: string; text: string; triangle: string }> = {
+  amber: { ring: 'ring-amber-400/50', border: 'border-amber-400/60', text: 'text-amber-400', triangle: 'border-t-amber-400' },
+  yellow: { ring: 'ring-yellow-300/50', border: 'border-yellow-300/60', text: 'text-yellow-300', triangle: 'border-t-yellow-300' },
+  green: { ring: 'ring-emerald-400/50', border: 'border-emerald-400/60', text: 'text-emerald-400', triangle: 'border-t-emerald-400' },
+  blue: { ring: 'ring-sky-400/50', border: 'border-sky-400/60', text: 'text-sky-400', triangle: 'border-t-sky-400' },
+  coral: { ring: 'ring-orange-400/50', border: 'border-orange-400/60', text: 'text-orange-400', triangle: 'border-t-orange-400' },
+  purple: { ring: 'ring-violet-400/50', border: 'border-violet-400/60', text: 'text-violet-400', triangle: 'border-t-violet-400' },
 }
 
 function CardImage({ card }: { card: EraCardData }) {
@@ -75,7 +75,7 @@ export default function EraCard({
       </span>
 
       {isSelected && (
-        <span className={`mx-auto mt-2 h-0 w-0 border-x-8 border-t-8 border-x-transparent ${colors.text.replace('text-', 'border-t-')}`} />
+        <span className={`mx-auto mt-2 h-0 w-0 border-x-8 border-t-8 border-x-transparent ${colors.triangle}`} />
       )}
     </button>
   )

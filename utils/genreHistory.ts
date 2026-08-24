@@ -135,6 +135,7 @@ export type GenreEvolutionNode = {
   genreId: string
   name: string
   depth: number
+  incomingRelationType: 'derivation' | 'influence' | 'crossover' | null
 }
 
 export type GenreEvolutionEdgeData = {
@@ -163,17 +164,17 @@ export function buildGenreEvolutionTree(
   const resultEdges: GenreEvolutionEdgeData[] = []
   const seen = new Set<string>()
 
-  function visit(genreId: string, depth: number) {
+  function visit(genreId: string, depth: number, incomingRelationType: 'derivation' | 'influence' | 'crossover' | null) {
     if (seen.has(genreId)) return
     seen.add(genreId)
     const genreRow = genreById.get(genreId)
-    nodes.push({ genreId, name: genreRow?.name ?? genreId, depth })
+    nodes.push({ genreId, name: genreRow?.name ?? genreId, depth, incomingRelationType })
     for (const edge of childrenByParent.get(genreId) ?? []) {
       resultEdges.push({ fromGenreId: edge.parentGenreId, toGenreId: edge.childGenreId, relationType: edge.relationType })
-      visit(edge.childGenreId, depth + 1)
+      visit(edge.childGenreId, depth + 1, edge.relationType)
     }
   }
-  visit(rootId, 0)
+  visit(rootId, 0, null)
 
   return { nodes, edges: resultEdges }
 }

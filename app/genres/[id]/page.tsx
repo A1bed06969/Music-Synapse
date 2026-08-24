@@ -20,7 +20,7 @@ export default async function GenreDetailPage({ params }: { params: Promise<{ id
   // genre_lineageは全体で高々数十行のため、対象ジャンルに絞らず全件取得して
   // utils/genreHistory.tsのgetDescendantGenreIds/buildGenreEvolutionTreeに渡す
   // (多段階の子孫を辿るには、どこまで辿れば止まるか事前にはわからないため)
-  const { data: lineageRows } = await supabase.from('genre_lineage').select('parent_genre_id, child_genre_id, relation_type')
+  const { data: lineageRows } = await supabase.from('genre_lineage').select('parent_genre_id, child_genre_id, relation_type').order('id')
   const edges: LineageEdge[] = (lineageRows ?? []).map((r) => ({
     parentGenreId: r.parent_genre_id,
     childGenreId: r.child_genre_id,
@@ -39,7 +39,8 @@ export default async function GenreDetailPage({ params }: { params: Promise<{ id
     supabase
       .from('genre_highlight')
       .select('genre_id, note, event_year, event_year_label, artist:artist_id(id, name, image_url), album:album_id(id, title, jacket_url)')
-      .in('genre_id', allGenreIds),
+      .in('genre_id', allGenreIds)
+      .order('id'),
   ])
 
   const genres: GenreRow[] = (genreRows ?? []).map((g) => ({

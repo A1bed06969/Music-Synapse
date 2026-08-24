@@ -14,7 +14,7 @@ export default function GenreHistoryView({ genreName, eraCards, evolutionNodes, 
     <div className="animate-[fadein_0.3s_ease-in]">
       <EraTimeline cards={eraCards} selectedGenreId={selectedGenreId} onSelect={setSelectedGenreId} />
 
-      {selectedCard && <EraDetailPanel card={selectedCard} />}
+      {selectedCard && <EraDetailPanel key={selectedCard.genreId} card={selectedCard} />}
 
       {evolutionNodes.length > 1 && (
         <div className="mt-10 border-t border-white/10 pt-8">
