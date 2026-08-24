@@ -1,74 +1,97 @@
 import { notFound } from 'next/navigation'
 import { createClient } from '@/utils/Supabase/server'
-import GenreTimeline from './GenreTimeline'
+import { buildEraCards, buildGenreEvolutionTree, type GenreRow, type LineageEdge, type HighlightRow } from '@/utils/genreHistory'
+import GenreHistoryView from './GenreHistoryView'
+
+function firstOf<T>(value: T | T[] | null | undefined): T | null {
+  if (Array.isArray(value)) return value[0] ?? null
+  return value ?? null
+}
 
 export default async function GenreDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const supabase = await createClient()
 
   const { data: genre, error } = await supabase.from('genre').select('*').eq('id', id).single()
-
   if (error || !genre) {
     notFound()
   }
 
-  const { data: lineageRows } = await supabase
-    .from('genre_lineage')
-    .select(
-      'child:child_genre_id(id, name, origin_year, origin_year_label, origin_country, origin_city, background_note)'
-    )
-    .eq('parent_genre_id', id)
+  // genre_lineageは全体で高々数十行のため、対象ジャンルに絞らず全件取得して
+  // utils/genreHistory.tsのgetDescendantGenreIds/buildGenreEvolutionTreeに渡す
+  // (多段階の子孫を辿るには、どこまで辿れば止まるか事前にはわからないため)
+  const { data: lineageRows } = await supabase.from('genre_lineage').select('parent_genre_id, child_genre_id, relation_type')
+  const edges: LineageEdge[] = (lineageRows ?? []).map((r) => ({
+    parentGenreId: r.parent_genre_id,
+    childGenreId: r.child_genre_id,
+    relationType: r.relation_type as 'derivation' | 'influence' | 'crossover',
+  }))
 
-  function firstOf<T>(value: T | T[] | null | undefined): T | null {
-    if (Array.isArray(value)) return value[0] ?? null
-    return value ?? null
+  const descendantIds = new Set<string>([id])
+  {
+    // buildEraCards内部でも同じ列挙をするが、genreHighlightをどのジャンルID分
+    // 取得すればよいかを先に知る必要があるため、ここでも軽量に列挙する
+    const childrenByParent = new Map<string, string[]>()
+    for (const edge of edges) {
+      const list = childrenByParent.get(edge.parentGenreId) ?? []
+      list.push(edge.childGenreId)
+      childrenByParent.set(edge.parentGenreId, list)
+    }
+    const queue = [id]
+    while (queue.length > 0) {
+      const current = queue.shift()!
+      for (const child of childrenByParent.get(current) ?? []) {
+        if (descendantIds.has(child)) continue
+        descendantIds.add(child)
+        queue.push(child)
+      }
+    }
   }
+  const allGenreIds = Array.from(descendantIds)
 
-  type ChildGenre = {
-    id: string
-    name: string
-    origin_year: number | null
-    origin_year_label: string | null
-    origin_country: string | null
-    origin_city: string | null
-    background_note: string | null
-  }
-  const children = (lineageRows ?? [])
-    .map((r) => firstOf(r.child))
-    .filter((c): c is ChildGenre => c !== null)
-  const childIds = children.map((c) => c.id)
-  const allGenreIds = [id, ...childIds]
-
-  const [{ data: highlights }, { data: artistGenreRows }] = await Promise.all([
+  const [{ data: genreRows }, { data: highlightRows }] = await Promise.all([
+    supabase
+      .from('genre')
+      .select('id, name, origin_year, origin_year_label, origin_country, background_note')
+      .in('id', allGenreIds),
     supabase
       .from('genre_highlight')
-      .select('id, genre_id, note, event_year, event_year_label, artist:artist_id(id, name), album:album_id(id, title)')
+      .select('genre_id, note, event_year, event_year_label, artist:artist_id(id, name, image_url), album:album_id(id, title, jacket_url)')
       .in('genre_id', allGenreIds),
-    supabase.from('artist_genre').select('artist_id').eq('genre_id', id),
   ])
 
-  const artistIds = (artistGenreRows ?? []).map((r) => r.artist_id)
-  const { data: releases } = artistIds.length
-    ? await supabase
-        .from('album')
-        .select('id, title, release_date, artist:artist_id(id, name)')
-        .in('artist_id', artistIds)
-        .is('primary_album_id', null)
-        .order('release_date', { ascending: false, nullsFirst: false })
-        .limit(200)
-    : { data: [] }
+  const genres: GenreRow[] = (genreRows ?? []).map((g) => ({
+    id: g.id,
+    name: g.name,
+    originYear: g.origin_year,
+    originYearLabel: g.origin_year_label,
+    originCountry: g.origin_country,
+    backgroundNote: g.background_note,
+  }))
+
+  const highlights: HighlightRow[] = (highlightRows ?? []).map((h) => {
+    const artist = firstOf(h.artist)
+    const album = firstOf(h.album)
+    return {
+      genreId: h.genre_id,
+      artistId: artist?.id ?? null,
+      artistName: artist?.name ?? null,
+      artistImageUrl: artist?.image_url ?? null,
+      albumId: album?.id ?? null,
+      albumTitle: album?.title ?? null,
+      albumJacketUrl: album?.jacket_url ?? null,
+      eventYear: h.event_year,
+      eventYearLabel: h.event_year_label,
+      note: h.note,
+    }
+  })
+
+  const eraCards = buildEraCards(id, genres, edges, highlights)
+  const { nodes: evolutionNodes, edges: evolutionEdges } = buildGenreEvolutionTree(id, genres, edges)
 
   return (
     <div className="mx-auto max-w-[1600px] px-6 py-12">
       <h1 className="text-2xl font-bold">{genre.name}</h1>
-      <div className="mt-1 flex flex-wrap gap-x-3 text-sm text-white/50">
-        {(genre.origin_year_label || genre.origin_year) && (
-          <span>発祥 {genre.origin_year_label || `${genre.origin_year}年`}</span>
-        )}
-        {(genre.origin_country || genre.origin_city) && (
-          <span>{[genre.origin_country, genre.origin_city].filter(Boolean).join(' / ')}</span>
-        )}
-      </div>
       {genre.wikipedia_url && (
         <a
           href={genre.wikipedia_url}
@@ -86,22 +109,12 @@ export default async function GenreDetailPage({ params }: { params: Promise<{ id
         </a>
       )}
 
-      <section className="mt-8">
-        <h2 className="text-lg font-semibold">年表</h2>
-        <GenreTimeline
-          genreId={id}
-          genreName={genre.name}
-          originYear={genre.origin_year}
-          originYearLabel={genre.origin_year_label}
-          originCountry={genre.origin_country}
-          originCity={genre.origin_city}
-          backgroundNote={genre.background_note}
-          // eslint-disable-next-line react/no-children-prop -- `children` here is a data prop (child genres), not renderable content
-          children={children}
-          highlights={highlights ?? []}
-          releases={releases ?? []}
-        />
-      </section>
+      <GenreHistoryView
+        genreName={genre.name}
+        eraCards={eraCards}
+        evolutionNodes={evolutionNodes}
+        evolutionEdges={evolutionEdges}
+      />
     </div>
   )
 }
