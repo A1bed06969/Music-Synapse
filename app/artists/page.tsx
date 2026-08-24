@@ -29,9 +29,22 @@ export default async function ArtistsPage() {
     return rows
   }
 
-  const [{ data: allArtists }, { data: membershipRows }, { data: instruments }, creditPersons, creditRoleRows] =
+  type ArtistRow = {
+    id: string
+    name: string
+    name_kana: string | null
+    name_en: string | null
+    image_url: string | null
+    page_override: string | null
+  }
+
+  const [allArtists, { data: membershipRows }, { data: instruments }, creditPersons, creditRoleRows] =
     await Promise.all([
-      supabase.from('artist').select('id, name, name_kana, name_en, image_url, page_override'),
+      // 2026年8月時点でアーティスト総数がPostgRESTの1リクエストあたり行数上限(既定1000件)を
+      // 超え、この上限のせいで最近登録されたアーティストがアーティスト一覧・検索に
+      // 一切出てこない不具合が実際に発生した(例: Radio Fabres)。credit_person/artist_credit
+      // と同様にページングする
+      fetchAllRows<ArtistRow>('artist', 'id, name, name_kana, name_en, image_url, page_override', 'id'),
       supabase
         .from('artist_relation')
         .select('artist_id_a, artist_id_b, band:artist_id_a(name)')
@@ -120,8 +133,7 @@ export default async function ArtistsPage() {
   }[] = []
 
   for (const a of allArtists ?? []) {
-    const isMember = memberOfIds.has(a.id)
-    const kind = resolveArtistPageKind(a.page_override, isMember, releasedIds.has(a.id))
+    const kind = resolveArtistPageKind(a.page_override, releasedIds.has(a.id))
     if (kind === 'member') {
       members.push({
         id: a.id,

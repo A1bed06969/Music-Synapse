@@ -29,11 +29,32 @@ async function fetchAllTracks(supabase: Awaited<ReturnType<typeof createClient>>
   return rows
 }
 
+type ArtistRow = { id: string; name: string; name_kana: string | null; image_url: string | null }
+
+async function fetchAllArtists(supabase: Awaited<ReturnType<typeof createClient>>): Promise<ArtistRow[]> {
+  const rows: ArtistRow[] = []
+  let offset = 0
+  // アーティスト総数がPostgRESTの1回あたり上限(1000件)を超えたため、trackと同じく
+  // ページングする(この上限のせいで最近登録されたアーティストの曲が一覧に出ない
+  // 不具合が実際に発生した)
+  while (true) {
+    const { data } = await supabase
+      .from('artist')
+      .select('id, name, name_kana, image_url')
+      .range(offset, offset + PAGE_SIZE - 1)
+    if (!data || data.length === 0) break
+    rows.push(...data)
+    if (data.length < PAGE_SIZE) break
+    offset += PAGE_SIZE
+  }
+  return rows
+}
+
 export default async function TracksPage() {
   const supabase = await createClient()
 
-  const [artistsResult, tracks, rankingResult, rotationResult] = await Promise.all([
-    supabase.from('artist').select('id, name, name_kana, image_url'),
+  const [artists, tracks, rankingResult, rotationResult] = await Promise.all([
+    fetchAllArtists(supabase),
     fetchAllTracks(supabase),
     supabase.from('ranking_entry').select('track_id').not('track_id', 'is', null),
     supabase.from('radio_rotation').select('track_id').not('track_id', 'is', null),
@@ -50,11 +71,11 @@ export default async function TracksPage() {
     tracksByArtist.set(track.artist_id, list)
   }
 
-  const artists = (artistsResult.data ?? []).sort((a, b) =>
+  const sortedArtists = artists.sort((a, b) =>
     (a.name_kana ?? a.name).localeCompare(b.name_kana ?? b.name, 'ja')
   )
 
-  const groups = artists
+  const groups = sortedArtists
     .map((artist) => {
       const artistTracks = tracksByArtist.get(artist.id) ?? []
       const sorted = [...artistTracks].sort((a, b) => {
