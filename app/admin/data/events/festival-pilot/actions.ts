@@ -6,6 +6,7 @@ import { after } from 'next/server'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/utils/Supabase/admin'
 import { searchArtist, fetchArtistWithAlbums, type ItunesArtistSearchResult } from '@/utils/itunes'
+import { fetchAppleMusicArtistImage } from '@/utils/appleMusicImage'
 import { upsertArtistFromItunes } from '@/app/admin/import/actions'
 import { dispatchAlbumSync } from '@/utils/albumSyncDispatch'
 import type { FestivalPick } from '@/utils/festivalScrape'
@@ -297,9 +298,23 @@ export async function registerFestivalAppearance(formData: FormData) {
   redirectWith('success', `「${artistName}」を${festivalName}(${editionYear})に登録しました。`)
 }
 
-/** カタログに無いアーティスト名でApple Musicを検索する(候補を人間が選ぶ前提、自動確定はしない) */
-export async function searchAppleMusicArtist(name: string): Promise<ItunesArtistSearchResult[]> {
-  return searchArtist(name)
+export type ItunesArtistSearchResultWithImage = ItunesArtistSearchResult & { imageUrl: string | null }
+
+/**
+ * カタログに無いアーティスト名でApple Musicを検索する(候補を人間が選ぶ前提、自動確定はしない)。
+ * 同名・類似名の別人が候補に並ぶことがあり、名前だけでは判別しづらいため、各候補の
+ * 顔写真(og:imageスクレイピング。fetchAppleMusicArtistImageと同じ手法)も並行取得して返す。
+ * 取得に失敗した候補はimageUrl: nullのまま返す(呼び出し側でプレースホルダー表示)
+ */
+export async function searchAppleMusicArtist(name: string): Promise<ItunesArtistSearchResultWithImage[]> {
+  const candidates = await searchArtist(name)
+  const withImages = await Promise.all(
+    candidates.map(async (c) => ({
+      ...c,
+      imageUrl: await fetchAppleMusicArtistImage(String(c.artistId)).catch(() => null),
+    }))
+  )
+  return withImages
 }
 
 export type ImportAndRegisterInput = {

@@ -2,8 +2,7 @@
 
 import Link from 'next/link'
 import { useState, useTransition } from 'react'
-import { searchAppleMusicArtist, importAndRegisterFestivalArtist } from './actions'
-import type { ItunesArtistSearchResult } from '@/utils/itunes'
+import { searchAppleMusicArtist, importAndRegisterFestivalArtist, type ItunesArtistSearchResultWithImage } from './actions'
 
 type PickInput = {
   artistName: string
@@ -23,7 +22,7 @@ type PickInput = {
 
 export default function UnmatchedArtistTag({ pick }: { pick: PickInput }) {
   const [expanded, setExpanded] = useState(false)
-  const [candidates, setCandidates] = useState<ItunesArtistSearchResult[] | null>(null)
+  const [candidates, setCandidates] = useState<ItunesArtistSearchResultWithImage[] | null>(null)
   const [registered, setRegistered] = useState<{ artistId: string; registeredName: string } | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [registeringId, setRegisteringId] = useState<number | null>(null)
@@ -42,7 +41,7 @@ export default function UnmatchedArtistTag({ pick }: { pick: PickInput }) {
     })
   }
 
-  function handleRegister(candidate: ItunesArtistSearchResult) {
+  function handleRegister(candidate: ItunesArtistSearchResultWithImage) {
     setErrorMessage(null)
     setRegisteringId(candidate.artistId)
     startTransition(async () => {
@@ -116,9 +115,19 @@ export default function UnmatchedArtistTag({ pick }: { pick: PickInput }) {
           ) : (
             candidates.map((c) => (
               <span key={c.artistId} className="flex items-center justify-between gap-3">
-                <span>
-                  {c.artistName}
-                  {c.primaryGenreName && <span className="ml-1 text-white/30">({c.primaryGenreName})</span>}
+                <span className="flex items-center gap-2">
+                  {c.imageUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={c.imageUrl} alt="" className="h-8 w-8 shrink-0 rounded-full object-cover" />
+                  ) : (
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/10 text-[10px] text-white/30">
+                      ?
+                    </span>
+                  )}
+                  <span>
+                    {c.artistName}
+                    {c.primaryGenreName && <span className="ml-1 text-white/30">({c.primaryGenreName})</span>}
+                  </span>
                 </span>
                 <button
                   type="button"
