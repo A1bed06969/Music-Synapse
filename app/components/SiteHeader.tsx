@@ -8,6 +8,7 @@ const NAV_LINKS = [
   { href: '/', label: 'ホーム' },
   { href: '/search', label: '検索' },
   { href: '/relations', label: '相関図' },
+  { href: '/genres', label: 'ジャンル年表' },
   { href: '/events', label: 'フェス&イベント' },
   { href: '/albums/calendar', label: '新譜カレンダー' },
   { href: '/map', label: 'マップ' },
