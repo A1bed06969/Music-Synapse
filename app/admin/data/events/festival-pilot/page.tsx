@@ -43,8 +43,25 @@ export default async function FestivalPilotPage({
     fetchError = err instanceof Error ? err.message : '取得に失敗しました。'
   }
 
-  const { data: artists } = await supabase.from('artist').select('id, name')
+  const [{ data: artists }, { data: artistLinks }] = await Promise.all([
+    supabase.from('artist').select('id, name'),
+    supabase
+      .from('festival_pilot_artist_link')
+      .select('pick_name, artist:artist_id(id, name)')
+      .eq('dataset_key', activeFestival.key),
+  ])
   const artistByName = new Map((artists ?? []).map((a) => [a.name.trim().toUpperCase(), a]))
+  // iTunes側の名前がローカライズされてフェス側の表記と一致しなくなった場合の
+  // 救済(例: "ALANIS MORISSETTE" → "アラニス・モリセット")。一度でも登録できた
+  // pick_nameは、以後は表記の完全一致に頼らずこちらを優先する
+  const artistByLinkedPickName = new Map(
+    (artistLinks ?? [])
+      .map((r) => {
+        const artist = Array.isArray(r.artist) ? r.artist[0] : r.artist
+        return artist ? ([r.pick_name, artist] as const) : null
+      })
+      .filter((r): r is readonly [string, { id: string; name: string }] => r !== null)
+  )
 
   const festivalName = picks[0]?.festivalName ?? null
   const editionYear = picks[0]?.editionYear ?? null
@@ -53,7 +70,7 @@ export default async function FestivalPilotPage({
     const { data: existingEvent } = await supabase
       .from('event')
       .select('id')
-      .eq('name', festivalName)
+      .ilike('name', festivalName.trim())
       .maybeSingle()
     if (existingEvent) {
       const { data: existingEdition } = await supabase
@@ -73,7 +90,8 @@ export default async function FestivalPilotPage({
   }
 
   const displayPicks: DisplayPick[] = picks.map((pick) => {
-    const artist = artistByName.get(pick.artistName.trim().toUpperCase())
+    const normalizedName = pick.artistName.trim().toUpperCase()
+    const artist = artistByLinkedPickName.get(normalizedName) ?? artistByName.get(normalizedName)
     return {
       ...pick,
       matchedArtistId: artist?.id ?? null,
@@ -176,6 +194,7 @@ export default async function FestivalPilotPage({
                           <span className="shrink-0 text-xs text-white/30">登録済み</span>
                         ) : (
                           <form action={registerFestivalAppearance}>
+                            <input type="hidden" name="dataset_key" value={activeFestival.key} />
                             <input type="hidden" name="festival_name" value={p.festivalName} />
                             <input type="hidden" name="edition_year" value={p.editionYear} />
                             <input type="hidden" name="start_date" value={p.startDate ?? ''} />
@@ -186,6 +205,7 @@ export default async function FestivalPilotPage({
                             <input type="hidden" name="performance_date" value={p.performanceDate ?? ''} />
                             <input type="hidden" name="start_at" value={p.startAt ?? ''} />
                             <input type="hidden" name="end_at" value={p.endAt ?? ''} />
+                            <input type="hidden" name="region" value={p.region ?? ''} />
                             <SubmitButton />
                           </form>
                         )}
@@ -201,6 +221,7 @@ export default async function FestivalPilotPage({
                         key={i}
                         pick={{
                           artistName: p.artistName,
+                          datasetKey: activeFestival.key,
                           festivalName: p.festivalName,
                           editionYear: p.editionYear,
                           startDate: p.startDate,
@@ -210,6 +231,7 @@ export default async function FestivalPilotPage({
                           startAt: p.startAt,
                           endAt: p.endAt,
                           day: p.day,
+                          region: p.region,
                           suspicious: p.suspicious,
                         }}
                       />

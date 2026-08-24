@@ -1,11 +1,13 @@
 'use client'
 
+import Link from 'next/link'
 import { useState, useTransition } from 'react'
 import { searchAppleMusicArtist, importAndRegisterFestivalArtist } from './actions'
 import type { ItunesArtistSearchResult } from '@/utils/itunes'
 
 type PickInput = {
   artistName: string
+  datasetKey: string
   festivalName: string
   editionYear: number
   startDate: string | null
@@ -15,13 +17,14 @@ type PickInput = {
   startAt: string | null
   endAt: string | null
   day: string | null
+  region?: string | null
   suspicious?: boolean
 }
 
 export default function UnmatchedArtistTag({ pick }: { pick: PickInput }) {
   const [expanded, setExpanded] = useState(false)
   const [candidates, setCandidates] = useState<ItunesArtistSearchResult[] | null>(null)
-  const [registeredMessage, setRegisteredMessage] = useState<string | null>(null)
+  const [registered, setRegistered] = useState<{ artistId: string; registeredName: string } | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [registeringId, setRegisteringId] = useState<number | null>(null)
   const [isPending, startTransition] = useTransition()
@@ -45,6 +48,8 @@ export default function UnmatchedArtistTag({ pick }: { pick: PickInput }) {
     startTransition(async () => {
       const result = await importAndRegisterFestivalArtist({
         appleMusicArtistId: candidate.artistId,
+        pickArtistName: pick.artistName,
+        datasetKey: pick.datasetKey,
         festivalName: pick.festivalName,
         editionYear: pick.editionYear,
         startDate: pick.startDate,
@@ -53,20 +58,31 @@ export default function UnmatchedArtistTag({ pick }: { pick: PickInput }) {
         performanceDate: pick.performanceDate,
         startAt: pick.startAt,
         endAt: pick.endAt,
+        region: pick.region,
       })
       setRegisteringId(null)
       if (result.success) {
-        setRegisteredMessage(result.message)
+        setRegistered({ artistId: result.artistId, registeredName: result.registeredName })
       } else {
         setErrorMessage(result.message)
       }
     })
   }
 
-  if (registeredMessage) {
+  if (registered) {
+    // iTunesの検索結果はアーティスト名がローカライズされていることがあり
+    // (例:「LOYLE CARNER」→「ロイル・カーナー」)、その場合フェス側の表記とは
+    // 一致しなくなる。この行の一覧上の表示は登録済みにならず一見不具合に見えるが、
+    // 実際には正しく登録されている(実際にこれで「登録したのに反映されない」と
+    // 誤解された不具合があったため、実際に登録された名前とリンクを必ず示す)
+    const renamed = registered.registeredName.trim() !== pick.artistName.trim()
     return (
       <span className="rounded-full border border-green-500/30 bg-green-500/5 px-2 py-0.5 text-xs text-green-400">
-        ✓ {pick.artistName}
+        ✓{' '}
+        <Link href={`/artists/${registered.artistId}`} className="hover:underline">
+          {pick.artistName}
+        </Link>
+        {renamed && <span className="text-green-400/70"> (「{registered.registeredName}」として登録)</span>}
       </span>
     )
   }

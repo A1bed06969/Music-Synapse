@@ -23,6 +23,10 @@ export type FestivalPick = {
    * 時刻が取得できない行(TBA等)はnull */
   startAt: string | null
   endAt: string | null
+  /** SUMMER SONICのように同じ日程で複数都市が同時開催されるフェス向け。
+   * event_edition_date.regionと同じ表記(例:"東京"/"大阪")にする。
+   * 単一会場のフェスではnull(従来通りevent_edition.venueのみを使う) */
+  region?: string | null
 }
 
 async function fetchHtml(url: string): Promise<string> {

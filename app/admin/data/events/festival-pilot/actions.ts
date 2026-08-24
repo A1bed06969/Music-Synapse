@@ -18,6 +18,26 @@ function redirectDatasetsWith(result: 'success' | 'error', message: string): nev
   redirect(`/admin/data/events/festival-pilot/datasets?${result}=${encodeURIComponent(message)}`)
 }
 
+/** SUMMER SONICのように同じ開催回に複数都市がある場合、出演情報自体にも
+ * どちらの会場かを付ける(event_appearance.venue)。付けないとevents詳細ページの
+ * 都市タブでの絞り込みが効かず、どちらのタブでも全都市の出演者が表示されてしまう
+ * (実際に発生した不具合)。regionが無い(単一会場の)フェスではnullのままでよい。 */
+async function resolveVenueForRegion(
+  supabase: SupabaseClient,
+  editionId: string,
+  region: string | null | undefined
+): Promise<string | null> {
+  if (!region) return null
+  const { data } = await supabase
+    .from('event_edition_date')
+    .select('venue')
+    .eq('event_edition_id', editionId)
+    .eq('region', region)
+    .limit(1)
+    .maybeSingle()
+  return data?.venue ?? null
+}
+
 type FestivalPickWithFlag = FestivalPick & { suspicious?: boolean }
 
 /** 貼り付けられたJSONが、最低限FestivalPick[]として使える形かを検証する
@@ -110,6 +130,11 @@ type EditionInput = {
   editionYear: number
   startDate: string | null
   endDate: string | null
+  // festival-pilotの各タブを識別するkey(festival_pilot_dataset.key、または
+  // 静的スクレイピングの'glastonbury')。一度イベントを解決できたら
+  // festival_pilot_event_linkにevent_idを固定し、以後は名前一致に頼らず
+  // 直接そのevent_idを使う(下記コメント参照)。
+  datasetKey?: string
 }
 
 /** イベント(フェス本体)と開催回を無ければ作成し、開催回IDを返す */
@@ -117,34 +142,56 @@ async function findOrCreateFestivalEdition(
   supabase: SupabaseClient,
   input: EditionInput
 ): Promise<{ editionId: string | null; errorMessage: string | null }> {
-  // 完全一致(.eq)だと大文字小文字・前後の空白の違いだけで別イベントとして
-  // 新規作成されてしまう(実際に発生した不具合: Coachella/Coachella Festival、
-  // 風とロック芋煮会/風とロック芋煮会 in September JAM が別イベントになった)。
-  // ilikeで大小文字を無視した完全一致にする(部分一致ではないので、名前が
-  // 本当に違う別フェスを誤って同一視するリスクは無い)。2件以上ヒットする
-  // 場合は既存の重複防止方針と同様にどれとも断定せず新規作成にフォールバックする。
-  const { data: existingEvents } = await supabase
-    .from('event')
-    .select('id')
-    .ilike('name', input.festivalName.trim())
-    .limit(2)
-  let eventId = existingEvents?.length === 1 ? existingEvents[0].id : undefined
+  // festival_pilot_event_linkに既にこのkeyのevent_idが記録されていれば、
+  // 名前一致を一切試みずそれを最優先で使う。picks側のfestivalName表記が
+  // event.nameと後からズレても(改名・統合等)、二度と別イベントとして
+  // 重複作成されないようにするための固定リンク。
+  let eventId: string | undefined
+  if (input.datasetKey) {
+    const { data: link } = await supabase
+      .from('festival_pilot_event_link')
+      .select('event_id')
+      .eq('key', input.datasetKey)
+      .maybeSingle()
+    eventId = link?.event_id ?? undefined
+  }
+
   if (!eventId) {
-    // country/description等はフェスごとに異なるため、ここでは決め打ちせずnullのまま
-    // 作成し(誤った国名で他フェスに登録されるのを防ぐ)、管理画面(/admin/data/events)から
-    // 後で正しい値を入力する運用とする
-    const { data: createdEvent, error } = await supabase
+    // 完全一致(.eq)だと大文字小文字・前後の空白の違いだけで別イベントとして
+    // 新規作成されてしまう(実際に発生した不具合: Coachella/Coachella Festival、
+    // 風とロック芋煮会/風とロック芋煮会 in September JAM が別イベントになった)。
+    // ilikeで大小文字を無視した完全一致にする(部分一致ではないので、名前が
+    // 本当に違う別フェスを誤って同一視するリスクは無い)。2件以上ヒットする
+    // 場合は既存の重複防止方針と同様にどれとも断定せず新規作成にフォールバックする。
+    const { data: existingEvents } = await supabase
       .from('event')
-      .insert({
-        name: input.festivalName,
-        event_type: 'festival',
-      })
       .select('id')
-      .single()
-    if (error || !createdEvent) {
-      return { editionId: null, errorMessage: `イベントの登録に失敗しました: ${error?.message}` }
+      .ilike('name', input.festivalName.trim())
+      .limit(2)
+    eventId = existingEvents?.length === 1 ? existingEvents[0].id : undefined
+    if (!eventId) {
+      // country/description等はフェスごとに異なるため、ここでは決め打ちせずnullのまま
+      // 作成し(誤った国名で他フェスに登録されるのを防ぐ)、管理画面(/admin/data/events)から
+      // 後で正しい値を入力する運用とする
+      const { data: createdEvent, error } = await supabase
+        .from('event')
+        .insert({
+          name: input.festivalName,
+          event_type: 'festival',
+        })
+        .select('id')
+        .single()
+      if (error || !createdEvent) {
+        return { editionId: null, errorMessage: `イベントの登録に失敗しました: ${error?.message}` }
+      }
+      eventId = createdEvent.id
     }
-    eventId = createdEvent.id
+
+    if (input.datasetKey) {
+      await supabase
+        .from('festival_pilot_event_link')
+        .upsert({ key: input.datasetKey, event_id: eventId }, { onConflict: 'key' })
+    }
   }
 
   const { data: existingEdition } = await supabase
@@ -186,6 +233,8 @@ export async function registerFestivalAppearance(formData: FormData) {
   const performanceDate = String(formData.get('performance_date') ?? '').trim()
   const startAt = String(formData.get('start_at') ?? '').trim()
   const endAt = String(formData.get('end_at') ?? '').trim()
+  const datasetKey = String(formData.get('dataset_key') ?? '').trim() || undefined
+  const region = String(formData.get('region') ?? '').trim() || null
 
   if (!festivalName || !editionYearRaw || !artistId) {
     redirectWith('error', '不正なリクエストです。')
@@ -199,6 +248,7 @@ export async function registerFestivalAppearance(formData: FormData) {
     editionYear,
     startDate: startDate || null,
     endDate: endDate || null,
+    datasetKey,
   })
   if (!editionId) {
     redirectWith('error', errorMessage ?? '開催回の登録に失敗しました。')
@@ -214,10 +264,22 @@ export async function registerFestivalAppearance(formData: FormData) {
     redirectWith('error', `「${artistName}」は既に登録済みです。`)
   }
 
+  if (datasetKey) {
+    await supabase
+      .from('festival_pilot_artist_link')
+      .upsert(
+        { dataset_key: datasetKey, pick_name: artistName.trim().toUpperCase(), artist_id: artistId },
+        { onConflict: 'dataset_key,pick_name' }
+      )
+  }
+
+  const venue = await resolveVenueForRegion(supabase, editionId!, region)
+
   const { error: appearanceError } = await supabase.from('event_appearance').insert({
     event_edition_id: editionId,
     artist_id: artistId,
     stage: stage || null,
+    venue,
     // 開演/終演時刻が取得できればそのまま使い、取得できない場合のみ
     // 出演日を日付グルーピング表示に使えるよう正午の仮時刻で保持する
     start_time: startAt || (performanceDate ? `${performanceDate}T12:00:00+00:00` : null),
@@ -242,6 +304,9 @@ export async function searchAppleMusicArtist(name: string): Promise<ItunesArtist
 
 export type ImportAndRegisterInput = {
   appleMusicArtistId: number
+  // フェス側のスクレイピング/データセット表記そのもの(iTunes側の名前がローカライズ
+  // されて一致しなくなった場合でも「この表記=このartist_id」を覚えておくためのキー)
+  pickArtistName: string
   festivalName: string
   editionYear: number
   startDate: string | null
@@ -250,9 +315,13 @@ export type ImportAndRegisterInput = {
   performanceDate: string | null
   startAt: string | null
   endAt: string | null
+  datasetKey?: string
+  region?: string | null
 }
 
-export type ImportAndRegisterResult = { success: boolean; message: string }
+export type ImportAndRegisterResult =
+  | { success: true; message: string; artistId: string; registeredName: string }
+  | { success: false; message: string }
 
 /** 選ばれたApple Musicアーティストをカタログへ取込み(既存の一括登録処理を再利用)、
  * そのままフェスの出演情報としても登録する。
@@ -285,6 +354,7 @@ export async function importAndRegisterFestivalArtist(
     editionYear: input.editionYear,
     startDate: input.startDate,
     endDate: input.endDate,
+    datasetKey: input.datasetKey,
   })
   if (!editionId) {
     return { success: false, message: errorMessage ?? '開催回の登録に失敗しました。' }
@@ -298,10 +368,12 @@ export async function importAndRegisterFestivalArtist(
     .maybeSingle()
 
   if (!existingAppearance) {
+    const venue = await resolveVenueForRegion(supabase, editionId, input.region)
     const { error: appearanceError } = await supabase.from('event_appearance').insert({
       event_edition_id: editionId,
       artist_id: artistId,
       stage: input.stage || null,
+      venue,
       start_time: input.startAt || (input.performanceDate ? `${input.performanceDate}T12:00:00+00:00` : null),
       end_time: input.endAt || null,
       is_headliner: false,
@@ -309,6 +381,15 @@ export async function importAndRegisterFestivalArtist(
     if (appearanceError) {
       return { success: false, message: `出演情報の登録に失敗しました: ${appearanceError.message}` }
     }
+  }
+
+  if (input.datasetKey) {
+    await supabase
+      .from('festival_pilot_artist_link')
+      .upsert(
+        { dataset_key: input.datasetKey, pick_name: input.pickArtistName.trim().toUpperCase(), artist_id: artistId },
+        { onConflict: 'dataset_key,pick_name' }
+      )
   }
 
   // ここまでで出演登録は完了。アルバム・トラックの取込はレスポンス後に続行する
@@ -320,6 +401,8 @@ export async function importAndRegisterFestivalArtist(
   revalidatePath(`/artists/${artistId}`)
   return {
     success: true,
+    artistId,
+    registeredName: itunesArtist.artistName,
     message: `「${itunesArtist.artistName}」を登録しました(アルバム${itunesAlbums.length}件は裏で取込中です)。`,
   }
 }
