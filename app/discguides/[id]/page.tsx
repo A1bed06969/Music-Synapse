@@ -89,7 +89,7 @@ export default async function DiscGuideDetailPage({
         {albums.length === 0 ? (
           <p className="mt-4 text-sm text-white/40">掲載アルバムが登録されていません。</p>
         ) : (
-          <ul className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+          <ul className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
             {albums.map((album) => (
               <li key={album.selectionId}>
                 <Link href={`/albums/${album.id}`} className="group block">
