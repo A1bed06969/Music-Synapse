@@ -139,6 +139,21 @@ describe('buildEraCards', () => {
     assert.deepEqual(cards[0].representativeWorks, [])
   })
 
+  test('an artist with multiple representative works appears only once in representativeArtists, but each work still appears', () => {
+    const genres: GenreRow[] = [genre({ id: 'folkrock', originYear: 1965 })]
+    const highlights: HighlightRow[] = [
+      highlight({ genreId: 'folkrock', artistId: 'dylan', artistName: 'Bob Dylan', albumId: 'al1', albumTitle: 'Bringing It All Back Home' }),
+      highlight({ genreId: 'folkrock', artistId: 'dylan', artistName: 'Bob Dylan', albumId: 'al2', albumTitle: 'Highway 61 Revisited' }),
+    ]
+    const cards = buildEraCards('folkrock', genres, [], highlights)
+    assert.equal(cards[0].representativeArtists.length, 1)
+    assert.equal(cards[0].representativeArtists[0].name, 'Bob Dylan')
+    assert.deepEqual(
+      cards[0].representativeWorks.map((w) => w.title),
+      ['Bringing It All Back Home', 'Highway 61 Revisited']
+    )
+  })
+
   test('imageUrl prefers an artist image, falling back to an album jacket', () => {
     const genres: GenreRow[] = [genre({ id: 'blues', originYear: 1875 })]
     const highlights: HighlightRow[] = [

@@ -116,16 +116,23 @@ export function buildEraCards(
   return sorted.map((genreRow, index) => {
     const genreHighlights = highlights.filter((h) => h.genreId === genreRow.id)
 
-    const representativeArtists = genreHighlights
-      .filter((h): h is HighlightRow & { artistId: string; artistName: string } => h.artistId !== null && h.artistName !== null)
-      .map((h) => ({
+    // 同じアーティストが複数の代表作品(=複数のgenre_highlight行)を持つ場合でも、
+    // アーティスト一覧には1回だけ出す(作品ごとに重複表示されないように、
+    // 最初に現れた行の情報を採用する)
+    const artistsById = new Map<string, EraCardData['representativeArtists'][number]>()
+    for (const h of genreHighlights) {
+      if (h.artistId === null || h.artistName === null) continue
+      if (artistsById.has(h.artistId)) continue
+      artistsById.set(h.artistId, {
         id: h.artistId,
         name: h.artistName,
         nameSecondary: h.artistNameSecondary,
         imageUrl: h.artistImageUrl,
         classification: h.classification,
         note: h.note,
-      }))
+      })
+    }
+    const representativeArtists = [...artistsById.values()]
 
     const representativeWorks = genreHighlights
       .filter((h): h is HighlightRow & { albumId: string; albumTitle: string } => h.albumId !== null && h.albumTitle !== null)
