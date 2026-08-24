@@ -23,21 +23,17 @@ function Thumb({ src, alt, shape }: { src: string | null; alt: string; shape: 'c
   )
 }
 
-/** CORE(そのジャンルを直接形成した)か INFLUENCE(語法・精神を取り入れているが
- * 正式なサブジャンルではない)かを、GENRE EVOLUTIONの凡例と同じ実線/点線の語彙で示す。 */
-function ClassificationBadge({ classification }: { classification: 'core' | 'influence' }) {
-  if (classification === 'core') {
-    return (
-      <span className="rounded border border-white/20 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-white/50">
-        Core
-      </span>
-    )
+/** CORE(そのジャンルを直接形成した) / INFLUENCE(語法・精神を取り入れているが
+ * 正式なサブジャンルではない) / APPROACH(演奏法やDIY精神など一部だけを部分的に
+ * 継承する) を、GENRE EVOLUTIONの凡例と同じ実線/点線/破線の語彙で示す。 */
+function ClassificationBadge({ classification }: { classification: 'core' | 'influence' | 'approach' }) {
+  const styleByClassification: Record<'core' | 'influence' | 'approach', { border: string; text: string; label: string }> = {
+    core: { border: 'border-white/20', text: 'text-white/50', label: 'Core' },
+    influence: { border: 'border-dotted border-white/20', text: 'text-white/35', label: 'Influence' },
+    approach: { border: 'border-dashed border-white/20', text: 'text-white/35', label: 'Approach' },
   }
-  return (
-    <span className="rounded border border-dashed border-white/20 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-white/35">
-      Influence
-    </span>
-  )
+  const { border, text, label } = styleByClassification[classification]
+  return <span className={`rounded border ${border} px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide ${text}`}>{label}</span>
 }
 
 function AlbumTypeBadge({ albumType }: { albumType: string | null }) {

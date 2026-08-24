@@ -32,7 +32,7 @@ export type HighlightRow = {
   eventYear: number | null
   eventYearLabel: string | null
   note: string | null
-  classification: 'core' | 'influence'
+  classification: 'core' | 'influence' | 'approach'
 }
 
 export type EraColorToken = 'amber' | 'yellow' | 'green' | 'blue' | 'coral' | 'purple'
@@ -51,7 +51,7 @@ export type EraCardData = {
     name: string
     nameSecondary: string | null
     imageUrl: string | null
-    classification: 'core' | 'influence'
+    classification: 'core' | 'influence' | 'approach'
     note: string | null
   }[]
   representativeWorks: {

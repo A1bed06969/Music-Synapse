@@ -70,7 +70,7 @@ export default async function GenreDetailPage({ params }: { params: Promise<{ id
       eventYear: h.event_year,
       eventYearLabel: h.event_year_label,
       note: h.note,
-      classification: (h.classification as 'core' | 'influence') ?? 'core',
+      classification: (h.classification as 'core' | 'influence' | 'approach') ?? 'core',
     }
   })
 
