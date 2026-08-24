@@ -1,7 +1,7 @@
 'use client'
 
-import Link from 'next/link'
 import { useMemo, useState } from 'react'
+import Link from 'next/link'
 
 type GenreRow = {
   id: string
@@ -10,6 +10,36 @@ type GenreRow = {
   origin_year_label: string | null
   origin_country: string | null
   isSub: boolean
+  imageUrl: string | null
+}
+
+function MainGenreCards({ genres }: { genres: GenreRow[] }) {
+  return (
+    <ul className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+      {genres.map((genre) => (
+        <li key={genre.id}>
+          <Link href={`/genres/${genre.id}`} className="group block">
+            <div className="relative aspect-square overflow-hidden rounded-lg bg-white/[0.04]">
+              {genre.imageUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={genre.imageUrl}
+                  alt=""
+                  className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
+                />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center text-3xl font-bold text-white/15">
+                  {genre.name.slice(0, 1)}
+                </div>
+              )}
+              <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/85 via-black/10 to-transparent" />
+              <p className="absolute inset-x-0 bottom-0 p-3 text-base font-bold uppercase tracking-wide text-white">{genre.name}</p>
+            </div>
+          </Link>
+        </li>
+      ))}
+    </ul>
+  )
 }
 
 function GenreGrid({ genres }: { genres: GenreRow[] }) {
@@ -64,7 +94,7 @@ export default function GenreListClient({ genres }: { genres: GenreRow[] }) {
           {mainGenres.length > 0 && (
             <section className="mt-6">
               <h2 className="text-sm font-semibold uppercase tracking-wide text-white/50">メインジャンル</h2>
-              <GenreGrid genres={mainGenres} />
+              <MainGenreCards genres={mainGenres} />
             </section>
           )}
           {subGenres.length > 0 && (
