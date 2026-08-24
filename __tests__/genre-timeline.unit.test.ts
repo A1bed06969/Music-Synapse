@@ -17,11 +17,12 @@ describe('buildGenreTimeline', () => {
       originYear: 1985,
       originYearLabel: null,
       originCountry: 'アメリカ',
+      backgroundNote: null,
       children: [
-        { genreId: 'g2', genreName: 'Acid Techno', originYear: 1987, originYearLabel: null, originCountry: 'アメリカ' },
+        { genreId: 'g2', genreName: 'Acid Techno', originYear: 1987, originYearLabel: null, originCountry: 'アメリカ', backgroundNote: null },
       ],
       highlights: [
-        { genreId: 'g1', artistId: 'a1', artistName: 'Juan Atkins', albumId: null, albumTitle: null, note: null },
+        { genreId: 'g1', artistId: 'a1', artistName: 'Juan Atkins', albumId: null, albumTitle: null, note: null, eventYear: null, eventYearLabel: null },
       ],
       releases: [
         { albumId: 'al1', albumTitle: "No UFO's", artistName: 'Model 500', releaseDate: '1985-05-01' },
@@ -58,8 +59,9 @@ describe('buildGenreTimeline', () => {
       originYear: 1985,
       originYearLabel: null,
       originCountry: 'アメリカ',
+      backgroundNote: null,
       children: [
-        { genreId: 'g2', genreName: 'UK Garage', originYear: 1994, originYearLabel: null, originCountry: 'イギリス' },
+        { genreId: 'g2', genreName: 'UK Garage', originYear: 1994, originYearLabel: null, originCountry: 'イギリス', backgroundNote: null },
       ],
       highlights: [],
       releases: [],
@@ -78,8 +80,9 @@ describe('buildGenreTimeline', () => {
       originYear: 1970,
       originYearLabel: null,
       originCountry: null,
+      backgroundNote: null,
       children: [
-        { genreId: 'g2', genreName: 'Y', originYear: 1980, originYearLabel: null, originCountry: 'イギリス' },
+        { genreId: 'g2', genreName: 'Y', originYear: 1980, originYearLabel: null, originCountry: 'イギリス', backgroundNote: null },
       ],
       highlights: [],
       releases: [],
@@ -97,6 +100,7 @@ describe('buildGenreTimeline', () => {
       originYear: null,
       originYearLabel: null,
       originCountry: null,
+      backgroundNote: null,
       children: [],
       highlights: [],
       releases: [],
@@ -111,11 +115,12 @@ describe('buildGenreTimeline', () => {
       originYear: 1970,
       originYearLabel: null,
       originCountry: 'アメリカ',
+      backgroundNote: null,
       children: [
-        { genreId: 'g2', genreName: 'Y (no year)', originYear: null, originYearLabel: null, originCountry: null },
+        { genreId: 'g2', genreName: 'Y (no year)', originYear: null, originYearLabel: null, originCountry: null, backgroundNote: null },
       ],
       highlights: [
-        { genreId: 'g3', artistId: 'a1', artistName: 'Unrelated', albumId: null, albumTitle: null, note: null },
+        { genreId: 'g3', artistId: 'a1', artistName: 'Unrelated', albumId: null, albumTitle: null, note: null, eventYear: null, eventYearLabel: null },
       ],
       releases: [],
     })
@@ -130,9 +135,10 @@ describe('buildGenreTimeline', () => {
       originYear: 1970,
       originYearLabel: null,
       originCountry: 'アメリカ',
+      backgroundNote: null,
       children: [],
       highlights: [
-        { genreId: 'g1', artistId: 'a1', artistName: 'Artist A', albumId: 'al1', albumTitle: 'Album A', note: null },
+        { genreId: 'g1', artistId: 'a1', artistName: 'Artist A', albumId: 'al1', albumTitle: 'Album A', note: null, eventYear: null, eventYearLabel: null },
       ],
       releases: [],
     })
@@ -146,9 +152,10 @@ describe('buildGenreTimeline', () => {
       originYear: 1970,
       originYearLabel: null,
       originCountry: 'アメリカ',
+      backgroundNote: null,
       children: [],
       highlights: [
-        { genreId: 'g1', artistId: null, artistName: null, albumId: 'al1', albumTitle: 'Album A', note: null },
+        { genreId: 'g1', artistId: null, artistName: null, albumId: 'al1', albumTitle: 'Album A', note: null, eventYear: null, eventYearLabel: null },
       ],
       releases: [],
     })
@@ -162,8 +169,9 @@ describe('buildGenreTimeline', () => {
       originYear: 1850,
       originYearLabel: '19世紀',
       originCountry: 'アメリカ',
+      backgroundNote: null,
       children: [
-        { genreId: 'g2', genreName: 'ビバップ', originYear: 1875, originYearLabel: '19世紀後半', originCountry: 'アメリカ' },
+        { genreId: 'g2', genreName: 'ビバップ', originYear: 1875, originYearLabel: '19世紀後半', originCountry: 'アメリカ', backgroundNote: null },
       ],
       highlights: [],
       releases: [],
@@ -179,6 +187,7 @@ describe('buildGenreTimeline', () => {
       originYear: null,
       originYearLabel: null,
       originCountry: null,
+      backgroundNote: null,
       children: [],
       highlights: [],
       releases: [{ albumId: 'al1', albumTitle: 'Unreleased', artistName: 'Someone', releaseDate: null }],

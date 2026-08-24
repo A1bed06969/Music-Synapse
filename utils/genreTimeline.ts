@@ -35,12 +35,16 @@ export type GenreTimelineInput = {
   // エリアのグルーピングキー(セクション見出しにそのまま使う)。都市を含む詳細な
   // 発祥地テキストはUIの発祥地表示側(page.tsx)で別途扱う。
   originCountry: string | null
+  // その時代・サブジャンルの背景解説(特定のアーティストに紐づかない文章)。
+  // 発祥/派生行のサブタイトルに年ラベルと並べて表示する。
+  backgroundNote: string | null
   children: {
     genreId: string
     genreName: string
     originYear: number | null
     originYearLabel: string | null
     originCountry: string | null
+    backgroundNote: string | null
   }[]
   highlights: {
     genreId: string
@@ -49,8 +53,17 @@ export type GenreTimelineInput = {
     albumId: string | null
     albumTitle: string | null
     note: string | null
+    // ハイライト自身の年(未指定なら紐づくジャンルのorigin_yearにフォールバック)。
+    // 同じジャンル内で複数の時代の出来事を別々の年に置きたい場合に使う。
+    eventYear: number | null
+    eventYearLabel: string | null
   }[]
   releases: { albumId: string; albumTitle: string; artistName: string; releaseDate: string | null }[]
+}
+
+function joinSubtitle(...parts: (string | null)[]): string | null {
+  const joined = parts.filter((p): p is string => Boolean(p)).join(' — ')
+  return joined || null
 }
 
 function highlightTitle(h: GenreTimelineInput['highlights'][number]): string {
@@ -68,7 +81,7 @@ export function buildGenreTimeline(input: GenreTimelineInput): GenreTimelineGrou
       date: `${input.originYear}-01-01`,
       kind: 'origin',
       title: `${input.genreName} 発祥`,
-      subtitle: input.originYearLabel,
+      subtitle: joinSubtitle(input.originYearLabel, input.backgroundNote),
       href: null,
       indent: false,
       area: input.originCountry || UNKNOWN_AREA,
@@ -81,7 +94,7 @@ export function buildGenreTimeline(input: GenreTimelineInput): GenreTimelineGrou
       date: `${child.originYear}-01-01`,
       kind: 'derived',
       title: `${child.genreName}が派生`,
-      subtitle: child.originYearLabel,
+      subtitle: joinSubtitle(child.originYearLabel, child.backgroundNote),
       href: `/genres/${child.genreId}`,
       indent: true,
       area: child.originCountry || UNKNOWN_AREA,
@@ -98,13 +111,13 @@ export function buildGenreTimeline(input: GenreTimelineInput): GenreTimelineGrou
   }
 
   for (const h of input.highlights) {
-    const year = originYearByGenre.get(h.genreId)
+    const year = h.eventYear ?? originYearByGenre.get(h.genreId)
     if (!year) continue
     entries.push({
       date: `${year}-01-01`,
       kind: 'highlight',
       title: highlightTitle(h),
-      subtitle: h.note,
+      subtitle: joinSubtitle(h.eventYearLabel, h.note),
       href: h.albumId ? `/albums/${h.albumId}` : h.artistId ? `/artists/${h.artistId}` : null,
       indent: h.genreId !== input.genreId,
       area: originCountryByGenre.get(h.genreId) || UNKNOWN_AREA,

@@ -14,7 +14,9 @@ export default async function GenreDetailPage({ params }: { params: Promise<{ id
 
   const { data: lineageRows } = await supabase
     .from('genre_lineage')
-    .select('child:child_genre_id(id, name, origin_year, origin_year_label, origin_country, origin_city)')
+    .select(
+      'child:child_genre_id(id, name, origin_year, origin_year_label, origin_country, origin_city, background_note)'
+    )
     .eq('parent_genre_id', id)
 
   function firstOf<T>(value: T | T[] | null | undefined): T | null {
@@ -29,6 +31,7 @@ export default async function GenreDetailPage({ params }: { params: Promise<{ id
     origin_year_label: string | null
     origin_country: string | null
     origin_city: string | null
+    background_note: string | null
   }
   const children = (lineageRows ?? [])
     .map((r) => firstOf(r.child))
@@ -39,7 +42,7 @@ export default async function GenreDetailPage({ params }: { params: Promise<{ id
   const [{ data: highlights }, { data: artistGenreRows }] = await Promise.all([
     supabase
       .from('genre_highlight')
-      .select('id, genre_id, note, artist:artist_id(id, name), album:album_id(id, title)')
+      .select('id, genre_id, note, event_year, event_year_label, artist:artist_id(id, name), album:album_id(id, title)')
       .in('genre_id', allGenreIds),
     supabase.from('artist_genre').select('artist_id').eq('genre_id', id),
   ])
@@ -92,6 +95,7 @@ export default async function GenreDetailPage({ params }: { params: Promise<{ id
           originYearLabel={genre.origin_year_label}
           originCountry={genre.origin_country}
           originCity={genre.origin_city}
+          backgroundNote={genre.background_note}
           // eslint-disable-next-line react/no-children-prop -- `children` here is a data prop (child genres), not renderable content
           children={children}
           highlights={highlights ?? []}
