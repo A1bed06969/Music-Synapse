@@ -67,7 +67,9 @@ const GENRES: GenreDef[] = [
     originCountry: 'アメリカ南部 / デトロイト / ニューオーリンズ',
     backgroundNote:
       '誕生期・創始。ソウルやR&Bを背景に、リズムそのものを前面に押し出した新しい音楽が誕生した。James Brownは、ベース・ドラム・ギター・ホーンを細かく組み合わせながら、「1拍目を強調する(ON THE ONE)」「リズムを反復する」というファンク特有のグルーヴを確立。歌やメロディだけではなく「リズムそのもの」が主役となる。',
-    parents: [parent('soul'), parent('r&b')],
+    // 意図的に親を持たせない: blues/jazz/rock/folkの各ルートも同様に無親のままにしており、
+    // /genresの「メインジャンル」判定はgenre_lineageで親を持たないジャンルを基準にしている。
+    // soul/r&bへの由来は上のbackgroundNoteの文章で表現するに留める。
   },
   {
     name: 'P-Funk',
