@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation'
 import { createClient } from '@/utils/Supabase/server'
-import { buildEraCards, buildGenreEvolutionTree, type GenreRow, type LineageEdge, type HighlightRow } from '@/utils/genreHistory'
+import { buildEraCards, buildGenreEvolutionTree, getDescendantGenreIds, type GenreRow, type LineageEdge, type HighlightRow } from '@/utils/genreHistory'
 import GenreHistoryView from './GenreHistoryView'
 
 function firstOf<T>(value: T | T[] | null | undefined): T | null {
@@ -27,27 +27,9 @@ export default async function GenreDetailPage({ params }: { params: Promise<{ id
     relationType: r.relation_type as 'derivation' | 'influence' | 'crossover',
   }))
 
-  const descendantIds = new Set<string>([id])
-  {
-    // buildEraCards内部でも同じ列挙をするが、genreHighlightをどのジャンルID分
-    // 取得すればよいかを先に知る必要があるため、ここでも軽量に列挙する
-    const childrenByParent = new Map<string, string[]>()
-    for (const edge of edges) {
-      const list = childrenByParent.get(edge.parentGenreId) ?? []
-      list.push(edge.childGenreId)
-      childrenByParent.set(edge.parentGenreId, list)
-    }
-    const queue = [id]
-    while (queue.length > 0) {
-      const current = queue.shift()!
-      for (const child of childrenByParent.get(current) ?? []) {
-        if (descendantIds.has(child)) continue
-        descendantIds.add(child)
-        queue.push(child)
-      }
-    }
-  }
-  const allGenreIds = Array.from(descendantIds)
+  // buildEraCards/buildGenreEvolutionTree内部でも同じ列挙をするが、genreHighlightを
+  // どのジャンルID分取得すればよいかを先に知る必要があるため、ここでも呼び出す
+  const allGenreIds = getDescendantGenreIds(id, edges)
 
   const [{ data: genreRows }, { data: highlightRows }] = await Promise.all([
     supabase
