@@ -41,10 +41,12 @@ export default function EraCard({
   card,
   isSelected,
   onSelect,
+  dimmed = false,
 }: {
   card: EraCardData
   isSelected: boolean
   onSelect: () => void
+  dimmed?: boolean
 }) {
   const colors = COLOR_CLASSES[card.colorToken]
   const primaryArtist = card.representativeArtists[0]
@@ -56,7 +58,7 @@ export default function EraCard({
       onClick={onSelect}
       className={`group flex ${CARD_WIDTH_CLASS} shrink-0 snap-start flex-col rounded-lg border bg-[#141414] p-4 text-left transition duration-200 hover:-translate-y-1 hover:border-white/40 ${
         isSelected ? `${colors.border} ring-2 ${colors.ring}` : 'border-white/10'
-      }`}
+      } ${dimmed ? 'opacity-40' : 'opacity-100'}`}
     >
       <p className={`text-xs font-semibold uppercase tracking-wide ${colors.text}`}>{card.period}</p>
       <h3 className="mt-1 line-clamp-2 text-sm font-bold leading-snug text-white/90">{card.title}</h3>

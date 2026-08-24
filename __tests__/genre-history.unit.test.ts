@@ -49,6 +49,24 @@ function genre(overrides: Partial<GenreRow> & { id: string }): GenreRow {
   }
 }
 
+function highlight(overrides: Partial<HighlightRow> & { genreId: string }): HighlightRow {
+  return {
+    artistId: null,
+    artistName: null,
+    artistNameSecondary: null,
+    artistImageUrl: null,
+    albumId: null,
+    albumTitle: null,
+    albumType: null,
+    albumJacketUrl: null,
+    eventYear: null,
+    eventYearLabel: null,
+    note: null,
+    classification: 'core',
+    ...overrides,
+  }
+}
+
 describe('buildEraCards', () => {
   test('cards are ordered by originYear ascending across a multi-level tree', () => {
     const genres: GenreRow[] = [
@@ -76,18 +94,7 @@ describe('buildEraCards', () => {
     ]
     const edges: LineageEdge[] = [{ parentGenreId: 'chicago', childGenreId: 'bluesrock', relationType: 'derivation' }]
     const highlights: HighlightRow[] = [
-      {
-        genreId: 'bluesrock',
-        artistId: 'a1',
-        artistName: 'The Rolling Stones',
-        artistImageUrl: null,
-        albumId: null,
-        albumTitle: null,
-        albumJacketUrl: null,
-        eventYear: null,
-        eventYearLabel: null,
-        note: null,
-      },
+      highlight({ genreId: 'bluesrock', artistId: 'a1', artistName: 'The Rolling Stones' }),
     ]
     const cards = buildEraCards('chicago', genres, edges, highlights)
     const chicagoCard = cards.find((c) => c.genreId === 'chicago')!
@@ -135,18 +142,15 @@ describe('buildEraCards', () => {
   test('imageUrl prefers an artist image, falling back to an album jacket', () => {
     const genres: GenreRow[] = [genre({ id: 'blues', originYear: 1875 })]
     const highlights: HighlightRow[] = [
-      {
+      highlight({
         genreId: 'blues',
         artistId: 'a1',
         artistName: 'W.C. Handy',
-        artistImageUrl: null,
         albumId: 'al1',
         albumTitle: 'St. Louis Blues',
         albumJacketUrl: 'https://example.com/jacket.jpg',
         eventYear: 1914,
-        eventYearLabel: null,
-        note: null,
-      },
+      }),
     ]
     const cards = buildEraCards('blues', genres, [], highlights)
     assert.equal(cards[0].imageUrl, 'https://example.com/jacket.jpg')
@@ -217,7 +221,7 @@ describe('buildGenreEvolutionTree', () => {
   test('a root with no children returns a single node and no edges', () => {
     const genres: GenreRow[] = [genre({ id: 'A' })]
     const { nodes, edges } = buildGenreEvolutionTree('A', genres, [])
-    assert.deepEqual(nodes, [{ genreId: 'A', name: 'A', depth: 0, incomingRelationType: null }])
+    assert.deepEqual(nodes, [{ genreId: 'A', name: 'A', depth: 0, incomingRelationType: null, parentGenreId: null }])
     assert.deepEqual(edges, [])
   })
 

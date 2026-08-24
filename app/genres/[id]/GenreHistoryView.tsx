@@ -1,18 +1,30 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { GenreHistoryViewProps } from './genreHistoryTypes'
 import EraTimeline from './EraTimeline'
 import EraDetailPanel from './EraDetailPanel'
 import GenreEvolution from './GenreEvolution'
+import RegionBar from './RegionBar'
 
 export default function GenreHistoryView({ genreName, eraCards, evolutionNodes, evolutionEdges }: GenreHistoryViewProps) {
   const [selectedGenreId, setSelectedGenreId] = useState<string | null>(eraCards[0]?.genreId ?? null)
+  const [activeRegion, setActiveRegion] = useState<string | null>(null)
   const selectedCard = eraCards.find((c) => c.genreId === selectedGenreId) ?? null
+
+  const regions = useMemo(() => {
+    const seen = new Set<string>()
+    for (const card of eraCards) {
+      if (card.region) seen.add(card.region)
+    }
+    return [...seen]
+  }, [eraCards])
 
   return (
     <div className="animate-[fadein_0.3s_ease-in]">
-      <EraTimeline cards={eraCards} selectedGenreId={selectedGenreId} onSelect={setSelectedGenreId} />
+      <RegionBar regions={regions} activeRegion={activeRegion} onSelectRegion={setActiveRegion} />
+
+      <EraTimeline cards={eraCards} selectedGenreId={selectedGenreId} onSelect={setSelectedGenreId} activeRegion={activeRegion} />
 
       {selectedCard && <EraDetailPanel key={selectedCard.genreId} card={selectedCard} />}
 

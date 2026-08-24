@@ -23,13 +23,16 @@ export type HighlightRow = {
   genreId: string
   artistId: string | null
   artistName: string | null
+  artistNameSecondary: string | null
   artistImageUrl: string | null
   albumId: string | null
   albumTitle: string | null
+  albumType: string | null
   albumJacketUrl: string | null
   eventYear: number | null
   eventYearLabel: string | null
   note: string | null
+  classification: 'core' | 'influence'
 }
 
 export type EraColorToken = 'amber' | 'yellow' | 'green' | 'blue' | 'coral' | 'purple'
@@ -43,8 +46,22 @@ export type EraCardData = {
   region: string | null
   colorToken: EraColorToken
   description: string | null
-  representativeArtists: { id: string; name: string; imageUrl: string | null }[]
-  representativeWorks: { id: string; title: string; year: number | null; artistName: string | null; imageUrl: string | null }[]
+  representativeArtists: {
+    id: string
+    name: string
+    nameSecondary: string | null
+    imageUrl: string | null
+    classification: 'core' | 'influence'
+    note: string | null
+  }[]
+  representativeWorks: {
+    id: string
+    title: string
+    year: number | null
+    artistName: string | null
+    imageUrl: string | null
+    albumType: string | null
+  }[]
   imageUrl: string | null
 }
 
@@ -101,7 +118,14 @@ export function buildEraCards(
 
     const representativeArtists = genreHighlights
       .filter((h): h is HighlightRow & { artistId: string; artistName: string } => h.artistId !== null && h.artistName !== null)
-      .map((h) => ({ id: h.artistId, name: h.artistName, imageUrl: h.artistImageUrl }))
+      .map((h) => ({
+        id: h.artistId,
+        name: h.artistName,
+        nameSecondary: h.artistNameSecondary,
+        imageUrl: h.artistImageUrl,
+        classification: h.classification,
+        note: h.note,
+      }))
 
     const representativeWorks = genreHighlights
       .filter((h): h is HighlightRow & { albumId: string; albumTitle: string } => h.albumId !== null && h.albumTitle !== null)
@@ -111,6 +135,7 @@ export function buildEraCards(
         year: h.eventYear ?? genreRow.originYear,
         artistName: h.artistName,
         imageUrl: h.albumJacketUrl,
+        albumType: h.albumType,
       }))
 
     const imageUrl =
@@ -137,6 +162,7 @@ export type GenreEvolutionNode = {
   name: string
   depth: number
   incomingRelationType: 'derivation' | 'influence' | 'crossover' | null
+  parentGenreId: string | null
 }
 
 export type GenreEvolutionEdgeData = {
@@ -165,17 +191,22 @@ export function buildGenreEvolutionTree(
   const resultEdges: GenreEvolutionEdgeData[] = []
   const seen = new Set<string>()
 
-  function visit(genreId: string, depth: number, incomingRelationType: 'derivation' | 'influence' | 'crossover' | null) {
+  function visit(
+    genreId: string,
+    depth: number,
+    incomingRelationType: 'derivation' | 'influence' | 'crossover' | null,
+    parentGenreId: string | null
+  ) {
     if (seen.has(genreId)) return
     seen.add(genreId)
     const genreRow = genreById.get(genreId)
-    nodes.push({ genreId, name: genreRow?.name ?? genreId, depth, incomingRelationType })
+    nodes.push({ genreId, name: genreRow?.name ?? genreId, depth, incomingRelationType, parentGenreId })
     for (const edge of childrenByParent.get(genreId) ?? []) {
       resultEdges.push({ fromGenreId: edge.parentGenreId, toGenreId: edge.childGenreId, relationType: edge.relationType })
-      visit(edge.childGenreId, depth + 1, edge.relationType)
+      visit(edge.childGenreId, depth + 1, edge.relationType, genreId)
     }
   }
-  visit(rootId, 0, null)
+  visit(rootId, 0, null, null)
 
   return { nodes, edges: resultEdges }
 }

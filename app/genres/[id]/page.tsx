@@ -38,7 +38,9 @@ export default async function GenreDetailPage({ params }: { params: Promise<{ id
       .in('id', allGenreIds),
     supabase
       .from('genre_highlight')
-      .select('genre_id, note, event_year, event_year_label, artist:artist_id(id, name, image_url), album:album_id(id, title, jacket_url)')
+      .select(
+        'genre_id, note, event_year, event_year_label, classification, artist:artist_id(id, name, name_kana, name_en, image_url), album:album_id(id, title, jacket_url, album_type)'
+      )
       .in('genre_id', allGenreIds)
       .order('id'),
   ])
@@ -59,13 +61,16 @@ export default async function GenreDetailPage({ params }: { params: Promise<{ id
       genreId: h.genre_id,
       artistId: artist?.id ?? null,
       artistName: artist?.name ?? null,
+      artistNameSecondary: artist?.name_kana ?? artist?.name_en ?? null,
       artistImageUrl: artist?.image_url ?? null,
       albumId: album?.id ?? null,
       albumTitle: album?.title ?? null,
+      albumType: album?.album_type ?? null,
       albumJacketUrl: album?.jacket_url ?? null,
       eventYear: h.event_year,
       eventYearLabel: h.event_year_label,
       note: h.note,
+      classification: (h.classification as 'core' | 'influence') ?? 'core',
     }
   })
 

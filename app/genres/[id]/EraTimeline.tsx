@@ -8,10 +8,12 @@ export default function EraTimeline({
   cards,
   selectedGenreId,
   onSelect,
+  activeRegion,
 }: {
   cards: EraCardData[]
   selectedGenreId: string | null
   onSelect: (genreId: string) => void
+  activeRegion?: string | null
 }) {
   const columnRefs = useRef<Map<string, HTMLDivElement>>(new Map())
 
@@ -51,7 +53,12 @@ export default function EraTimeline({
             >
               {card.period}
             </button>
-            <EraCard card={card} isSelected={selectedGenreId === card.genreId} onSelect={() => handleSelect(card.genreId)} />
+            <EraCard
+              card={card}
+              isSelected={selectedGenreId === card.genreId}
+              onSelect={() => handleSelect(card.genreId)}
+              dimmed={Boolean(activeRegion) && card.region !== activeRegion}
+            />
           </div>
         ))}
       </div>

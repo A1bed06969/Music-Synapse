@@ -1,3 +1,6 @@
+'use client'
+
+import { useMemo, useState } from 'react'
 import type { GenreEvolutionNode as GenreEvolutionNodeData, GenreEvolutionEdgeData } from '@/utils/genreHistory'
 import GenreEvolutionNode, { EDGE_STYLE_LABEL } from './GenreEvolutionNode'
 
@@ -28,23 +31,43 @@ function buildChildrenByParent(nodes: GenreEvolutionNodeData[], edges: GenreEvol
   return { rootId, childrenByParent }
 }
 
+/** hoveredIdからルートまで、parentGenreIdを遡ってノードIDの集合を作る
+ * (系統をたどるパスをハイライトするため)。 */
+function pathToRoot(hoveredId: string, nodeById: Map<string, GenreEvolutionNodeData>): Set<string> {
+  const path = new Set<string>()
+  let current: string | undefined = hoveredId
+  while (current) {
+    path.add(current)
+    current = nodeById.get(current)?.parentGenreId ?? undefined
+  }
+  return path
+}
+
 function TreeRow({
   genreId,
   nodeById,
   childrenByParent,
   ancestorContinues,
   isLast,
+  highlightedPath,
+  onHoverStart,
+  onHoverEnd,
 }: {
   genreId: string
   nodeById: Map<string, GenreEvolutionNodeData>
   childrenByParent: Map<string, string[]>
   ancestorContinues: boolean[]
   isLast: boolean
+  highlightedPath: Set<string> | null
+  onHoverStart: (genreId: string) => void
+  onHoverEnd: () => void
 }) {
   const node = nodeById.get(genreId)
   if (!node) return null
   const children = childrenByParent.get(genreId) ?? []
   const lineStyle = borderStyleFor(node.incomingRelationType)
+  const isHighlighted = highlightedPath?.has(genreId) ?? false
+  const isDimmed = highlightedPath !== null && !isHighlighted
 
   return (
     <li>
@@ -77,7 +100,14 @@ function TreeRow({
             />
           </span>
         )}
-        <GenreEvolutionNode genreId={node.genreId} name={node.name} />
+        <GenreEvolutionNode
+          genreId={node.genreId}
+          name={node.name}
+          isHighlighted={isHighlighted}
+          isDimmed={isDimmed}
+          onHoverStart={() => onHoverStart(genreId)}
+          onHoverEnd={onHoverEnd}
+        />
       </div>
 
       {children.length > 0 && (
@@ -90,6 +120,9 @@ function TreeRow({
               childrenByParent={childrenByParent}
               ancestorContinues={node.depth > 0 ? [...ancestorContinues, !isLast] : ancestorContinues}
               isLast={i === children.length - 1}
+              highlightedPath={highlightedPath}
+              onHoverStart={onHoverStart}
+              onHoverEnd={onHoverEnd}
             />
           ))}
         </ul>
@@ -105,14 +138,25 @@ export default function GenreEvolution({
   nodes: GenreEvolutionNodeData[]
   edges: GenreEvolutionEdgeData[]
 }) {
-  const nodeById = new Map(nodes.map((n) => [n.genreId, n]))
-  const { rootId, childrenByParent } = buildChildrenByParent(nodes, edges)
+  const [hoveredGenreId, setHoveredGenreId] = useState<string | null>(null)
+  const nodeById = useMemo(() => new Map(nodes.map((n) => [n.genreId, n])), [nodes])
+  const { rootId, childrenByParent } = useMemo(() => buildChildrenByParent(nodes, edges), [nodes, edges])
+  const highlightedPath = hoveredGenreId ? pathToRoot(hoveredGenreId, nodeById) : null
 
   return (
     <div className="mt-4">
       {rootId && (
         <ul>
-          <TreeRow genreId={rootId} nodeById={nodeById} childrenByParent={childrenByParent} ancestorContinues={[]} isLast={true} />
+          <TreeRow
+            genreId={rootId}
+            nodeById={nodeById}
+            childrenByParent={childrenByParent}
+            ancestorContinues={[]}
+            isLast={true}
+            highlightedPath={highlightedPath}
+            onHoverStart={setHoveredGenreId}
+            onHoverEnd={() => setHoveredGenreId(null)}
+          />
         </ul>
       )}
 
