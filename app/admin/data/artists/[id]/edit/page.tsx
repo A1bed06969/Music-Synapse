@@ -65,6 +65,13 @@ export default async function ArtistEditPage({
           >
             iTunesで統合
           </Link>
+          <Link
+            href={`/admin/data/artists/${artist.id}/discogs-lookup`}
+            prefetch={false}
+            className="text-xs text-white/40 hover:text-white/70"
+          >
+            Discogsから画像・プロフィール取込
+          </Link>
         </div>
       </div>
 

@@ -328,3 +328,47 @@ export async function fetchDiscogsReleaseInfo(url: string): Promise<DiscogsRelea
 
   return { imageUrl, releaseDate, labelName, tracks }
 }
+
+// ディスクガイド経由で登録されたアーティスト等、サブスクに存在しない(=iTunesで
+// 取り込めない)アーティストは画像・プロフィールが空のまま残ってしまう。
+// Discogsのアーティストページから同様の情報を手動取込できるようにする。
+
+export type DiscogsArtistInfo = {
+  discogsArtistId: number
+  name: string
+  imageUrl?: string
+  profile?: string
+}
+
+function extractArtistId(url: string): number | null {
+  const match = url.match(/discogs\.com\/(?:[a-z]{2}\/)?artist\/(\d+)/)
+  return match ? parseInt(match[1], 10) : null
+}
+
+// Discogsのprofileはウィキ風マークアップ([b]太字[/b]、[url=...]リンク[/url]、
+// [a=アーティスト名]相互参照等)を含むため、そのまま保存すると記号が残って
+// 読みづらい。表示用に簡易的なプレーンテキストへ変換する。
+function stripDiscogsMarkup(text: string): string {
+  return text
+    .replace(/\[url=[^\]]*\]([^[]*)\[\/url\]/gi, '$1')
+    .replace(/\[(?:a|l|m|r|url)=([^\]]*)\]/gi, '$1')
+    .replace(/\[\/?(?:b|i|u|url|a|l|m|r)\]/gi, '')
+    .replace(/\r\n/g, '\n')
+    .trim()
+}
+
+export async function fetchDiscogsArtistInfo(url: string): Promise<DiscogsArtistInfo> {
+  const artistId = extractArtistId(url)
+  if (!artistId) {
+    throw new Error('DiscogsのアーティストページのURL(discogs.com/artist/...)を指定してください')
+  }
+
+  const data = await fetchDiscogs(`${DISCOGS_BASE}/artists/${artistId}`, 'artist info')
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const primaryImage = (data.images ?? []).find((i: any) => i.type === 'primary') ?? data.images?.[0]
+  const imageUrl: string | undefined = primaryImage?.uri
+  const profile: string | undefined = data.profile ? stripDiscogsMarkup(data.profile) : undefined
+
+  return { discogsArtistId: artistId, name: data.name, imageUrl, profile }
+}
