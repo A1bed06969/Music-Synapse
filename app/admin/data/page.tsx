@@ -21,6 +21,7 @@ const TOOL_LINKS = [
   { href: '/admin/data/venues', label: '会場の座標登録' },
   { href: '/admin/data/artists/geo', label: 'アーティスト座標を一括更新' },
   { href: '/admin/data/artists/images', label: 'アーティスト画像を一括更新' },
+  { href: '/admin/data/artists/unmatched', label: '未マッチアーティストを検索' },
   { href: '/admin/data/artists/unreleased', label: '未解禁アーティスト検出' },
   { href: '/admin/data/artists/musicbrainz-queue', label: 'MusicBrainzプロフィール未解決アーティスト' },
   { href: '/admin/data/media/radio-pilot', label: 'ラジオ局PP収集(パイロット)' },
