@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useMemo, useRef, useState, useCallback } from 'react'
+import { useEffect, useMemo, useRef, useState, useCallback, memo } from 'react'
 import { UNCLASSIFIED_COLOR } from '@/lib/landscape/genreColors'
 
 export type LandscapeArtist = {
@@ -44,6 +44,106 @@ function initialTransform(): Transform {
   return { scale: 1, tx: 0, ty: 0 }
 }
 
+// ノード描画だけを切り出したメモ化コンポーネント。ドラッグ/ホバー移動のたびに
+// 発生するpointer座標の更新(親の頻繁な再レンダー)から切り離すことで、
+// 799件のcircle/text(+インラインの各種イベントハンドラ)を毎フレーム
+// 作り直さないようにする。これをやらないと、モバイルでのドラッグ中に
+// 大量の再レンダーが積み重なりWebKitのコンテンツプロセスが応答不能になる
+// (実際にモバイルSafariでクラッシュする不具合として発生した)。
+const LandscapeNodes = memo(function LandscapeNodes({
+  artists,
+  matchedIds,
+  hasQuery,
+  selectedId,
+  hoveredId,
+  focusedId,
+  scale,
+  onHover,
+  onUnhover,
+  onFocusNode,
+  onBlurNode,
+  onSelect,
+}: {
+  artists: LandscapeArtist[]
+  matchedIds: Set<string>
+  hasQuery: boolean
+  selectedId: string | null
+  hoveredId: string | null
+  focusedId: string | null
+  scale: number
+  onHover: (id: string) => void
+  onUnhover: (id: string) => void
+  onFocusNode: (id: string) => void
+  onBlurNode: (id: string) => void
+  onSelect: (id: string) => void
+}) {
+  function shouldShowLabel(artist: LandscapeArtist): boolean {
+    if (artist.artistId === selectedId) return true
+    if (artist.artistId === hoveredId || artist.artistId === focusedId) return true
+    if (matchedIds.has(artist.artistId)) return true
+    if (scale >= 2.6) return true
+    if (scale >= 1.3 && artist.importance >= 1.24) return true
+    return false
+  }
+
+  return (
+    <>
+      {artists.map((artist) => {
+        const cx = toViewX(artist.x)
+        const cy = toViewY(artist.y)
+        const isSearchMatch = matchedIds.has(artist.artistId)
+        const isDimmedBySearch = hasQuery && !isSearchMatch
+        const isDimmedByFocus = selectedId !== null && artist.artistId !== selectedId
+        const r = (BASE_R * artist.importance * (isSearchMatch ? 1.6 : 1)) / Math.sqrt(Math.max(scale, 1))
+        const opacity = isDimmedBySearch ? 0.12 : isDimmedByFocus ? 0.25 : 1
+
+        return (
+          <g key={artist.artistId} opacity={opacity} className="landscape-node">
+            <circle
+              cx={cx}
+              cy={cy}
+              r={r}
+              fill={artist.color === UNCLASSIFIED_COLOR ? 'transparent' : artist.color}
+              stroke={artist.color}
+              strokeWidth={artist.color === UNCLASSIFIED_COLOR ? 1 : 0}
+              className="cursor-pointer"
+              tabIndex={0}
+              role="button"
+              aria-label={`${artist.name}${artist.rootGenre ? `、${artist.rootGenre}` : '、未分類'}`}
+              onMouseEnter={() => onHover(artist.artistId)}
+              onMouseLeave={() => onUnhover(artist.artistId)}
+              onFocus={() => onFocusNode(artist.artistId)}
+              onBlur={() => onBlurNode(artist.artistId)}
+              onClick={() => onSelect(artist.artistId)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  onSelect(artist.artistId)
+                }
+              }}
+            />
+            {(artist.artistId === selectedId || artist.artistId === focusedId) && (
+              <circle cx={cx} cy={cy} r={r + 3} fill="none" stroke="#fff" strokeWidth={1.5} opacity={0.8} />
+            )}
+            {shouldShowLabel(artist) && (
+              <text
+                x={cx + r + 5}
+                y={cy + 3.5}
+                fontSize={11}
+                fill="rgba(255,255,255,0.85)"
+                pointerEvents="none"
+                className="landscape-label"
+              >
+                {artist.name}
+              </text>
+            )}
+          </g>
+        )
+      })}
+    </>
+  )
+})
+
 export default function LandscapeView({
   artists,
   genreOptions,
@@ -65,6 +165,21 @@ export default function LandscapeView({
   const dragRef = useRef<{ startX: number; startY: number; startTx: number; startTy: number } | null>(null)
   const pinchRef = useRef<{ startDist: number; startScale: number; midX: number; midY: number } | null>(null)
 
+  // コンテナの実サイズは初回計測+リサイズ時だけ更新する(pointermoveの
+  // たびに毎回getBoundingClientRectを呼んで再レンダーを引き起こさないため)
+  useEffect(() => {
+    const svg = svgRef.current
+    if (!svg) return
+    const update = () => {
+      const rect = svg.getBoundingClientRect()
+      setContainerSize({ width: rect.width, height: rect.height })
+    }
+    update()
+    const observer = new ResizeObserver(update)
+    observer.observe(svg)
+    return () => observer.disconnect()
+  }, [])
+
   const selectedArtist = useMemo(() => artists.find((a) => a.artistId === selectedId) ?? null, [artists, selectedId])
 
   const normalizedQuery = query.trim().toLowerCase()
@@ -84,16 +199,18 @@ export default function LandscapeView({
     const svg = svgRef.current
     if (!svg) return { dx, dy }
     const rect = svg.getBoundingClientRect()
+    if (rect.width === 0 || rect.height === 0) return { dx: 0, dy: 0 }
     return { dx: (dx * VIEW_W) / rect.width, dy: (dy * VIEW_H) / rect.height }
   }, [])
   const clientPointToViewBox = useCallback((clientX: number, clientY: number) => {
     const svg = svgRef.current
     if (!svg) return { x: 0, y: 0 }
     const rect = svg.getBoundingClientRect()
+    if (rect.width === 0 || rect.height === 0) return { x: 0, y: 0 }
     return { x: ((clientX - rect.left) * VIEW_W) / rect.width, y: ((clientY - rect.top) * VIEW_H) / rect.height }
   }, [])
 
-  function zoomAt(pointX: number, pointY: number, factor: number) {
+  const zoomAt = useCallback((pointX: number, pointY: number, factor: number) => {
     setTransform((prev) => {
       const newScale = clamp(prev.scale * factor, MIN_SCALE, MAX_SCALE)
       const ratio = newScale / prev.scale
@@ -103,7 +220,7 @@ export default function LandscapeView({
         ty: pointY - (pointY - prev.ty) * ratio,
       }
     })
-  }
+  }, [])
 
   function handleWheel(e: React.WheelEvent<SVGSVGElement>) {
     e.preventDefault()
@@ -119,10 +236,7 @@ export default function LandscapeView({
   }
   function handlePointerMove(e: React.PointerEvent<SVGSVGElement>) {
     const rect = svgRef.current?.getBoundingClientRect()
-    if (rect) {
-      setPointer({ x: e.clientX - rect.left, y: e.clientY - rect.top })
-      setContainerSize({ width: rect.width, height: rect.height })
-    }
+    if (rect) setPointer({ x: e.clientX - rect.left, y: e.clientY - rect.top })
     if (!dragRef.current) return
     const { dx, dy } = clientDeltaToViewBox(e.clientX - dragRef.current.startX, e.clientY - dragRef.current.startY)
     setTransform((prev) => ({ ...prev, tx: dragRef.current!.startTx + dx, ty: dragRef.current!.startTy + dy }))
@@ -149,30 +263,38 @@ export default function LandscapeView({
         (e.touches[0].clientX + e.touches[1].clientX) / 2,
         (e.touches[0].clientY + e.touches[1].clientY) / 2
       )
-      pinchRef.current = { startDist: touchDistance(e.touches), startScale: transform.scale, midX: mid.x, midY: mid.y }
+      const dist = touchDistance(e.touches)
+      if (dist > 0) pinchRef.current = { startDist: dist, startScale: transform.scale, midX: mid.x, midY: mid.y }
+      dragRef.current = null
     } else if (e.touches.length === 1) {
       dragRef.current = { startX: e.touches[0].clientX, startY: e.touches[0].clientY, startTx: transform.tx, startTy: transform.ty }
+      pinchRef.current = null
     }
   }
   function handleTouchMove(e: React.TouchEvent<SVGSVGElement>) {
     if (e.touches.length === 2 && pinchRef.current) {
       const dist = touchDistance(e.touches)
+      if (dist <= 0 || pinchRef.current.startDist <= 0) return
       const factor = dist / pinchRef.current.startDist
       const newScale = clamp(pinchRef.current.startScale * factor, MIN_SCALE, MAX_SCALE)
-      const ratio = newScale / transform.scale
-      setTransform((prev) => ({
-        scale: newScale,
-        tx: pinchRef.current!.midX - (pinchRef.current!.midX - prev.tx) * ratio,
-        ty: pinchRef.current!.midY - (pinchRef.current!.midY - prev.ty) * ratio,
-      }))
+      setTransform((prev) => {
+        const ratio = newScale / prev.scale
+        return {
+          scale: newScale,
+          tx: pinchRef.current!.midX - (pinchRef.current!.midX - prev.tx) * ratio,
+          ty: pinchRef.current!.midY - (pinchRef.current!.midY - prev.ty) * ratio,
+        }
+      })
     } else if (e.touches.length === 1 && dragRef.current) {
       const { dx, dy } = clientDeltaToViewBox(e.touches[0].clientX - dragRef.current.startX, e.touches[0].clientY - dragRef.current.startY)
       setTransform((prev) => ({ ...prev, tx: dragRef.current!.startTx + dx, ty: dragRef.current!.startTy + dy }))
     }
   }
-  function handleTouchEnd() {
-    dragRef.current = null
-    pinchRef.current = null
+  function handleTouchEnd(e: React.TouchEvent<SVGSVGElement>) {
+    if (e.touches.length === 0) {
+      dragRef.current = null
+      pinchRef.current = null
+    }
   }
 
   function zoomButton(factor: number) {
@@ -183,21 +305,20 @@ export default function LandscapeView({
     setSelectedId(null)
   }
 
-  // ラベル表示の優先順位(仕様20番): 選択中 > 検索一致 > importance高 > hover/focus > その他。
-  // ズームレベルに応じて表示量を増減させ、情報過多を防ぐ
-  function shouldShowLabel(artist: LandscapeArtist): boolean {
-    if (artist.artistId === selectedId) return true
-    if (artist.artistId === hoveredId || artist.artistId === focusedId) return true
-    if (matchedIds.has(artist.artistId)) return true
-    if (transform.scale >= 2.6) return true
-    if (transform.scale >= 1.3 && artist.importance >= 1.24) return true
-    return false
-  }
+  const handleHover = useCallback((id: string) => setHoveredId(id), [])
+  const handleUnhover = useCallback((id: string) => setHoveredId((prev) => (prev === id ? null : prev)), [])
+  const handleFocusNode = useCallback((id: string) => setFocusedId(id), [])
+  const handleBlurNode = useCallback((id: string) => setFocusedId((prev) => (prev === id ? null : prev)), [])
+  const handleSelect = useCallback((id: string) => setSelectedId(id), [])
 
   const hoveredArtist = artists.find((a) => a.artistId === hoveredId) ?? null
 
   return (
     <div className="rounded-lg border border-white/10 bg-white/[0.02]">
+      <style>{`
+        .landscape-node { transition: opacity 200ms ease; }
+        .landscape-label { paint-order: stroke; stroke: #0a0a0c; stroke-width: 3px; }
+      `}</style>
       {/* Genre Filter */}
       <div className="flex flex-wrap items-center gap-1.5 border-b border-white/10 p-3">
         <button
@@ -272,59 +393,20 @@ export default function LandscapeView({
               <line x1={0} y1={VIEW_H / 2} x2={VIEW_W} y2={VIEW_H / 2} stroke="rgba(255,255,255,0.07)" strokeWidth={1} />
             </g>
 
-            {/* Artist Nodes */}
-            {visibleArtists.map((artist) => {
-              const cx = toViewX(artist.x)
-              const cy = toViewY(artist.y)
-              const isSearchMatch = matchedIds.has(artist.artistId)
-              const isDimmedBySearch = normalizedQuery.length > 0 && !isSearchMatch
-              const isDimmedByFocus = selectedId !== null && artist.artistId !== selectedId
-              const r = (BASE_R * artist.importance * (isSearchMatch ? 1.6 : 1)) / Math.sqrt(Math.max(transform.scale, 1))
-              const opacity = isDimmedBySearch ? 0.12 : isDimmedByFocus ? 0.25 : 1
-
-              return (
-                <g key={artist.artistId} opacity={opacity} style={{ transition: 'opacity 200ms ease' }}>
-                  <circle
-                    cx={cx}
-                    cy={cy}
-                    r={r}
-                    fill={artist.color === UNCLASSIFIED_COLOR ? 'transparent' : artist.color}
-                    stroke={artist.color}
-                    strokeWidth={artist.color === UNCLASSIFIED_COLOR ? 1 : 0}
-                    className="cursor-pointer"
-                    tabIndex={0}
-                    role="button"
-                    aria-label={`${artist.name}${artist.rootGenre ? `、${artist.rootGenre}` : '、未分類'}`}
-                    onMouseEnter={() => setHoveredId(artist.artistId)}
-                    onMouseLeave={() => setHoveredId((prev) => (prev === artist.artistId ? null : prev))}
-                    onFocus={() => setFocusedId(artist.artistId)}
-                    onBlur={() => setFocusedId((prev) => (prev === artist.artistId ? null : prev))}
-                    onClick={() => setSelectedId(artist.artistId)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault()
-                        setSelectedId(artist.artistId)
-                      }
-                    }}
-                  />
-                  {(artist.artistId === selectedId || artist.artistId === focusedId) && (
-                    <circle cx={cx} cy={cy} r={r + 3} fill="none" stroke="#fff" strokeWidth={1.5} opacity={0.8} />
-                  )}
-                  {shouldShowLabel(artist) && (
-                    <text
-                      x={cx + r + 5}
-                      y={cy + 3.5}
-                      fontSize={11}
-                      fill="rgba(255,255,255,0.85)"
-                      pointerEvents="none"
-                      style={{ paintOrder: 'stroke', stroke: '#0a0a0c', strokeWidth: 3 }}
-                    >
-                      {artist.name}
-                    </text>
-                  )}
-                </g>
-              )
-            })}
+            <LandscapeNodes
+              artists={visibleArtists}
+              matchedIds={matchedIds}
+              hasQuery={normalizedQuery.length > 0}
+              selectedId={selectedId}
+              hoveredId={hoveredId}
+              focusedId={focusedId}
+              scale={transform.scale}
+              onHover={handleHover}
+              onUnhover={handleUnhover}
+              onFocusNode={handleFocusNode}
+              onBlurNode={handleBlurNode}
+              onSelect={handleSelect}
+            />
           </g>
         </svg>
 
