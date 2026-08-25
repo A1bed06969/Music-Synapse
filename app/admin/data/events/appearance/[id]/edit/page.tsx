@@ -132,15 +132,20 @@ export default async function EditEventAppearancePage({ params }: { params: Prom
               <Link href={`/artists/${c.id}`} className="hover:underline">
                 {c.name}
               </Link>
-              {collaborators.length > 1 && (
-                <form action={removeAppearanceArtist}>
-                  <input type="hidden" name="event_appearance_id" value={entry.id} />
-                  <input type="hidden" name="artist_id" value={c.id} />
-                  <button type="submit" className="text-xs text-red-400/70 hover:text-red-400">
-                    外す
-                  </button>
-                </form>
-              )}
+              <span className="flex shrink-0 items-center gap-3">
+                <Link href={`/admin/data/artists/${c.id}/itunes-merge`} className="text-xs text-white/40 hover:text-white/70">
+                  紐付けが違う場合はiTunesで検索し直す →
+                </Link>
+                {collaborators.length > 1 && (
+                  <form action={removeAppearanceArtist}>
+                    <input type="hidden" name="event_appearance_id" value={entry.id} />
+                    <input type="hidden" name="artist_id" value={c.id} />
+                    <button type="submit" className="text-xs text-red-400/70 hover:text-red-400">
+                      外す
+                    </button>
+                  </form>
+                )}
+              </span>
             </li>
           ))}
         </ul>
