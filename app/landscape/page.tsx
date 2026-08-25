@@ -4,10 +4,14 @@ import { resolveRootGenreName, calculateLandscapePosition } from '@/lib/landscap
 import { colorForGenre } from '@/lib/landscape/genreColors'
 import LandscapeView, { type LandscapeArtist } from './LandscapeView'
 
+export const maxDuration = 60
+
 export const metadata = {
   title: 'ミュージックランドスケープ | Music Synapse',
   description: 'アーティストをジャンルの近さで空間に配置し、検索ではなく探索で音楽と出会うためのビジュアライゼーション。',
 }
+
+const PER_GENRE_CAP = 15
 
 /** artist_genre(疎だが直接タグ)とgenre_highlight(このセッションで構築した
  * ジャンル年表由来、より充実)の両方から、アーティストごとに1件だけ具体
@@ -63,31 +67,59 @@ export default async function LandscapePage() {
     highlightCountByArtistId.set(row.artist_id, (highlightCountByArtistId.get(row.artist_id) ?? 0) + 1)
   }
 
-  const artistIds = [...genreIdByArtistId.keys()]
+  // モバイルでの描画負荷とサーバー側のレスポンス時間を抑えるため、
+  // 「まず全アーティストの詳細をDBから取得してから間引く」のではなく、
+  // ジャンル解決とhighlight件数(ここまでは既に手元にあるデータのみのJS処理、
+  // 追加のDB往復は無い)だけで先に対象を絞り込み、artistテーブルへの問い合わせは
+  // 最終的に必要な分だけ行う。以前の実装では間引きをartist取得の後段に置いていた
+  // ため、実際には799件全件分artistテーブルへ問い合わせており、モバイル経由の
+  // 遅い回線ではサーバー応答自体が遅延・タイムアウトしていた可能性が高い。
+  const rootGenreByArtistId = new Map<string, string | null>()
+  const specificGenreByArtistId = new Map<string, string | null>()
+  for (const [artistId, genreId] of genreIdByArtistId) {
+    specificGenreByArtistId.set(artistId, genreNameById.get(genreId) ?? null)
+    rootGenreByArtistId.set(artistId, resolveRootGenreName(genreId, genreNameById, edges))
+  }
+
+  const idsByGenre = new Map<string, string[]>()
+  for (const [artistId] of genreIdByArtistId) {
+    const key = rootGenreByArtistId.get(artistId) ?? '__unclassified__'
+    const list = idsByGenre.get(key) ?? []
+    list.push(artistId)
+    idsByGenre.set(key, list)
+  }
+
+  const selectedArtistIds: string[] = []
+  for (const ids of idsByGenre.values()) {
+    ids.sort((a, b) => (highlightCountByArtistId.get(b) ?? 0) - (highlightCountByArtistId.get(a) ?? 0))
+    selectedArtistIds.push(...ids.slice(0, PER_GENRE_CAP))
+  }
 
   const artistsById = new Map<
     string,
     { id: string; name: string; image_url: string | null; hometown_city: string | null; hometown_country: string | null; formed_year: number | null }
   >()
-  // artist_id一覧が数百〜数千件になりうるため、PostgRESTの.in()一括取得ではなく
-  // チャンク分割して取得する(URL長・行数上限を避けるため)
+  // 300件を超えるケースへの保険としてチャンク分割+並列取得にしておく
+  // (以前は逐次awaitのforループで、必要以上に遅くなっていた)
   const CHUNK = 300
-  for (let i = 0; i < artistIds.length; i += CHUNK) {
-    const chunk = artistIds.slice(i, i + CHUNK)
-    const { data } = await supabase
-      .from('artist')
-      .select('id, name, image_url, hometown_city, hometown_country, formed_year')
-      .in('id', chunk)
+  const chunks: string[][] = []
+  for (let i = 0; i < selectedArtistIds.length; i += CHUNK) chunks.push(selectedArtistIds.slice(i, i + CHUNK))
+  const chunkResults = await Promise.all(
+    chunks.map((chunk) =>
+      supabase.from('artist').select('id, name, image_url, hometown_city, hometown_country, formed_year').in('id', chunk)
+    )
+  )
+  for (const { data } of chunkResults) {
     for (const a of data ?? []) artistsById.set(a.id, a)
   }
 
   const landscapeArtists: LandscapeArtist[] = []
-  for (const [artistId, genreId] of genreIdByArtistId) {
+  for (const artistId of selectedArtistIds) {
     const artist = artistsById.get(artistId)
     if (!artist) continue
 
-    const specificGenreName = genreNameById.get(genreId) ?? null
-    const rootGenreName = resolveRootGenreName(genreId, genreNameById, edges)
+    const specificGenreName = specificGenreByArtistId.get(artistId) ?? null
+    const rootGenreName = rootGenreByArtistId.get(artistId) ?? null
     const position = calculateLandscapePosition({ seedId: artistId, rootGenreName, specificGenreName })
     const highlightCount = highlightCountByArtistId.get(artistId) ?? 0
 
@@ -110,34 +142,16 @@ export default async function LandscapePage() {
     a.localeCompare(b)
   )
 
-  // モバイルでの描画負荷を抑えるため、799件全部ではなくジャンルごとに上限を
-  // 設けて間引く。全体で単純にimportance上位だけを残すと、importanceの低い
-  // (highlightの少ない)ジャンルが丸ごと消えて「ジャンル軸の分布」が
-  // 分かりにくくなるため、ジャンルごとに上限件数を設けて満遍なく残す方式にする
-  const PER_GENRE_CAP = 15
-  const byGenre = new Map<string, LandscapeArtist[]>()
-  for (const a of landscapeArtists) {
-    const key = a.rootGenre ?? '__unclassified__'
-    const list = byGenre.get(key) ?? []
-    list.push(a)
-    byGenre.set(key, list)
-  }
-  const cappedArtists: LandscapeArtist[] = []
-  for (const list of byGenre.values()) {
-    list.sort((a, b) => b.importance - a.importance)
-    cappedArtists.push(...list.slice(0, PER_GENRE_CAP))
-  }
-
   return (
     <div className="mx-auto max-w-[1600px] px-6 py-12">
       <h1 className="text-2xl font-bold">MUSIC LANDSCAPE</h1>
       <p className="mt-2 text-sm text-white/50">
         アーティストをジャンルの近さで空間に配置した地図。検索するのではなく、眺めながら歩いて音楽と出会うためのビジュアライゼーションです。
-        (現在は各ジャンル上位{PER_GENRE_CAP}組・{cappedArtists.length}組を表示中)
+        (現在は各ジャンル上位{PER_GENRE_CAP}組・{landscapeArtists.length}組を表示中)
       </p>
 
       <div className="mt-8">
-        <LandscapeView artists={cappedArtists} genreOptions={genreOptions} />
+        <LandscapeView artists={landscapeArtists} genreOptions={genreOptions} />
       </div>
     </div>
   )
