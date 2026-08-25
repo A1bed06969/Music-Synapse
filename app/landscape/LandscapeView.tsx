@@ -57,7 +57,7 @@ const LandscapeNodes = memo(function LandscapeNodes({
   selectedId,
   hoveredId,
   focusedId,
-  scale,
+  zoomLevel,
   onHover,
   onUnhover,
   onFocusNode,
@@ -70,7 +70,10 @@ const LandscapeNodes = memo(function LandscapeNodes({
   selectedId: string | null
   hoveredId: string | null
   focusedId: string | null
-  scale: number
+  // 生のズーム倍率(ピンチ/ホイール中は毎フレーム変わる)ではなく、離散化した
+  // 段階(0/1/2)を受け取る。生の値をそのまま使うと、ピンチズーム中に799ノード
+  // 全てがフレームごとに再レンダーされ、モバイルで重くなる原因になっていた
+  zoomLevel: 0 | 1 | 2
   onHover: (id: string) => void
   onUnhover: (id: string) => void
   onFocusNode: (id: string) => void
@@ -81,8 +84,8 @@ const LandscapeNodes = memo(function LandscapeNodes({
     if (artist.artistId === selectedId) return true
     if (artist.artistId === hoveredId || artist.artistId === focusedId) return true
     if (matchedIds.has(artist.artistId)) return true
-    if (scale >= 2.6) return true
-    if (scale >= 1.3 && artist.importance >= 1.24) return true
+    if (zoomLevel >= 2) return true
+    if (zoomLevel >= 1 && artist.importance >= 1.24) return true
     return false
   }
 
@@ -94,7 +97,11 @@ const LandscapeNodes = memo(function LandscapeNodes({
         const isSearchMatch = matchedIds.has(artist.artistId)
         const isDimmedBySearch = hasQuery && !isSearchMatch
         const isDimmedByFocus = selectedId !== null && artist.artistId !== selectedId
-        const r = (BASE_R * artist.importance * (isSearchMatch ? 1.6 : 1)) / Math.sqrt(Math.max(scale, 1))
+        // 半径はワールド座標側の固定値にする(スケールに応じて割り引かない)。
+        // ズームすると外側のtransform(1要素)が拡大するのでノードも自然に
+        // 大きく見える。ズームごとに799件全部のrを再計算しない設計にすることで
+        // ピンチ操作中の再レンダーコストを避けている
+        const r = BASE_R * artist.importance * (isSearchMatch ? 1.6 : 1)
         const opacity = isDimmedBySearch ? 0.12 : isDimmedByFocus ? 0.25 : 1
 
         return (
@@ -181,6 +188,11 @@ export default function LandscapeView({
   }, [])
 
   const selectedArtist = useMemo(() => artists.find((a) => a.artistId === selectedId) ?? null, [artists, selectedId])
+
+  // 生のscaleを離散段階に落とす。ピンチ/ホイールズーム中はscaleがフレームごとに
+  // 動き続けるが、zoomLevelは閾値をまたいだ時だけ値が変わるため、
+  // LandscapeNodes(memo化済み)への再レンダー伝播を最小限にできる
+  const zoomLevel: 0 | 1 | 2 = transform.scale >= 2.6 ? 2 : transform.scale >= 1.3 ? 1 : 0
 
   const normalizedQuery = query.trim().toLowerCase()
   const matchedIds = useMemo(() => {
@@ -400,7 +412,7 @@ export default function LandscapeView({
               selectedId={selectedId}
               hoveredId={hoveredId}
               focusedId={focusedId}
-              scale={transform.scale}
+              zoomLevel={zoomLevel}
               onHover={handleHover}
               onUnhover={handleUnhover}
               onFocusNode={handleFocusNode}
