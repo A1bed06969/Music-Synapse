@@ -2,6 +2,8 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/utils/Supabase/server'
 import { inputClass, buttonClass } from '../../../../adminUi'
+import SearchableSelect from '../../../../SearchableSelect'
+import { searchArtists } from '../../../../actions'
 import { updateEventAppearance, deleteEventAppearance, addAppearanceArtist, removeAppearanceArtist } from '../../../actions'
 
 // DBにはJST(+09:00)付きで保存されているが、SupabaseはUTCのISO文字列として
@@ -20,13 +22,12 @@ export default async function EditEventAppearancePage({ params }: { params: Prom
   const { id } = await params
   const supabase = await createClient()
 
-  const [{ data: entry, error }, { data: artists }, { data: eventEditions }, { data: linkedArtists }] = await Promise.all([
+  const [{ data: entry, error }, { data: eventEditions }, { data: linkedArtists }] = await Promise.all([
     supabase
       .from('event_appearance')
-      .select('id, event_edition_id, artist_id, stage, venue, start_time, end_time, is_headliner, display_name')
+      .select('id, event_edition_id, artist_id, stage, venue, start_time, end_time, is_headliner, display_name, artist:artist_id(id, name)')
       .eq('id', id)
       .single(),
-    supabase.from('artist').select('id, name').order('name'),
     supabase.from('event_edition').select('id, year, event:event_id(name)').order('year', { ascending: false }),
     supabase
       .from('event_appearance_artist')
@@ -43,6 +44,8 @@ export default async function EditEventAppearancePage({ params }: { params: Prom
     const artist = Array.isArray(row.artist) ? row.artist[0] : row.artist
     return { id: row.artist_id, name: artist?.name ?? '?' }
   })
+
+  const primaryArtist = Array.isArray(entry.artist) ? entry.artist[0] : entry.artist
 
   const eventEditionOptions = (eventEditions ?? []).map((row) => {
     const event = Array.isArray(row.event) ? row.event[0] : row.event
@@ -72,13 +75,12 @@ export default async function EditEventAppearancePage({ params }: { params: Prom
           ))}
         </select>
         <span className="text-xs text-white/40">に</span>
-        <select name="artist_id" required className={`${inputClass} max-w-xs`} defaultValue={entry.artist_id}>
-          {(artists ?? []).map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.name}
-            </option>
-          ))}
-        </select>
+        <SearchableSelect
+          searchAction={searchArtists}
+          name="artist_id"
+          placeholder="代表アーティストを検索..."
+          defaultSelected={primaryArtist ? [{ id: primaryArtist.id, label: primaryArtist.name }] : []}
+        />
         <span className="text-xs text-white/40">が出演</span>
         <input
           name="display_name"
@@ -152,18 +154,7 @@ export default async function EditEventAppearancePage({ params }: { params: Prom
 
         <form action={addAppearanceArtist} className="mt-4 flex items-center gap-2">
           <input type="hidden" name="event_appearance_id" value={entry.id} />
-          <select name="artist_id" required className={`${inputClass} max-w-xs`} defaultValue="">
-            <option value="" disabled>
-              アーティストを選択...
-            </option>
-            {(artists ?? [])
-              .filter((a) => !collaborators.some((c) => c.id === a.id))
-              .map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.name}
-                </option>
-              ))}
-          </select>
+          <SearchableSelect searchAction={searchArtists} name="artist_id" placeholder="追加するアーティストを検索..." />
           <button type="submit" className={buttonClass}>
             構成アーティストとして追加
           </button>
