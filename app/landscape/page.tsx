@@ -110,15 +110,34 @@ export default async function LandscapePage() {
     a.localeCompare(b)
   )
 
+  // モバイルでの描画負荷を抑えるため、799件全部ではなくジャンルごとに上限を
+  // 設けて間引く。全体で単純にimportance上位だけを残すと、importanceの低い
+  // (highlightの少ない)ジャンルが丸ごと消えて「ジャンル軸の分布」が
+  // 分かりにくくなるため、ジャンルごとに上限件数を設けて満遍なく残す方式にする
+  const PER_GENRE_CAP = 15
+  const byGenre = new Map<string, LandscapeArtist[]>()
+  for (const a of landscapeArtists) {
+    const key = a.rootGenre ?? '__unclassified__'
+    const list = byGenre.get(key) ?? []
+    list.push(a)
+    byGenre.set(key, list)
+  }
+  const cappedArtists: LandscapeArtist[] = []
+  for (const list of byGenre.values()) {
+    list.sort((a, b) => b.importance - a.importance)
+    cappedArtists.push(...list.slice(0, PER_GENRE_CAP))
+  }
+
   return (
     <div className="mx-auto max-w-[1600px] px-6 py-12">
       <h1 className="text-2xl font-bold">MUSIC LANDSCAPE</h1>
       <p className="mt-2 text-sm text-white/50">
         アーティストをジャンルの近さで空間に配置した地図。検索するのではなく、眺めながら歩いて音楽と出会うためのビジュアライゼーションです。
+        (現在は各ジャンル上位{PER_GENRE_CAP}組・{cappedArtists.length}組を表示中)
       </p>
 
       <div className="mt-8">
-        <LandscapeView artists={landscapeArtists} genreOptions={genreOptions} />
+        <LandscapeView artists={cappedArtists} genreOptions={genreOptions} />
       </div>
     </div>
   )
