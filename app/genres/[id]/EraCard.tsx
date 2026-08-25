@@ -4,8 +4,10 @@ import { useState } from 'react'
 import type { EraCardData, EraColorToken } from '@/utils/genreHistory'
 
 // 100vw-3rem(ページ左右のpx-6分)を上限にすることで狭い画面では画面幅いっぱいまで広がり、
-// 広い画面では28rem(448px)で頭打ちにしてカード1枚が間延びしないようにする
-export const CARD_WIDTH_CLASS = 'w-[min(calc(100vw-3rem),28rem)]'
+// 広い画面では28rem(448px)で頭打ちにしてカード1枚が間延びしないようにする。
+// md以上(PC想定)ではさらに16rem(256px)まで縮小し、カード列と下の詳細パネルが
+// スクロールなしで同時に見えるサイズ感にする(スマホは操作性優先でこのままの大きさ)
+export const CARD_WIDTH_CLASS = 'w-[min(calc(100vw-3rem),28rem)] md:w-64'
 
 const COLOR_CLASSES: Record<EraColorToken, { ring: string; border: string; text: string; triangle: string }> = {
   amber: { ring: 'ring-amber-400/50', border: 'border-amber-400/60', text: 'text-amber-400', triangle: 'border-t-amber-400' },
