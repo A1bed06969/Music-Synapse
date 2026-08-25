@@ -29,6 +29,9 @@ export type Appearance = {
   // 単独出演ではdisplayNameはnull、artistsは常に1件。
   displayName: string | null
   artists: AppearanceArtist[]
+  // 表示を時系列で並べ直すためのソートキー(ISO文字列)。時刻不明の出演はnullで、
+  // 常に最後に回す
+  startTimeSort: string | null
 }
 
 const NO_DATE = '__no_date__'
@@ -212,93 +215,107 @@ export default function EventScheduleView({
                 {dayVenue && <p className="mt-0.5 flex items-center gap-1 text-xs text-white/40">📍 {dayVenue}</p>}
 
                 <div className="mt-4 space-y-3">
-                  {Array.from(stageGroups.entries()).map(([stageKey, stageRows]) => (
+                  {Array.from(stageGroups.entries()).map(([stageKey, stageRowsUnsorted]) => {
+                    // 時刻不明(startTimeSort: null)の出演は常に最後に回す。表示は
+                    // ヘッドライナー優先ではなく、コラボも1組の出演として1行ずつ
+                    // 純粋に時系列で並べる(「1アーティストずつ時系列に」という要望)
+                    const stageRows = [...stageRowsUnsorted].sort((a, b) => {
+                      if (a.startTimeSort === null && b.startTimeSort === null) return 0
+                      if (a.startTimeSort === null) return 1
+                      if (b.startTimeSort === null) return -1
+                      return a.startTimeSort.localeCompare(b.startTimeSort)
+                    })
+
+                    return (
                     <div key={stageKey}>
                       {stageGroups.size > 1 && (
                         <h4 className="text-xs font-medium uppercase tracking-wide text-white/40">{stageKey}</h4>
                       )}
-                      <div className="mt-2 flex flex-wrap gap-2">
+                      <div className="mt-2 flex flex-col gap-2">
                         {stageRows.map((a) => {
-                          const pillClass = `flex items-center gap-2 rounded-full border py-1 pl-1 pr-3 text-sm transition hover:border-white/40 hover:bg-white/[0.08] ${
+                          const rowClass = `flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm transition hover:border-white/40 hover:bg-white/[0.08] ${
                             a.isHeadliner
                               ? 'border-white/40 bg-white/[0.06] font-semibold'
                               : 'border-white/15 bg-white/[0.03] text-white/85'
                           }`
                           const meta = (
-                            <>
+                            <span className="shrink-0 text-right leading-tight">
                               {a.isHeadliner && (
                                 <span className="block text-[10px] font-semibold tracking-wide text-amber-400">
                                   ★ ヘッドライナー
                                 </span>
                               )}
                               {a.timeLabel && <span className="block text-xs text-white/40">{a.timeLabel}</span>}
-                            </>
+                            </span>
                           )
 
                           // 単独出演: 従来通り1つのLinkで全体を包む
                           if (!a.displayName && a.artists.length <= 1) {
                             const artist = a.artists[0]
                             return (
-                              <Link key={a.id} href={`/artists/${artist?.id ?? ''}`} className={pillClass}>
-                                {artist?.imageUrl ? (
-                                  // eslint-disable-next-line @next/next/no-img-element
-                                  <img src={artist.imageUrl} alt="" className="h-10 w-10 shrink-0 rounded-full object-cover" />
-                                ) : (
-                                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/10 text-base">
-                                    🎤
-                                  </span>
-                                )}
-                                <span className="leading-tight">
-                                  <span className="block">{artist?.name ?? '?'}</span>
-                                  {meta}
+                              <Link key={a.id} href={`/artists/${artist?.id ?? ''}`} className={rowClass}>
+                                <span className="flex min-w-0 items-center gap-2">
+                                  {artist?.imageUrl ? (
+                                    // eslint-disable-next-line @next/next/no-img-element
+                                    <img src={artist.imageUrl} alt="" className="h-10 w-10 shrink-0 rounded-full object-cover" />
+                                  ) : (
+                                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/10 text-base">
+                                      🎤
+                                    </span>
+                                  )}
+                                  <span className="truncate">{artist?.name ?? '?'}</span>
                                 </span>
+                                {meta}
                               </Link>
                             )
                           }
 
                           // コラボ出演: 合体名義を見出しにし、構成アーティストそれぞれに個別リンクを張る
                           return (
-                            <span key={a.id} className={pillClass.replace('hover:border-white/40 hover:bg-white/[0.08]', '')}>
-                              <span className="flex -space-x-2">
-                                {a.artists.map((artist) =>
-                                  artist.imageUrl ? (
-                                    // eslint-disable-next-line @next/next/no-img-element
-                                    <img
-                                      key={artist.id}
-                                      src={artist.imageUrl}
-                                      alt=""
-                                      className="h-10 w-10 shrink-0 rounded-full border-2 border-black object-cover"
-                                    />
-                                  ) : (
-                                    <span
-                                      key={artist.id}
-                                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-2 border-black bg-white/10 text-base"
-                                    >
-                                      🎤
-                                    </span>
-                                  )
-                                )}
-                              </span>
-                              <span className="leading-tight">
-                                <span className="block">{a.displayName}</span>
-                                <span className="block text-xs text-white/50">
-                                  {a.artists.map((artist, i) => (
-                                    <span key={artist.id}>
-                                      {i > 0 && ' / '}
-                                      <Link href={`/artists/${artist.id}`} className="hover:underline">
-                                        {artist.name}
-                                      </Link>
-                                    </span>
-                                  ))}
+                            <span key={a.id} className={rowClass.replace('hover:border-white/40 hover:bg-white/[0.08]', '')}>
+                              <span className="flex min-w-0 items-center gap-2">
+                                <span className="flex shrink-0 -space-x-2">
+                                  {a.artists.map((artist) =>
+                                    artist.imageUrl ? (
+                                      // eslint-disable-next-line @next/next/no-img-element
+                                      <img
+                                        key={artist.id}
+                                        src={artist.imageUrl}
+                                        alt=""
+                                        className="h-10 w-10 shrink-0 rounded-full border-2 border-black object-cover"
+                                      />
+                                    ) : (
+                                      <span
+                                        key={artist.id}
+                                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-2 border-black bg-white/10 text-base"
+                                      >
+                                        🎤
+                                      </span>
+                                    )
+                                  )}
                                 </span>
-                                {meta}
+                                <span className="min-w-0 leading-tight">
+                                  <span className="block truncate">{a.displayName}</span>
+                                  <span className="block truncate text-xs text-white/50">
+                                    {a.artists.map((artist, i) => (
+                                      <span key={artist.id}>
+                                        {i > 0 && ' / '}
+                                        <Link href={`/artists/${artist.id}`} className="hover:underline">
+                                          {artist.name}
+                                        </Link>
+                                      </span>
+                                    ))}
+                                  </span>
+                                </span>
                               </span>
+                              {meta}
                             </span>
                           )
                         })}
                       </div>
                     </div>
-                  ))}
+                    )
+                  })}
                 </div>
               </div>
             )

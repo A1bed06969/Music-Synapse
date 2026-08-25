@@ -192,6 +192,7 @@ export default async function EventDetailPage({
         timeLabel: hasRealTime ? `${toHHMM(row.start_time!)}-${toHHMM(row.end_time!)}` : null,
         displayName: row.display_name,
         artists,
+        startTimeSort: hasRealTime ? row.start_time : null,
       }
     })
   }
