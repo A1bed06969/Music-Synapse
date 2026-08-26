@@ -15,45 +15,6 @@ async function getLatestAlbums() {
   return data ?? []
 }
 
-function firstOf<T>(value: T | T[] | null | undefined): T | null {
-  if (Array.isArray(value)) return value[0] ?? null
-  return value ?? null
-}
-
-async function getLatestRotations() {
-  const supabase = await createClient()
-  const { data } = await supabase
-    .from('radio_rotation')
-    .select(
-      `id, period_start_date, music_type,
-       media_program:media_program_id(program_name, media:media_id(name)),
-       track:track_id(id, title, artist:artist_id(name)),
-       album:album_id(id, title, artist:artist_id(name)),
-       artist:artist_id(id, name)`
-    )
-    .order('period_start_date', { ascending: false })
-    .limit(5)
-
-  return (data ?? []).map((row) => {
-    const program = firstOf(row.media_program)
-    const media = program ? firstOf(program.media) : null
-    const track = firstOf(row.track)
-    const album = firstOf(row.album)
-    const artist = firstOf(row.artist)
-    const trackArtist = track ? firstOf(track.artist) : null
-    const albumArtist = album ? firstOf(album.artist) : null
-
-    return {
-      id: row.id,
-      label: track?.title ?? album?.title ?? artist?.name ?? '—',
-      sub: track ? (trackArtist?.name ?? null) : album ? (albumArtist?.name ?? null) : null,
-      href: track ? `/tracks/${track.id}` : album ? `/albums/${album.id}` : artist ? `/artists/${artist.id}` : null,
-      stationLabel: [media?.name, program?.program_name].filter(Boolean).join(' '),
-      date: row.period_start_date,
-    }
-  })
-}
-
 const HUB_CARDS: { image: string; title: string; subtitle: string; href: string }[] = [
   { image: '/release_schedule.png', title: '新譜リリーススケジュール', subtitle: '今週・来週の新譜一覧', href: '/albums/calendar' },
   { image: '/news_stream.png', title: '最新ニュースストリーム', subtitle: '直近の更新・記事一覧', href: '/media/news' },
@@ -61,7 +22,7 @@ const HUB_CARDS: { image: string; title: string; subtitle: string; href: string 
 ]
 
 export default async function Home() {
-  const [latestAlbums, latestRotations] = await Promise.all([getLatestAlbums(), getLatestRotations()])
+  const latestAlbums = await getLatestAlbums()
 
   return (
     <div className="mx-auto max-w-[1600px] px-6 py-12">
@@ -149,40 +110,6 @@ export default async function Home() {
               )
             })}
           </div>
-        )}
-      </section>
-
-      <section className="mt-14">
-        <div className="flex items-baseline justify-between">
-          <h2 className="text-lg font-semibold">パワープレイ&ヘビロテ</h2>
-          <Link href="/media/on-air" className="text-xs text-white/40 hover:text-white/70">
-            すべて表示 →
-          </Link>
-        </div>
-
-        {latestRotations.length === 0 ? (
-          <p className="mt-6 text-sm text-white/40">まだオンエアデータが登録されていません。</p>
-        ) : (
-          <ul className="mt-6 divide-y divide-white/10">
-            {latestRotations.map((r) => (
-              <li key={r.id} className="flex items-center justify-between gap-4 py-3">
-                <div>
-                  {r.href ? (
-                    <Link href={r.href} className="font-medium hover:opacity-70">
-                      {r.label}
-                    </Link>
-                  ) : (
-                    <span className="font-medium">{r.label}</span>
-                  )}
-                  {r.sub && <p className="text-xs text-white/40">{r.sub}</p>}
-                </div>
-                <div className="shrink-0 text-right text-xs text-white/40">
-                  <p>{r.stationLabel}</p>
-                  <p>{formatDate(r.date)}</p>
-                </div>
-              </li>
-            ))}
-          </ul>
         )}
       </section>
     </div>
