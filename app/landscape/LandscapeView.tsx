@@ -169,8 +169,38 @@ export default function LandscapeView({
   const [isDragging, setIsDragging] = useState(false)
   const [containerSize, setContainerSize] = useState({ width: 1000, height: 600 })
 
-  const dragRef = useRef<{ startX: number; startY: number; startTx: number; startTy: number } | null>(null)
+  const dragRef = useRef<{ startX: number; startY: number; startTx: number; startTy: number; rect: DOMRect } | null>(null)
   const pinchRef = useRef<{ startDist: number; startScale: number; midX: number; midY: number } | null>(null)
+
+  // iPhoneの高サンプリングレートタッチだとtouchmoveがフレームレートより
+  // ずっと高い頻度で発火しうる。これをそのままsetTransformに渡すと、
+  // 1フレームの間に複数回のReact再レンダー+SVG再描画が積み重なり、
+  // モバイルSafariのメインスレッドが詰まってクラッシュする(「This page
+  // couldn't load」)原因になっていた。rAFで1フレームにつき最大1回だけ
+  // setTransformを適用するよう間引く
+  const pendingTransformRef = useRef<Transform | null>(null)
+  const rafIdRef = useRef<number | null>(null)
+  useEffect(() => {
+    return () => {
+      if (rafIdRef.current !== null) cancelAnimationFrame(rafIdRef.current)
+    }
+  }, [])
+  const scheduleTransform = useCallback((next: Transform) => {
+    pendingTransformRef.current = next
+    if (rafIdRef.current !== null) return
+    rafIdRef.current = requestAnimationFrame(() => {
+      rafIdRef.current = null
+      if (pendingTransformRef.current) setTransform(pendingTransformRef.current)
+    })
+  }, [])
+
+  // ドラッグ中はSVGのgetBoundingClientRect()を毎回読まず、ドラッグ開始時に
+  // 1回だけキャッシュした値を使う(getBoundingClientRect()は強制レイアウト
+  // 計算を伴うため、タッチ移動のたびに呼ぶとレイアウトスラッシングになる)
+  function deltaToViewBox(rect: DOMRect, dx: number, dy: number) {
+    if (rect.width === 0 || rect.height === 0) return { dx: 0, dy: 0 }
+    return { dx: (dx * VIEW_W) / rect.width, dy: (dy * VIEW_H) / rect.height }
+  }
 
   // コンテナの実サイズは初回計測+リサイズ時だけ更新する(pointermoveの
   // たびに毎回getBoundingClientRectを呼んで再レンダーを引き起こさないため)
@@ -207,13 +237,6 @@ export default function LandscapeView({
 
   // viewBox単位への変換(SVGの実描画サイズに依存しないよう、要素の
   // 表示サイズとviewBoxの比率から換算する)
-  const clientDeltaToViewBox = useCallback((dx: number, dy: number) => {
-    const svg = svgRef.current
-    if (!svg) return { dx, dy }
-    const rect = svg.getBoundingClientRect()
-    if (rect.width === 0 || rect.height === 0) return { dx: 0, dy: 0 }
-    return { dx: (dx * VIEW_W) / rect.width, dy: (dy * VIEW_H) / rect.height }
-  }, [])
   const clientPointToViewBox = useCallback((clientX: number, clientY: number) => {
     const svg = svgRef.current
     if (!svg) return { x: 0, y: 0 }
@@ -243,7 +266,9 @@ export default function LandscapeView({
 
   function handlePointerDown(e: React.PointerEvent<SVGSVGElement>) {
     if (e.pointerType === 'touch') return // タッチはTouch系イベントで別処理(ピンチと衝突するため)
-    dragRef.current = { startX: e.clientX, startY: e.clientY, startTx: transform.tx, startTy: transform.ty }
+    const rect = svgRef.current?.getBoundingClientRect()
+    if (!rect) return
+    dragRef.current = { startX: e.clientX, startY: e.clientY, startTx: transform.tx, startTy: transform.ty, rect }
     setIsDragging(true)
   }
   function handlePointerMove(e: React.PointerEvent<SVGSVGElement>) {
@@ -258,8 +283,8 @@ export default function LandscapeView({
     const rect = svgRef.current?.getBoundingClientRect()
     if (rect) setPointer({ x: e.clientX - rect.left, y: e.clientY - rect.top })
     if (!dragRef.current) return
-    const { dx, dy } = clientDeltaToViewBox(e.clientX - dragRef.current.startX, e.clientY - dragRef.current.startY)
-    setTransform((prev) => ({ ...prev, tx: dragRef.current!.startTx + dx, ty: dragRef.current!.startTy + dy }))
+    const { dx, dy } = deltaToViewBox(dragRef.current.rect, e.clientX - dragRef.current.startX, e.clientY - dragRef.current.startY)
+    scheduleTransform({ ...transform, tx: dragRef.current.startTx + dx, ty: dragRef.current.startTy + dy })
   }
   function handlePointerUp(e: React.PointerEvent<SVGSVGElement>) {
     if (e.pointerType === 'touch') return
@@ -280,6 +305,8 @@ export default function LandscapeView({
     return Math.hypot(dx, dy)
   }
   function handleTouchStart(e: React.TouchEvent<SVGSVGElement>) {
+    const rect = svgRef.current?.getBoundingClientRect()
+    if (!rect) return
     if (e.touches.length === 2) {
       const mid = clientPointToViewBox(
         (e.touches[0].clientX + e.touches[1].clientX) / 2,
@@ -289,7 +316,7 @@ export default function LandscapeView({
       if (dist > 0) pinchRef.current = { startDist: dist, startScale: transform.scale, midX: mid.x, midY: mid.y }
       dragRef.current = null
     } else if (e.touches.length === 1) {
-      dragRef.current = { startX: e.touches[0].clientX, startY: e.touches[0].clientY, startTx: transform.tx, startTy: transform.ty }
+      dragRef.current = { startX: e.touches[0].clientX, startY: e.touches[0].clientY, startTx: transform.tx, startTy: transform.ty, rect }
       pinchRef.current = null
     }
   }
@@ -299,17 +326,19 @@ export default function LandscapeView({
       if (dist <= 0 || pinchRef.current.startDist <= 0) return
       const factor = dist / pinchRef.current.startDist
       const newScale = clamp(pinchRef.current.startScale * factor, MIN_SCALE, MAX_SCALE)
-      setTransform((prev) => {
-        const ratio = newScale / prev.scale
-        return {
-          scale: newScale,
-          tx: pinchRef.current!.midX - (pinchRef.current!.midX - prev.tx) * ratio,
-          ty: pinchRef.current!.midY - (pinchRef.current!.midY - prev.ty) * ratio,
-        }
+      const ratio = newScale / transform.scale
+      scheduleTransform({
+        scale: newScale,
+        tx: pinchRef.current.midX - (pinchRef.current.midX - transform.tx) * ratio,
+        ty: pinchRef.current.midY - (pinchRef.current.midY - transform.ty) * ratio,
       })
     } else if (e.touches.length === 1 && dragRef.current) {
-      const { dx, dy } = clientDeltaToViewBox(e.touches[0].clientX - dragRef.current.startX, e.touches[0].clientY - dragRef.current.startY)
-      setTransform((prev) => ({ ...prev, tx: dragRef.current!.startTx + dx, ty: dragRef.current!.startTy + dy }))
+      const { dx, dy } = deltaToViewBox(
+        dragRef.current.rect,
+        e.touches[0].clientX - dragRef.current.startX,
+        e.touches[0].clientY - dragRef.current.startY
+      )
+      scheduleTransform({ ...transform, tx: dragRef.current.startTx + dx, ty: dragRef.current.startTy + dy })
     }
   }
   function handleTouchEnd(e: React.TouchEvent<SVGSVGElement>) {
