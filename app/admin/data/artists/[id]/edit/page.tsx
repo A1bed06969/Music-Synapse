@@ -4,11 +4,7 @@ import { createClient } from '@/utils/Supabase/server'
 import { ARTIST_TYPE_LABEL, ARTIST_STREAMING_STATUS_LABEL, STREAMING_STATUS_LABEL } from '@/utils/format'
 import { updateArtist, updateAlbumStreamingStatus, updateAlbumType } from '@/app/admin/data/actions'
 import { ALBUM_TYPE_LABEL_JA, ALBUM_TYPE_ORDER } from '@/utils/albumType'
-
-const inputClass =
-  'w-full rounded-md border border-white/15 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-white/25 focus:border-white/30 focus:outline-none'
-const buttonClass =
-  'rounded-md bg-white px-4 py-2 text-sm font-medium text-black transition hover:bg-white/85'
+import { inputClass, buttonClass } from '@/app/admin/data/adminUi'
 
 export default async function ArtistEditPage({
   params,
