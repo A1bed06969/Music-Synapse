@@ -2,7 +2,20 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/utils/Supabase/server'
 import { inputClass, buttonClass } from '../../../../adminUi'
-import { updateEvent, deleteEvent } from '../../../actions'
+import SearchableSelect from '../../../../SearchableSelect'
+import { searchArtists } from '../../../../actions'
+import FestivalLineupExtractor from './FestivalLineupExtractor'
+import {
+  updateEvent,
+  deleteEvent,
+  createEventVenue,
+  updateEventVenue,
+  deleteEventVenue,
+  createFestivalEdition,
+  deleteFestivalEdition,
+  createFestivalAppearance,
+  deleteFestivalAppearance,
+} from '../../../actions'
 
 const EVENT_TYPE_OPTIONS = [
   { value: 'festival', label: 'フェス' },
@@ -11,11 +24,46 @@ const EVENT_TYPE_OPTIONS = [
   { value: 'other', label: 'その他' },
 ]
 
-export default async function EditEventPage({ params }: { params: Promise<{ id: string }> }) {
+// DBにはJST(+09:00)付きで保存されているが、SupabaseはUTCのISO文字列として
+// 返すため、datetime-local入力欄に渡す前にJSTの壁時計時刻に戻す必要がある。
+function toJstDatetimeLocal(isoString: string | null): string {
+  if (!isoString) return ''
+  const date = new Date(isoString)
+  const jst = new Date(date.getTime() + 9 * 60 * 60 * 1000)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${jst.getUTCFullYear()}-${pad(jst.getUTCMonth() + 1)}-${pad(jst.getUTCDate())}T${pad(jst.getUTCHours())}:${pad(jst.getUTCMinutes())}`
+}
+
+export default async function EditEventPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>
+  searchParams: Promise<{ success?: string; error?: string }>
+}) {
   const { id } = await params
+  const { success, error } = await searchParams
   const supabase = await createClient()
 
-  const [{ data: entry, error }, { data: genres }] = await Promise.all([
+  type AppearanceRow = {
+    id: number
+    event_edition_id: string
+    stage: string | null
+    venue: string | null
+    start_time: string | null
+    end_time: string | null
+    is_headliner: boolean
+    artist_id: string
+    artist: { id: string; name: string } | { id: string; name: string }[] | null
+  }
+
+  const [
+    { data: entry, error: fetchError },
+    { data: genres },
+    { data: venues },
+    { data: editions },
+    { data: appearances },
+  ] = await Promise.all([
     supabase
       .from('event')
       .select(
@@ -24,10 +72,30 @@ export default async function EditEventPage({ params }: { params: Promise<{ id: 
       .eq('id', id)
       .single(),
     supabase.from('genre').select('id, name').order('name'),
+    supabase.from('event_venue').select('id, name, address').eq('event_id', id).order('sort_order'),
+    supabase.from('event_edition').select('id, year, start_date, end_date, venue, description').eq('event_id', id).order('year', { ascending: false }),
+    supabase
+      .from('event_appearance')
+      .select(
+        'id, event_edition_id, stage, venue, start_time, end_time, is_headliner, artist_id, artist:artist_id(id, name)'
+      )
+      .in(
+        'event_edition_id',
+        (
+          await supabase.from('event_edition').select('id').eq('event_id', id)
+        ).data?.map((e) => e.id) ?? []
+      )
+      .order('start_time', { ascending: true }),
   ])
 
-  if (error || !entry) {
+  if (fetchError || !entry) {
     notFound()
+  }
+
+  const appearancesByEdition = new Map<string, AppearanceRow[]>()
+  for (const row of (appearances ?? []) as AppearanceRow[]) {
+    if (!appearancesByEdition.has(row.event_edition_id)) appearancesByEdition.set(row.event_edition_id, [])
+    appearancesByEdition.get(row.event_edition_id)!.push(row)
   }
 
   return (
@@ -36,14 +104,22 @@ export default async function EditEventPage({ params }: { params: Promise<{ id: 
         ← イベント一覧に戻る
       </Link>
 
-      <h1 className="mt-4 text-2xl font-bold">イベントを編集</h1>
+      <h1 className="mt-4 text-2xl font-bold">フェスを編集</h1>
 
+      {success && (
+        <div className="mt-6 rounded-md border border-green-500/30 bg-green-500/5 px-4 py-3 text-sm">{success}</div>
+      )}
+      {error && (
+        <div className="mt-6 rounded-md border border-red-500/30 bg-red-500/5 px-4 py-3 text-sm">{error}</div>
+      )}
+
+      {/* 基本情報 */}
       <form action={updateEvent} className="mt-6 space-y-2">
         <input type="hidden" name="id" value={entry.id} />
         <div className="flex flex-wrap gap-2">
           <input
             name="name"
-            placeholder="イベント名(例: FUJI ROCK FESTIVAL)"
+            placeholder="正式名称(例: FUJI ROCK FESTIVAL)"
             required
             defaultValue={entry.name}
             className={`${inputClass} max-w-xs`}
@@ -114,9 +190,169 @@ export default async function EditEventPage({ params }: { params: Promise<{ id: 
           className={inputClass}
         />
         <button type="submit" className={buttonClass}>
-          更新する
+          基本情報を更新する
         </button>
       </form>
+
+      {/* 会場・住所 */}
+      <section className="mt-10 rounded-lg border border-white/10 bg-white/[0.02] p-4">
+        <h2 className="text-lg font-bold">会場・住所</h2>
+        <p className="mt-1 text-xs text-white/40">
+          複数会場のフェスの場合、行を追加して全て登録できます。開催年ごとに会場が変わる場合は下の「開催年」の会場欄で記録してください。
+        </p>
+
+        <ul className="mt-4 space-y-2">
+          {(venues ?? []).map((v) => (
+            <li key={v.id} className="flex flex-wrap items-center gap-2 rounded-md border border-white/10 p-2">
+              <form action={updateEventVenue} className="flex flex-wrap items-center gap-2">
+                <input type="hidden" name="id" value={v.id} />
+                <input type="hidden" name="event_id" value={entry.id} />
+                <input name="name" defaultValue={v.name} className={`${inputClass} max-w-[220px]`} />
+                <input name="address" placeholder="住所" defaultValue={v.address ?? ''} className={`${inputClass} max-w-sm`} />
+                <button type="submit" className={buttonClass}>
+                  更新
+                </button>
+              </form>
+              <form action={deleteEventVenue}>
+                <input type="hidden" name="id" value={v.id} />
+                <input type="hidden" name="event_id" value={entry.id} />
+                <button type="submit" className="text-xs text-red-400/70 hover:text-red-400">
+                  削除
+                </button>
+              </form>
+            </li>
+          ))}
+          {(venues ?? []).length === 0 && <p className="text-xs text-white/30">まだ会場が登録されていません。</p>}
+        </ul>
+
+        <form action={createEventVenue} className="mt-4 flex flex-wrap items-center gap-2">
+          <input type="hidden" name="event_id" value={entry.id} />
+          <input name="name" placeholder="会場名(例: 苗場スキー場)" required className={`${inputClass} max-w-[220px]`} />
+          <input name="address" placeholder="住所(任意)" className={`${inputClass} max-w-sm`} />
+          <button type="submit" className={buttonClass}>
+            会場を追加
+          </button>
+        </form>
+      </section>
+
+      {/* 開催年・タイムテーブル */}
+      <section className="mt-10 rounded-lg border border-white/10 bg-white/[0.02] p-4">
+        <h2 className="text-lg font-bold">開催年・タイムテーブル</h2>
+        <p className="mt-1 text-xs text-white/40">
+          出演情報(タイムテーブル)を登録するには、まず開催年を作成してください。
+        </p>
+
+        <div className="mt-4 space-y-6">
+          {(editions ?? []).map((ed) => {
+            const editionAppearances = appearancesByEdition.get(ed.id) ?? []
+            return (
+              <div key={ed.id} className="rounded-md border border-white/10 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="text-sm">
+                    <span className="font-semibold">{ed.year}年</span>
+                    {ed.start_date && (
+                      <span className="ml-2 text-white/50">
+                        {ed.start_date}
+                        {ed.end_date ? `〜${ed.end_date}` : ''}
+                      </span>
+                    )}
+                    {ed.venue && <span className="ml-2 text-white/50">@ {ed.venue}</span>}
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <Link
+                      href={`/admin/data/events/edition/${ed.id}/edit`}
+                      className="text-xs text-white/40 hover:text-white/70"
+                    >
+                      年の詳細を編集 →
+                    </Link>
+                    <form action={deleteFestivalEdition}>
+                      <input type="hidden" name="id" value={ed.id} />
+                      <input type="hidden" name="event_id" value={entry.id} />
+                      <button type="submit" className="text-xs text-red-400/70 hover:text-red-400">
+                        この年を削除
+                      </button>
+                    </form>
+                  </div>
+                </div>
+
+                <ul className="mt-3 space-y-1.5 text-sm">
+                  {editionAppearances.map((a) => {
+                    const artist = Array.isArray(a.artist) ? a.artist[0] : a.artist
+                    return (
+                      <li key={a.id} className="flex flex-wrap items-center justify-between gap-2 text-white/80">
+                        <span>
+                          {a.is_headliner && <span className="mr-1 text-amber-400">★</span>}
+                          <Link href={`/artists/${a.artist_id}`} className="hover:underline">
+                            {artist?.name ?? '?'}
+                          </Link>
+                          {a.stage && <span className="ml-2 text-xs text-white/40">{a.stage}</span>}
+                          {(a.start_time || a.end_time) && (
+                            <span className="ml-2 text-xs text-white/40">
+                              {a.start_time ? toJstDatetimeLocal(a.start_time).replace('T', ' ') : ''}
+                              {a.end_time ? ` 〜 ${toJstDatetimeLocal(a.end_time).replace('T', ' ')}` : ''}
+                            </span>
+                          )}
+                        </span>
+                        <span className="flex shrink-0 items-center gap-3">
+                          <Link
+                            href={`/admin/data/events/appearance/${a.id}/edit`}
+                            className="text-xs text-white/40 hover:text-white/70"
+                          >
+                            編集 →
+                          </Link>
+                          <form action={deleteFestivalAppearance}>
+                            <input type="hidden" name="id" value={a.id} />
+                            <input type="hidden" name="event_id" value={entry.id} />
+                            <input type="hidden" name="artist_id" value={a.artist_id} />
+                            <button type="submit" className="text-xs text-red-400/70 hover:text-red-400">
+                              削除
+                            </button>
+                          </form>
+                        </span>
+                      </li>
+                    )
+                  })}
+                  {editionAppearances.length === 0 && (
+                    <p className="text-xs text-white/30">まだ出演情報が登録されていません。</p>
+                  )}
+                </ul>
+
+                <form action={createFestivalAppearance} className="mt-3 flex flex-wrap items-center gap-2">
+                  <input type="hidden" name="event_id" value={entry.id} />
+                  <input type="hidden" name="event_edition_id" value={ed.id} />
+                  <SearchableSelect searchAction={searchArtists} name="artist_id" placeholder="出演アーティストを検索..." />
+                  <input name="stage" placeholder="ステージ名(任意)" className={`${inputClass} max-w-[140px]`} />
+                  <input name="venue" placeholder="会場(任意・複数会場の場合)" className={`${inputClass} max-w-[200px]`} />
+                  <input name="start_time" type="datetime-local" className={`${inputClass} max-w-[190px]`} />
+                  <input name="end_time" type="datetime-local" className={`${inputClass} max-w-[190px]`} />
+                  <label className="flex items-center gap-1.5 text-xs text-white/60">
+                    <input name="is_headliner" type="checkbox" className="h-3.5 w-3.5" />
+                    ヘッドライナー
+                  </label>
+                  <button type="submit" className={buttonClass}>
+                    出演を追加
+                  </button>
+                </form>
+
+                <FestivalLineupExtractor eventId={entry.id} eventEditionId={ed.id} />
+              </div>
+            )
+          })}
+          {(editions ?? []).length === 0 && <p className="text-xs text-white/30">まだ開催年が登録されていません。</p>}
+        </div>
+
+        <form action={createFestivalEdition} className="mt-6 flex flex-wrap items-center gap-2 border-t border-white/10 pt-4">
+          <input type="hidden" name="event_id" value={entry.id} />
+          <input name="year" type="number" placeholder="開催年(例: 2026)" required className={`${inputClass} max-w-[120px]`} />
+          <input name="start_date" type="date" className={`${inputClass} max-w-[160px]`} />
+          <input name="end_date" type="date" className={`${inputClass} max-w-[160px]`} />
+          <input name="venue" placeholder="この年の会場(任意)" className={`${inputClass} max-w-[220px]`} />
+          <input name="description" placeholder="概要(任意)" className={`${inputClass} max-w-xs`} />
+          <button type="submit" className={buttonClass}>
+            開催年を追加
+          </button>
+        </form>
+      </section>
 
       <form action={deleteEvent} className="mt-6">
         <input type="hidden" name="id" value={entry.id} />

@@ -3,6 +3,13 @@
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { createAdminClient } from '@/utils/Supabase/admin'
+import {
+  fetchFestivalPageHtml,
+  extractOgImage,
+  stripHtmlToText,
+  extractFestivalLineupWithGemini,
+  type FestivalLineupCandidate,
+} from '@/utils/geminiFestivalLineupExtract'
 
 function redirectWith(result: 'success' | 'error', message: string) {
   redirect(`/admin/data/events?${result}=${encodeURIComponent(message)}`)
@@ -638,6 +645,277 @@ export async function mergeEvent(formData: FormData) {
   revalidatePath('/admin/data/events')
   revalidatePath('/admin/data/events/festival-pilot')
   redirectWith('success', `「${source!.name}」を「${target!.name}」へ統合しました。`)
+}
+
+export type FestivalExtractResult =
+  | {
+      success: true
+      imageUrl: string | null
+      candidates: FestivalLineupCandidate[]
+      festivalName: string
+      editionYear: number
+      startDate: string | null
+      endDate: string | null
+    }
+  | { success: false; message: string }
+
+/** フェスの公式サイトURLからキービジュアル(og:image)とラインナップ候補をAIで
+ * 抽出する(自動登録はしない、確認画面用の候補を返すだけ)。 */
+export async function extractFestivalLineupCandidates(
+  eventId: string,
+  eventEditionId: string
+): Promise<FestivalExtractResult> {
+  const supabase = createAdminClient()
+  const [{ data: event }, { data: edition }] = await Promise.all([
+    supabase.from('event').select('name, official_site_url').eq('id', eventId).single(),
+    supabase.from('event_edition').select('year, start_date, end_date').eq('id', eventEditionId).single(),
+  ])
+
+  if (!event || !edition) {
+    return { success: false, message: '対象が見つかりませんでした。' }
+  }
+  if (!event.official_site_url) {
+    return { success: false, message: '公式サイトURLが未設定です。先に基本情報欄で登録してください。' }
+  }
+
+  let html: string
+  try {
+    html = await fetchFestivalPageHtml(event.official_site_url)
+  } catch (err) {
+    return { success: false, message: err instanceof Error ? err.message : 'ページ取得に失敗しました。' }
+  }
+
+  const imageUrl = extractOgImage(html)
+  const pageText = stripHtmlToText(html)
+
+  let candidates: FestivalLineupCandidate[]
+  try {
+    candidates = await extractFestivalLineupWithGemini(pageText)
+  } catch (err) {
+    return {
+      success: false,
+      message: err instanceof Error ? `AI抽出に失敗しました: ${err.message}` : 'AI抽出に失敗しました。',
+    }
+  }
+
+  return {
+    success: true,
+    imageUrl,
+    candidates,
+    festivalName: event.name,
+    editionYear: edition.year,
+    startDate: edition.start_date,
+    endDate: edition.end_date,
+  }
+}
+
+/** AI抽出で見つかったog:imageを、確認のうえイベントのキービジュアルとして採用する。 */
+export async function setEventImageFromUrl(eventId: string, imageUrl: string): Promise<{ success: boolean; message: string }> {
+  const supabase = createAdminClient()
+  const { error } = await supabase.from('event').update({ image_url: imageUrl }).eq('id', eventId)
+  if (error) {
+    return { success: false, message: `画像の設定に失敗しました: ${error.message}` }
+  }
+  revalidatePath(`/admin/data/events/event/${eventId}/edit`)
+  revalidatePath(`/events/${eventId}`)
+  return { success: true, message: '画像を設定しました。' }
+}
+
+function redirectToEventEdit(eventId: string, result: 'success' | 'error', message: string): never {
+  redirect(`/admin/data/events/event/${eventId}/edit?${result}=${encodeURIComponent(message)}`)
+}
+
+/** フェス登録画面(会場)からの追加。追加後は同じフェスの編集画面に戻る。 */
+export async function createEventVenue(formData: FormData) {
+  const eventId = String(formData.get('event_id') ?? '')
+  const name = String(formData.get('name') ?? '').trim()
+  const address = String(formData.get('address') ?? '').trim()
+
+  if (!eventId || !name) {
+    redirectToEventEdit(eventId, 'error', '会場名を入力してください。')
+  }
+
+  const supabase = createAdminClient()
+  const { data: existing } = await supabase
+    .from('event_venue')
+    .select('sort_order')
+    .eq('event_id', eventId)
+    .order('sort_order', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  const nextOrder = (existing?.sort_order ?? -1) + 1
+
+  const { error } = await supabase
+    .from('event_venue')
+    .insert({ event_id: eventId, name, address: address || null, sort_order: nextOrder })
+
+  if (error) {
+    redirectToEventEdit(eventId, 'error', `会場の登録に失敗しました: ${error.message}`)
+  }
+
+  revalidatePath(`/admin/data/events/event/${eventId}/edit`)
+  redirectToEventEdit(eventId, 'success', '会場を登録しました。')
+}
+
+export async function updateEventVenue(formData: FormData) {
+  const id = String(formData.get('id') ?? '')
+  const eventId = String(formData.get('event_id') ?? '')
+  const name = String(formData.get('name') ?? '').trim()
+  const address = String(formData.get('address') ?? '').trim()
+
+  if (!id || !eventId || !name) {
+    redirectToEventEdit(eventId, 'error', '会場名を入力してください。')
+  }
+
+  const supabase = createAdminClient()
+  const { error } = await supabase.from('event_venue').update({ name, address: address || null }).eq('id', id)
+
+  if (error) {
+    redirectToEventEdit(eventId, 'error', `会場の更新に失敗しました: ${error.message}`)
+  }
+
+  revalidatePath(`/admin/data/events/event/${eventId}/edit`)
+  redirectToEventEdit(eventId, 'success', '会場を更新しました。')
+}
+
+export async function deleteEventVenue(formData: FormData) {
+  const id = String(formData.get('id') ?? '')
+  const eventId = String(formData.get('event_id') ?? '')
+
+  if (!id || !eventId) {
+    redirectToEventEdit(eventId, 'error', '不正なリクエストです。')
+  }
+
+  const supabase = createAdminClient()
+  const { error } = await supabase.from('event_venue').delete().eq('id', id)
+
+  if (error) {
+    redirectToEventEdit(eventId, 'error', `会場の削除に失敗しました: ${error.message}`)
+  }
+
+  revalidatePath(`/admin/data/events/event/${eventId}/edit`)
+  redirectToEventEdit(eventId, 'success', '会場を削除しました。')
+}
+
+/** フェス登録画面からの開催年追加。追加後は同じフェスの編集画面に戻る
+ * (generic版のcreateEventEditionは一覧ページに戻ってしまうため別関数にしている)。 */
+export async function createFestivalEdition(formData: FormData) {
+  const eventId = String(formData.get('event_id') ?? '')
+  const yearRaw = String(formData.get('year') ?? '').trim()
+  const startDate = String(formData.get('start_date') ?? '').trim()
+  const endDate = String(formData.get('end_date') ?? '').trim()
+  const venue = String(formData.get('venue') ?? '').trim()
+  const description = String(formData.get('description') ?? '').trim()
+
+  if (!eventId || !yearRaw) {
+    redirectToEventEdit(eventId, 'error', '年を入力してください。')
+  }
+
+  const supabase = createAdminClient()
+  const { error } = await supabase.from('event_edition').insert({
+    event_id: eventId,
+    year: Number(yearRaw),
+    start_date: startDate || null,
+    end_date: endDate || null,
+    venue: venue || null,
+    description: description || null,
+  })
+
+  if (error) {
+    redirectToEventEdit(eventId, 'error', `開催年の登録に失敗しました: ${error.message}`)
+  }
+
+  revalidatePath(`/admin/data/events/event/${eventId}/edit`)
+  revalidatePath('/albums/calendar')
+  redirectToEventEdit(eventId, 'success', '開催年を登録しました。')
+}
+
+export async function deleteFestivalEdition(formData: FormData) {
+  const id = String(formData.get('id') ?? '')
+  const eventId = String(formData.get('event_id') ?? '')
+
+  if (!id || !eventId) {
+    redirectToEventEdit(eventId, 'error', '不正なリクエストです。')
+  }
+
+  const supabase = createAdminClient()
+  const { error } = await supabase.from('event_edition').delete().eq('id', id)
+
+  if (error) {
+    redirectToEventEdit(eventId, 'error', `開催年の削除に失敗しました: ${error.message}`)
+  }
+
+  revalidatePath(`/admin/data/events/event/${eventId}/edit`)
+  revalidatePath('/albums/calendar')
+  redirectToEventEdit(eventId, 'success', '開催年を削除しました(紐づく出演情報も削除されました)。')
+}
+
+/** フェス登録画面からのタイムテーブル(出演情報)追加。追加後は同じフェスの
+ * 編集画面に戻る(generic版のcreateEventAppearanceは一覧ページに戻ってしまうため別関数)。 */
+export async function createFestivalAppearance(formData: FormData) {
+  const eventId = String(formData.get('event_id') ?? '')
+  const eventEditionId = String(formData.get('event_edition_id') ?? '')
+  const artistId = String(formData.get('artist_id') ?? '')
+  const stage = String(formData.get('stage') ?? '').trim()
+  const venue = String(formData.get('venue') ?? '').trim()
+  const startTime = String(formData.get('start_time') ?? '').trim()
+  const endTime = String(formData.get('end_time') ?? '').trim()
+  const isHeadliner = formData.get('is_headliner') === 'on'
+
+  if (!eventId || !eventEditionId || !artistId) {
+    redirectToEventEdit(eventId, 'error', '開催年とアーティストを選択してください。')
+  }
+
+  const supabase = createAdminClient()
+  const { data: inserted, error } = await supabase
+    .from('event_appearance')
+    .insert({
+      event_edition_id: eventEditionId,
+      artist_id: artistId,
+      stage: stage || null,
+      venue: venue || null,
+      start_time: startTime ? `${startTime}:00+09:00` : null,
+      end_time: endTime ? `${endTime}:00+09:00` : null,
+      is_headliner: isHeadliner,
+    })
+    .select('id')
+    .single()
+
+  if (error || !inserted) {
+    redirectToEventEdit(eventId, 'error', `出演情報の登録に失敗しました: ${error?.message}`)
+  }
+
+  const { error: linkError } = await supabase
+    .from('event_appearance_artist')
+    .insert({ event_appearance_id: inserted!.id, artist_id: artistId, billing_order: 0 })
+  if (linkError) {
+    redirectToEventEdit(eventId, 'error', `出演情報のアーティスト紐付けに失敗しました: ${linkError.message}`)
+  }
+
+  revalidatePath(`/admin/data/events/event/${eventId}/edit`)
+  revalidatePath(`/artists/${artistId}`)
+  redirectToEventEdit(eventId, 'success', '出演情報を登録しました。')
+}
+
+export async function deleteFestivalAppearance(formData: FormData) {
+  const id = String(formData.get('id') ?? '')
+  const eventId = String(formData.get('event_id') ?? '')
+  const artistId = String(formData.get('artist_id') ?? '')
+
+  if (!id || !eventId) {
+    redirectToEventEdit(eventId, 'error', '不正なリクエストです。')
+  }
+
+  const supabase = createAdminClient()
+  const { error } = await supabase.from('event_appearance').delete().eq('id', id)
+
+  if (error) {
+    redirectToEventEdit(eventId, 'error', `出演情報の削除に失敗しました: ${error.message}`)
+  }
+
+  revalidatePath(`/admin/data/events/event/${eventId}/edit`)
+  if (artistId) revalidatePath(`/artists/${artistId}`)
+  redirectToEventEdit(eventId, 'success', '出演情報を削除しました。')
 }
 
 export async function deleteMusicEvent(formData: FormData) {
