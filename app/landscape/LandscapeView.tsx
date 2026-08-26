@@ -16,6 +16,13 @@ export type LandscapeArtist = {
   y: number
   importance: number
   color: string
+  latestRelease: { title: string; releaseDate: string | null } | null
+  liveAppearance: { eventName: string; startTime: string | null; isUpcoming: boolean } | null
+}
+
+function formatLandscapeDate(dateStr: string | null): string {
+  if (!dateStr) return '日程未定'
+  return dateStr.slice(0, 10).replace(/-/g, '.')
 }
 
 // ロジック座標([-1,1])を描画するviewBox空間([0,VIEW_W] x [0,VIEW_H])。
@@ -562,6 +569,24 @@ export default function LandscapeView({
                 {selectedArtist.formedYear ? `${selectedArtist.formedYear}–` : ''}
               </p>
             )}
+            <div className="flex flex-1 flex-col gap-3 overflow-y-auto">
+              {selectedArtist.latestRelease && (
+                <div className="rounded-md border border-white/10 bg-white/[0.03] p-2.5">
+                  <p className="text-[10px] uppercase tracking-wide text-white/40">直近のリリース</p>
+                  <p className="mt-1 text-sm font-medium text-white">{selectedArtist.latestRelease.title}</p>
+                  <p className="mt-0.5 text-[11px] text-white/40">{formatLandscapeDate(selectedArtist.latestRelease.releaseDate)}</p>
+                </div>
+              )}
+              {selectedArtist.liveAppearance && (
+                <div className="rounded-md border border-white/10 bg-white/[0.03] p-2.5">
+                  <p className="text-[10px] uppercase tracking-wide text-white/40">
+                    {selectedArtist.liveAppearance.isUpcoming ? '次のライブ・フェス' : '直近のライブ・フェス'}
+                  </p>
+                  <p className="mt-1 text-sm font-medium text-white">{selectedArtist.liveAppearance.eventName}</p>
+                  <p className="mt-0.5 text-[11px] text-white/40">{formatLandscapeDate(selectedArtist.liveAppearance.startTime)}</p>
+                </div>
+              )}
+            </div>
             <Link
               href={`/artists/${selectedArtist.artistId}`}
               className="mt-auto rounded-md border border-white/20 py-2 text-center text-sm font-semibold text-white hover:bg-white/10"

@@ -104,13 +104,79 @@ export default async function LandscapePage() {
   const CHUNK = 300
   const chunks: string[][] = []
   for (let i = 0; i < selectedArtistIds.length; i += CHUNK) chunks.push(selectedArtistIds.slice(i, i + CHUNK))
-  const chunkResults = await Promise.all(
-    chunks.map((chunk) =>
-      supabase.from('artist').select('id, name, image_url, hometown_city, hometown_country, formed_year').in('id', chunk)
-    )
-  )
+
+  type AlbumRow = { artist_id: string | null; title: string; release_date: string | null }
+  type AppearanceLinkRow = { artist_id: string; event_appearance_id: number }
+  type EventRef = { name: string } | { name: string }[] | null
+  type AppearanceRow = {
+    id: number
+    start_time: string | null
+    event_edition: { event: EventRef } | { event: EventRef }[] | null
+  }
+
+  const [chunkResults, { data: albumRows }, { data: appearanceLinkRows }] = await Promise.all([
+    Promise.all(
+      chunks.map((chunk) =>
+        supabase.from('artist').select('id, name, image_url, hometown_city, hometown_country, formed_year').in('id', chunk)
+      )
+    ),
+    // カード用の「直近のリリース」は本人名義(album.artist_id)のみを対象にする
+    // (コラボ・参加クレジット分まで含めるとartist_albumとの結合が必要になり、
+    // ここでは簡易な最新1件表示のためのものなのでYAGNI: スコープを絞る)
+    supabase
+      .from('album')
+      .select('artist_id, title, release_date')
+      .in('artist_id', selectedArtistIds)
+      .is('primary_album_id', null)
+      .order('release_date', { ascending: false, nullsFirst: false }),
+    supabase.from('event_appearance_artist').select('artist_id, event_appearance_id').in('artist_id', selectedArtistIds),
+  ])
   for (const { data } of chunkResults) {
     for (const a of data ?? []) artistsById.set(a.id, a)
+  }
+
+  // 並び順が release_date 降順のalbumRowsから、アーティストごとに最初に
+  // 出現したもの(=最新)だけを採用する
+  const latestReleaseByArtistId = new Map<string, { title: string; releaseDate: string | null }>()
+  for (const row of (albumRows ?? []) as AlbumRow[]) {
+    if (!row.artist_id || latestReleaseByArtistId.has(row.artist_id)) continue
+    latestReleaseByArtistId.set(row.artist_id, { title: row.title, releaseDate: row.release_date })
+  }
+
+  const appearanceIds = [...new Set((appearanceLinkRows ?? []).map((r) => r.event_appearance_id))]
+  const { data: appearanceRows } =
+    appearanceIds.length > 0
+      ? await supabase
+          .from('event_appearance')
+          .select('id, start_time, event_edition:event_edition_id(event:event_id(name))')
+          .in('id', appearanceIds)
+      : { data: [] as AppearanceRow[] }
+
+  const appearanceById = new Map<number, { eventName: string; startTime: string | null }>()
+  for (const row of (appearanceRows ?? []) as AppearanceRow[]) {
+    const edition = Array.isArray(row.event_edition) ? row.event_edition[0] : row.event_edition
+    const event = edition ? (Array.isArray(edition.event) ? edition.event[0] : edition.event) : null
+    appearanceById.set(row.id, { eventName: event?.name ?? '—', startTime: row.start_time })
+  }
+
+  const appearanceIdsByArtist = new Map<string, number[]>()
+  for (const row of (appearanceLinkRows ?? []) as AppearanceLinkRow[]) {
+    const list = appearanceIdsByArtist.get(row.artist_id) ?? []
+    list.push(row.event_appearance_id)
+    appearanceIdsByArtist.set(row.artist_id, list)
+  }
+
+  // 直近の1件だけをカードに出す: 未来の出演があればその中で最も近いもの、
+  // 無ければ過去の出演のうち最も新しいものを採用する
+  const nowIso = new Date().toISOString()
+  const liveAppearanceByArtistId = new Map<string, { eventName: string; startTime: string | null; isUpcoming: boolean }>()
+  for (const [artistId, ids] of appearanceIdsByArtist) {
+    const rows = ids.map((id) => appearanceById.get(id)).filter((r): r is { eventName: string; startTime: string | null } => !!r)
+    if (rows.length === 0) continue
+    const upcoming = rows.filter((r) => r.startTime && r.startTime >= nowIso).sort((a, b) => a.startTime!.localeCompare(b.startTime!))
+    const past = rows.filter((r) => !r.startTime || r.startTime < nowIso).sort((a, b) => (b.startTime ?? '').localeCompare(a.startTime ?? ''))
+    const chosen = upcoming[0] ?? past[0]
+    if (chosen) liveAppearanceByArtistId.set(artistId, { ...chosen, isUpcoming: chosen === upcoming[0] })
   }
 
   const landscapeArtists: LandscapeArtist[] = []
@@ -135,6 +201,8 @@ export default async function LandscapePage() {
       y: position.y,
       importance: 1 + Math.min(highlightCount, 4) * 0.12,
       color: colorForGenre(rootGenreName),
+      latestRelease: latestReleaseByArtistId.get(artistId) ?? null,
+      liveAppearance: liveAppearanceByArtistId.get(artistId) ?? null,
     })
   }
 
