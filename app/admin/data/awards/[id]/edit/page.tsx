@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation'
 import { createClient } from '@/utils/Supabase/server'
 import { inputClass, buttonClass } from '../../../adminUi'
 import SearchableSelect from '../../../SearchableSelect'
-import { searchTracks, searchAlbums } from '../../../actions'
+import { searchTracks, searchAlbums, searchArtists } from '../../../actions'
 import { updateAwardEntry, deleteAwardEntry } from '../../actions'
 
 const AWARD_RESULT_OPTIONS = [
@@ -15,16 +15,15 @@ export default async function EditAwardEntryPage({ params }: { params: Promise<{
   const { id } = await params
   const supabase = await createClient()
 
-  const [{ data: entry, error }, { data: awards }, { data: artists }] = await Promise.all([
+  const [{ data: entry, error }, { data: awards }] = await Promise.all([
     supabase
       .from('award_entry')
       .select(
-        'id, award_id, year, category, result, track_id, album_id, artist_id, track:track_id(title, artist:artist_id(name), album:album_id(title)), album:album_id(title, artist:artist_id(name))'
+        'id, award_id, year, category, result, track_id, album_id, artist_id, track:track_id(title, artist:artist_id(name), album:album_id(title)), album:album_id(title, artist:artist_id(name)), artist:artist_id(name)'
       )
       .eq('id', id)
       .single(),
     supabase.from('award').select('id, name').order('name'),
-    supabase.from('artist').select('id, name').order('name'),
   ])
 
   if (error || !entry) {
@@ -42,7 +41,7 @@ export default async function EditAwardEntryPage({ params }: { params: Promise<{
   const albumArtist = album ? (Array.isArray(album.artist) ? album.artist[0] : album.artist) : null
   const albumLabel = album ? `${album.title}${albumArtist?.name ? ` — ${albumArtist.name}` : ''}` : null
 
-  const artistOptions = artists ?? []
+  const directArtist = Array.isArray(entry.artist) ? entry.artist[0] : entry.artist
 
   return (
     <div className="mx-auto max-w-[1600px] px-6 py-12">
@@ -88,14 +87,12 @@ export default async function EditAwardEntryPage({ params }: { params: Promise<{
             placeholder="アルバムを検索(任意)"
             defaultSelected={albumLabel ? [{ id: entry.album_id!, label: albumLabel }] : []}
           />
-          <select name="artist_id" className={`${inputClass} max-w-xs`} defaultValue={entry.artist_id ?? ''}>
-            <option value="">(アーティスト指定なし)</option>
-            {artistOptions.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.name}
-              </option>
-            ))}
-          </select>
+          <SearchableSelect
+            searchAction={searchArtists}
+            name="artist_id"
+            placeholder="アーティストを検索(任意)"
+            defaultSelected={directArtist?.name && entry.artist_id ? [{ id: entry.artist_id, label: directArtist.name }] : []}
+          />
         </div>
         <button type="submit" className={buttonClass}>
           更新する

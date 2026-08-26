@@ -6,6 +6,7 @@ import { searchAlbums } from '../actions'
 import { createDiscGuide, createDiscGuideSelection, applyTowerCoverToDiscGuide } from './actions'
 import DiscGuideImageUpload from './DiscGuideImageUpload'
 import DiscGuideDriveImport from './DiscGuideDriveImport'
+import SelectionListClient from './SelectionListClient'
 
 export default async function DiscGuidesAdminPage({
   searchParams,
@@ -84,26 +85,13 @@ export default async function DiscGuidesAdminPage({
       </form>
 
       {selections && selections.length > 0 && (
-        <ul className="mt-4 space-y-1 text-sm text-white/60">
-          {selections.map((row) => {
+        <SelectionListClient
+          rows={selections.map((row) => {
             const guide = Array.isArray(row.disc_guide) ? row.disc_guide[0] : row.disc_guide
             const album = Array.isArray(row.album) ? row.album[0] : row.album
-            return (
-              <li key={row.id} className="flex items-center justify-between gap-2">
-                <span>
-                  {guide?.title} — {album?.title}
-                  {row.note ? `(${row.note})` : ''}
-                </span>
-                <Link
-                  href={`/admin/data/discguides/selection/${row.id}/edit`}
-                  className="shrink-0 text-xs text-white/40 hover:text-white/70"
-                >
-                  編集 →
-                </Link>
-              </li>
-            )
+            return { id: row.id, guideTitle: guide?.title ?? '?', albumTitle: album?.title ?? '?', note: row.note }
           })}
-        </ul>
+        />
       )}
 
       <div className="mt-10 space-y-6">

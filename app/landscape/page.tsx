@@ -1,4 +1,5 @@
 import { createClient } from '@/utils/Supabase/server'
+import { fetchAllRows } from '@/utils/fetchAllRows'
 import type { LineageEdge } from '@/utils/genreHistory'
 import { resolveRootGenreName, calculateLandscapePosition } from '@/lib/landscape/coordinate'
 import { colorForGenre } from '@/lib/landscape/genreColors'
@@ -39,11 +40,14 @@ function pickPrimaryGenrePerArtist(
 export default async function LandscapePage() {
   const supabase = await createClient()
 
-  const [{ data: lineageRows }, { data: genreRows }, { data: highlightRows }, { data: tagRows }] = await Promise.all([
+  // artist_genreは1223件でPostgRESTの1回あたり上限(1000件)を超えており、
+  // 単純な.select()だと後半のタグが欠落する(ランドスケープの対象アーティスト
+  // 選定漏れにつながる)ためページングする
+  const [{ data: lineageRows }, { data: genreRows }, { data: highlightRows }, tagRows] = await Promise.all([
     supabase.from('genre_lineage').select('parent_genre_id, child_genre_id, relation_type'),
     supabase.from('genre').select('id, name'),
     supabase.from('genre_highlight').select('artist_id, genre_id').not('artist_id', 'is', null),
-    supabase.from('artist_genre').select('artist_id, genre_id'),
+    fetchAllRows<{ artist_id: string; genre_id: string }>(supabase, 'artist_genre', 'artist_id, genre_id', 'artist_id'),
   ])
 
   const edges: LineageEdge[] = (lineageRows ?? []).map((r) => ({

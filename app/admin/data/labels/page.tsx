@@ -2,7 +2,8 @@ import Link from 'next/link'
 import { createClient } from '@/utils/Supabase/server'
 import { inputClass, buttonClass } from '../adminUi'
 import SearchableSelect from '../SearchableSelect'
-import { searchAlbums } from '../actions'
+import SimpleFilterList from '../SimpleFilterList'
+import { searchAlbums, searchArtists } from '../actions'
 import { createLabel, linkArtistLabel, linkAlbumLabel, mergeLabel } from './actions'
 import MusicBrainzLabelSearch from './MusicBrainzLabelSearch'
 
@@ -14,14 +15,12 @@ export default async function LabelsPage({
   const { success, error } = await searchParams
   const supabase = await createClient()
 
-  const [{ data: artists }, { data: labels }, { data: artistLabels }, { data: albumLabels }] = await Promise.all([
-    supabase.from('artist').select('id, name').order('name'),
+  const [{ data: labels }, { data: artistLabels }, { data: albumLabels }] = await Promise.all([
     supabase.from('label').select('id, name').order('name'),
     supabase.from('artist_label').select('artist:artist_id(name), label:label_id(name), start_date').order('artist_id'),
     supabase.from('album').select('title, label:label_id(name)').not('label_id', 'is', null).order('title'),
   ])
 
-  const artistOptions = artists ?? []
   const labelOptions = labels ?? []
 
   return (
@@ -54,16 +53,7 @@ export default async function LabelsPage({
       </form>
 
       <form action={linkArtistLabel} className="mt-4 flex flex-wrap items-center gap-2">
-        <select name="artist_id" required className={`${inputClass} max-w-xs`} defaultValue="">
-          <option value="" disabled>
-            アーティストを選択
-          </option>
-          {artistOptions.map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.name}
-            </option>
-          ))}
-        </select>
+        <SearchableSelect searchAction={searchArtists} name="artist_id" placeholder="アーティストを検索..." />
         <span className="text-xs text-white/40">を</span>
         <select name="label_id" required className={`${inputClass} max-w-xs`} defaultValue="">
           <option value="" disabled>
@@ -82,17 +72,15 @@ export default async function LabelsPage({
       </form>
 
       {artistLabels && artistLabels.length > 0 && (
-        <ul className="mt-4 space-y-1 text-sm text-white/60">
-          {artistLabels.map((row, i) => {
+        <SimpleFilterList
+          placeholder="アーティスト名・レーベル名で絞り込み..."
+          items={artistLabels.map((row, i) => {
             const artist = Array.isArray(row.artist) ? row.artist[0] : row.artist
             const label = Array.isArray(row.label) ? row.label[0] : row.label
-            return (
-              <li key={i}>
-                {artist?.name} — {label?.name}
-              </li>
-            )
+            const text = `${artist?.name ?? ''} — ${label?.name ?? ''}`
+            return { key: i, text, filterText: text }
           })}
-        </ul>
+        />
       )}
 
       <form action={linkAlbumLabel} className="mt-6 flex flex-wrap items-center gap-2">
@@ -114,16 +102,14 @@ export default async function LabelsPage({
       </form>
 
       {albumLabels && albumLabels.length > 0 && (
-        <ul className="mt-4 space-y-1 text-sm text-white/60">
-          {albumLabels.map((row, i) => {
+        <SimpleFilterList
+          placeholder="アルバム名・レーベル名で絞り込み..."
+          items={albumLabels.map((row, i) => {
             const label = Array.isArray(row.label) ? row.label[0] : row.label
-            return (
-              <li key={i}>
-                {row.title} — {label?.name}
-              </li>
-            )
+            const text = `${row.title} — ${label?.name ?? ''}`
+            return { key: i, text, filterText: text }
           })}
-        </ul>
+        />
       )}
 
       <div className="mt-10 rounded-md border border-red-500/20 p-4">

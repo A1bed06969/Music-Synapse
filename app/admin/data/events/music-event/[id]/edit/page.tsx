@@ -2,24 +2,25 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/utils/Supabase/server'
 import { inputClass, buttonClass } from '../../../../adminUi'
+import SearchableSelect from '../../../../SearchableSelect'
+import { searchArtists } from '../../../../actions'
 import { updateMusicEvent, deleteMusicEvent } from '../../../actions'
 
 export default async function EditMusicEventPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const supabase = await createClient()
 
-  const [{ data: entry, error }, { data: artists }] = await Promise.all([
-    supabase
-      .from('music_event')
-      .select('id, artist_id, name, event_date, venue, prefecture, description')
-      .eq('id', id)
-      .single(),
-    supabase.from('artist').select('id, name').order('name'),
-  ])
+  const { data: entry, error } = await supabase
+    .from('music_event')
+    .select('id, artist_id, name, event_date, venue, prefecture, description, artist:artist_id(name)')
+    .eq('id', id)
+    .single()
 
   if (error || !entry) {
     notFound()
   }
+
+  const artist = Array.isArray(entry.artist) ? entry.artist[0] : entry.artist
 
   return (
     <div className="mx-auto max-w-[1600px] px-6 py-12">
@@ -31,13 +32,12 @@ export default async function EditMusicEventPage({ params }: { params: Promise<{
 
       <form action={updateMusicEvent} className="mt-6 flex flex-wrap gap-2">
         <input type="hidden" name="id" value={entry.id} />
-        <select name="artist_id" required className={`${inputClass} max-w-xs`} defaultValue={entry.artist_id}>
-          {(artists ?? []).map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.name}
-            </option>
-          ))}
-        </select>
+        <SearchableSelect
+          searchAction={searchArtists}
+          name="artist_id"
+          placeholder="アーティストを検索..."
+          defaultSelected={artist?.name ? [{ id: entry.artist_id, label: artist.name }] : []}
+        />
         <input
           name="name"
           placeholder="公演名(例: ○○ホール ワンマンライブ)"

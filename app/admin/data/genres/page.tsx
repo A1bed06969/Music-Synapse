@@ -1,10 +1,13 @@
 import Link from 'next/link'
 import { createClient } from '@/utils/Supabase/server'
+import { fetchAllRows } from '@/utils/fetchAllRows'
 import { inputClass, buttonClass } from '../adminUi'
 import SearchableSelect from '../SearchableSelect'
 import { searchAlbums, searchArtists } from '../actions'
 import { createGenre, linkArtistGenre, addGenreHighlight, deleteGenreHighlight } from './actions'
 import WikipediaGenreSearch from './WikipediaGenreSearch'
+import ArtistGenreListClient from './ArtistGenreListClient'
+import GenreHighlightListClient from './GenreHighlightListClient'
 
 export default async function GenresPage({
   searchParams,
@@ -14,10 +17,17 @@ export default async function GenresPage({
   const { success, error } = await searchParams
   const supabase = await createClient()
 
-  const [{ data: artists }, { data: genres }, { data: artistGenres }, { data: highlights }] = await Promise.all([
+  type ArtistGenreRow = {
+    artist: { name: string } | { name: string }[] | null
+    genre: { name: string } | { name: string }[] | null
+  }
+
+  const [{ data: artists }, { data: genres }, artistGenres, { data: highlights }] = await Promise.all([
     supabase.from('artist').select('id, name').order('name'),
     supabase.from('genre').select('id, name').order('name'),
-    supabase.from('artist_genre').select('artist:artist_id(name), genre:genre_id(name)').order('artist_id'),
+    // artist_genreは1223件でPostgRESTの上限(1000件)を超え、単純な.select()だと
+    // 後半のタグ付けが一覧から丸ごと消えていた
+    fetchAllRows<ArtistGenreRow>(supabase, 'artist_genre', 'artist:artist_id(name), genre:genre_id(name)', 'artist_id'),
     supabase
       .from('genre_highlight')
       .select('id, note, genre:genre_id(id, name), artist:artist_id(name), album:album_id(title)')
@@ -114,43 +124,35 @@ export default async function GenresPage({
       </form>
 
       {highlights && highlights.length > 0 && (
-        <ul className="mt-4 space-y-1 text-sm text-white/60">
-          {highlights.map((row) => {
+        <GenreHighlightListClient
+          deleteAction={deleteGenreHighlight}
+          rows={highlights.map((row) => {
             const genre = Array.isArray(row.genre) ? row.genre[0] : row.genre
             const artist = Array.isArray(row.artist) ? row.artist[0] : row.artist
             const album = Array.isArray(row.album) ? row.album[0] : row.album
-            return (
-              <li key={row.id} className="flex items-center justify-between gap-2">
-                <span>
-                  {genre?.name} — {artist?.name}
-                  {album?.title ? `「${album.title}」` : ''}
-                  {row.note ? `(${row.note})` : ''}
-                </span>
-                <form action={deleteGenreHighlight}>
-                  <input type="hidden" name="id" value={row.id} />
-                  <input type="hidden" name="genre_id" value={genre?.id ?? ''} />
-                  <button type="submit" className="shrink-0 text-xs text-white/40 hover:text-red-400">
-                    削除
-                  </button>
-                </form>
-              </li>
-            )
+            return {
+              id: row.id,
+              genreId: genre?.id ?? '',
+              genreName: genre?.name ?? '?',
+              artistName: artist?.name ?? '?',
+              albumTitle: album?.title ?? null,
+              note: row.note,
+            }
           })}
-        </ul>
+        />
       )}
 
-      {artistGenres && artistGenres.length > 0 && (
-        <ul className="mt-4 space-y-1 text-sm text-white/60">
-          {artistGenres.map((row, i) => {
-            const artist = Array.isArray(row.artist) ? row.artist[0] : row.artist
-            const genre = Array.isArray(row.genre) ? row.genre[0] : row.genre
-            return (
-              <li key={i}>
-                {artist?.name} — {genre?.name}
-              </li>
-            )
-          })}
-        </ul>
+      {artistGenres.length > 0 && (
+        <div className="mt-8 border-t border-white/10 pt-6">
+          <h2 className="text-sm font-semibold text-white/70">アーティスト×ジャンル紐付け一覧</h2>
+          <ArtistGenreListClient
+            rows={artistGenres.map((row) => {
+              const artist = Array.isArray(row.artist) ? row.artist[0] : row.artist
+              const genre = Array.isArray(row.genre) ? row.genre[0] : row.genre
+              return { artistName: artist?.name ?? '', genreName: genre?.name ?? '' }
+            })}
+          />
+        </div>
       )}
     </div>
   )

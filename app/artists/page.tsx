@@ -15,17 +15,25 @@ export default async function ArtistsPage() {
     page_override: string | null
   }
 
-  const [allArtists, { data: membershipRows }, { data: instruments }, creditPersons, creditRoleRows] =
+  type MembershipRow = {
+    artist_id_a: string
+    artist_id_b: string
+    relation_type: string
+    band: { name: string } | { name: string }[] | null
+  }
+
+  const [allArtists, allRelations, { data: instruments }, creditPersons, creditRoleRows] =
     await Promise.all([
       // 2026年8月時点でアーティスト総数がPostgRESTの1リクエストあたり行数上限(既定1000件)を
       // 超え、この上限のせいで最近登録されたアーティストがアーティスト一覧・検索に
       // 一切出てこない不具合が実際に発生した(例: Radio Fabres)。credit_person/artist_credit
       // と同様にページングする
       fetchAllRows<ArtistRow>(supabase, 'artist', 'id, name, name_kana, name_en, image_url, page_override', 'id'),
-      supabase
-        .from('artist_relation')
-        .select('artist_id_a, artist_id_b, band:artist_id_a(name)')
-        .eq('relation_type', 'membership'),
+      // artist_relationは1675件でPostgRESTの上限(1000件)を超え、うちmembership種別
+      // だけでも1641件ある。.eq()で絞ってもページングしないと後半のmembership行が
+      // 欠落する(メンバーページのバンド名表示が一部抜け落ちる)ため、全件ページングで
+      // 取得してからJS側でmembership種別に絞り込む
+      fetchAllRows<MembershipRow>(supabase, 'artist_relation', 'artist_id_a, artist_id_b, relation_type, band:artist_id_a(name)', 'id'),
       supabase.from('instrument').select('id, name'),
       fetchAllRows<{ id: string; name: string }>(supabase, 'credit_person', 'id, name', 'id'),
       fetchAllRows<{ credit_person_id: string; role: string; instrument_id: string | null }>(
@@ -87,8 +95,10 @@ export default async function ArtistsPage() {
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'ja'))
     .map(([name]) => name)
 
+  const membershipRows = allRelations.filter((r) => r.relation_type === 'membership')
+
   const memberOfIds = new Map<string, string[]>() // memberId -> band names
-  for (const row of membershipRows ?? []) {
+  for (const row of membershipRows) {
     if (!row.artist_id_b) continue
     const band = Array.isArray(row.band) ? row.band[0] : row.band
     if (!band?.name) continue

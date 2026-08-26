@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { createClient } from '@/utils/Supabase/server'
+import { fetchAllRows } from '@/utils/fetchAllRows'
 import { fetchGlastonburyLineup, type FestivalPick } from '@/utils/festivalScrape'
 import { registerFestivalAppearance } from './actions'
 import SubmitButton from './SubmitButton'
@@ -43,14 +44,17 @@ export default async function FestivalPilotPage({
     fetchError = err instanceof Error ? err.message : '取得に失敗しました。'
   }
 
-  const [{ data: artists }, { data: artistLinks }] = await Promise.all([
-    supabase.from('artist').select('id, name'),
+  // artistは2933件でPostgRESTの上限(1000件)を超えており、単純な.select()だと
+  // 後半に登録されたアーティストが既存一致判定から漏れ、実際にはカタログに
+  // いるのに毎回「未一致」として表示されてしまう
+  const [artists, { data: artistLinks }] = await Promise.all([
+    fetchAllRows<{ id: string; name: string }>(supabase, 'artist', 'id, name', 'id'),
     supabase
       .from('festival_pilot_artist_link')
       .select('pick_name, artist:artist_id(id, name)')
       .eq('dataset_key', activeFestival.key),
   ])
-  const artistByName = new Map((artists ?? []).map((a) => [a.name.trim().toUpperCase(), a]))
+  const artistByName = new Map(artists.map((a) => [a.name.trim().toUpperCase(), a]))
   // iTunes側の名前がローカライズされてフェス側の表記と一致しなくなった場合の
   // 救済(例: "ALANIS MORISSETTE" → "アラニス・モリセット")。一度でも登録できた
   // pick_nameは、以後は表記の完全一致に頼らずこちらを優先する

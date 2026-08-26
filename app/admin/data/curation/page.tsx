@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { createClient } from '@/utils/Supabase/server'
 import { inputClass, buttonClass } from '../adminUi'
 import SearchableSelect from '../SearchableSelect'
-import { searchTracks, searchAlbums } from '../actions'
+import { searchTracks, searchAlbums, searchArtists } from '../actions'
 import { createRanking, createRankingEntry } from './actions'
 
 export default async function CurationPage({
@@ -13,8 +13,7 @@ export default async function CurationPage({
   const { success, error } = await searchParams
   const supabase = await createClient()
 
-  const [{ data: artists }, { data: mediaList }, { data: rankings }, { data: rankingEntries }] = await Promise.all([
-    supabase.from('artist').select('id, name').order('name'),
+  const [{ data: mediaList }, { data: rankings }, { data: rankingEntries }] = await Promise.all([
     supabase.from('media').select('id, name').order('name'),
     supabase.from('ranking').select('id, name, source, media:media_id(name)').order('name'),
     supabase
@@ -23,7 +22,6 @@ export default async function CurationPage({
       .order('id', { ascending: false }),
   ])
 
-  const artistOptions = artists ?? []
   const mediaOptions = mediaList ?? []
   const rankingOptions = rankings ?? []
 
@@ -87,14 +85,7 @@ export default async function CurationPage({
         <div className="flex flex-wrap gap-2">
           <SearchableSelect searchAction={searchTracks} name="track_id" placeholder="トラックを検索(任意)" />
           <SearchableSelect searchAction={searchAlbums} name="album_id" placeholder="アルバムを検索(任意)" />
-          <select name="artist_id" className={`${inputClass} max-w-xs`} defaultValue="">
-            <option value="">(アーティスト指定なし)</option>
-            {artistOptions.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.name}
-              </option>
-            ))}
-          </select>
+          <SearchableSelect searchAction={searchArtists} name="artist_id" placeholder="アーティストを検索(任意)" />
         </div>
         <div className="flex flex-wrap gap-2">
           <input name="metric_value" type="number" step="any" placeholder="数値(任意。例: 再生回数)" className={`${inputClass} max-w-[200px]`} />

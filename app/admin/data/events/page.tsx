@@ -1,6 +1,10 @@
 import Link from 'next/link'
 import { createClient } from '@/utils/Supabase/server'
+import { fetchAllRows } from '@/utils/fetchAllRows'
 import { inputClass, buttonClass } from '../adminUi'
+import SearchableSelect from '../SearchableSelect'
+import EventAppearanceListClient from './EventAppearanceListClient'
+import { searchArtists } from '../actions'
 import {
   createEvent,
   createEventEdition,
@@ -32,36 +36,40 @@ export default async function EventsAdminPage({
   const { success, error } = await searchParams
   const supabase = await createClient()
 
-  const [
-    { data: artists },
-    { data: genres },
-    { data: events },
-    { data: eventEditions },
-    { data: eventEditionDates },
-    { data: eventAppearances },
-    { data: musicEvents },
-  ] = await Promise.all([
-    supabase.from('artist').select('id, name').order('name'),
-    supabase.from('genre').select('id, name').order('name'),
-    supabase.from('event').select('id, name, event_type').order('name'),
-    supabase.from('event_edition').select('id, year, event:event_id(name)').order('year', { ascending: false }),
-    supabase
-      .from('event_edition_date')
-      .select('id, date, venue, region, event_edition:event_edition_id(year, event:event_id(name))')
-      .order('date', { ascending: true }),
-    supabase
-      .from('event_appearance')
-      .select(
-        'id, stage, venue, is_headliner, display_name, artist:artist_id(name), event_edition:event_edition_id(year, event:event_id(name))'
-      )
-      .order('id', { ascending: false }),
-    supabase
-      .from('music_event')
-      .select('id, name, event_date, artist:artist_id(name)')
-      .order('id', { ascending: false }),
-  ])
+  type EventAppearanceRow = {
+    id: number
+    stage: string | null
+    venue: string | null
+    is_headliner: boolean
+    display_name: string | null
+    artist: { name: string } | { name: string }[] | null
+    event_edition: { year: number; event: { name: string } | { name: string }[] | null } | { year: number; event: { name: string } | { name: string }[] | null }[] | null
+  }
 
-  const artistOptions = artists ?? []
+  const [{ data: genres }, { data: events }, { data: eventEditions }, { data: eventEditionDates }, eventAppearances, { data: musicEvents }] =
+    await Promise.all([
+      supabase.from('genre').select('id, name').order('name'),
+      supabase.from('event').select('id, name, event_type').order('name'),
+      supabase.from('event_edition').select('id, year, event:event_id(name)').order('year', { ascending: false }),
+      supabase
+        .from('event_edition_date')
+        .select('id, date, venue, region, event_edition:event_edition_id(year, event:event_id(name))')
+        .order('date', { ascending: true }),
+      // event_appearanceは912件で現時点ではPostgRESTの上限(1000件)未満だが、
+      // このセッションでの登録ペースからすると近いうちに超える見込みのため
+      // 先にページング対応しておく
+      fetchAllRows<EventAppearanceRow>(
+        supabase,
+        'event_appearance',
+        'id, stage, venue, is_headliner, display_name, artist:artist_id(name), event_edition:event_edition_id(year, event:event_id(name))',
+        'id'
+      ),
+      supabase
+        .from('music_event')
+        .select('id, name, event_date, artist:artist_id(name)')
+        .order('id', { ascending: false }),
+    ])
+
   const genreOptions = genres ?? []
   const eventOptions = events ?? []
   const eventEditionOptions = (eventEditions ?? []).map((row) => {
@@ -241,16 +249,7 @@ export default async function EventsAdminPage({
           ))}
         </select>
         <span className="text-xs text-white/40">に</span>
-        <select name="artist_id" required className={`${inputClass} max-w-xs`} defaultValue="">
-          <option value="" disabled>
-            アーティストを選択
-          </option>
-          {artistOptions.map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.name}
-            </option>
-          ))}
-        </select>
+        <SearchableSelect searchAction={searchArtists} name="artist_id" placeholder="アーティストを検索..." />
         <span className="text-xs text-white/40">が出演</span>
         <input name="stage" placeholder="ステージ名(任意)" className={`${inputClass} max-w-[160px]`} />
         <input name="venue" placeholder="会場(任意・複数会場フェスの場合のみ)" className={`${inputClass} max-w-[220px]`} />
@@ -266,42 +265,26 @@ export default async function EventsAdminPage({
       </form>
 
       {eventAppearances && eventAppearances.length > 0 && (
-        <ul className="mt-4 space-y-1 text-sm text-white/60">
-          {eventAppearances.map((row) => {
+        <EventAppearanceListClient
+          rows={eventAppearances.map((row) => {
             const artist = Array.isArray(row.artist) ? row.artist[0] : row.artist
             const edition = Array.isArray(row.event_edition) ? row.event_edition[0] : row.event_edition
             const event = edition ? (Array.isArray(edition.event) ? edition.event[0] : edition.event) : null
-            return (
-              <li key={row.id} className="flex items-center justify-between gap-2">
-                <span>
-                  {row.display_name ?? artist?.name} — {event?.name}({edition?.year})
-                  {row.stage ? ` / ${row.stage}` : ''}
-                  {row.venue ? ` @ ${row.venue}` : ''}
-                  {row.is_headliner && <span className="text-white/30"> ★ヘッドライナー</span>}
-                </span>
-                <Link
-                  href={`/admin/data/events/appearance/${row.id}/edit`}
-                  className="shrink-0 text-xs text-white/40 hover:text-white/70"
-                >
-                  編集 →
-                </Link>
-              </li>
-            )
+            return {
+              id: row.id,
+              displayName: row.display_name ?? artist?.name ?? '?',
+              eventName: event?.name ?? '?',
+              year: edition?.year ?? null,
+              stage: row.stage,
+              venue: row.venue,
+              isHeadliner: row.is_headliner,
+            }
           })}
-        </ul>
+        />
       )}
 
       <form action={createMusicEvent} className="mt-6 flex flex-wrap gap-2">
-        <select name="artist_id" required className={`${inputClass} max-w-xs`} defaultValue="">
-          <option value="" disabled>
-            アーティストを選択
-          </option>
-          {artistOptions.map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.name}
-            </option>
-          ))}
-        </select>
+        <SearchableSelect searchAction={searchArtists} name="artist_id" placeholder="アーティストを検索..." />
         <input name="name" placeholder="公演名(例: ○○ホール ワンマンライブ)" required className={`${inputClass} max-w-xs`} />
         <input name="event_date" type="date" className={`${inputClass} max-w-[160px]`} />
         <input name="venue" placeholder="会場(任意)" className={`${inputClass} max-w-xs`} />

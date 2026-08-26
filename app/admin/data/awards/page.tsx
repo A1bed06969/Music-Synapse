@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { createClient } from '@/utils/Supabase/server'
 import { inputClass, buttonClass } from '../adminUi'
 import SearchableSelect from '../SearchableSelect'
-import { searchTracks, searchAlbums } from '../actions'
+import { searchTracks, searchAlbums, searchArtists } from '../actions'
 import { createAward, createAwardEntry } from './actions'
 
 const AWARD_RESULT_OPTIONS = [
@@ -18,8 +18,7 @@ export default async function AwardsAdminPage({
   const { success, error } = await searchParams
   const supabase = await createClient()
 
-  const [{ data: artists }, { data: awards }, { data: awardEntries }] = await Promise.all([
-    supabase.from('artist').select('id, name').order('name'),
+  const [{ data: awards }, { data: awardEntries }] = await Promise.all([
     supabase.from('award').select('id, name').order('name'),
     supabase
       .from('award_entry')
@@ -29,7 +28,6 @@ export default async function AwardsAdminPage({
       .order('id', { ascending: false }),
   ])
 
-  const artistOptions = artists ?? []
   const awardOptions = awards ?? []
 
   return (
@@ -104,14 +102,7 @@ export default async function AwardsAdminPage({
             multiple
           />
           <SearchableSelect searchAction={searchAlbums} name="album_id" placeholder="アルバムを検索(任意)" />
-          <select name="artist_id" className={`${inputClass} max-w-xs`} defaultValue="">
-            <option value="">(アーティスト指定なし)</option>
-            {artistOptions.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.name}
-              </option>
-            ))}
-          </select>
+          <SearchableSelect searchAction={searchArtists} name="artist_id" placeholder="アーティストを検索(任意)" />
         </div>
         <button type="submit" className={buttonClass}>
           受賞・ノミネートを追加

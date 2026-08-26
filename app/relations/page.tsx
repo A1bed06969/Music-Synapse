@@ -1,34 +1,22 @@
 import { createClient } from '@/utils/Supabase/server'
+import { fetchAllRows } from '@/utils/fetchAllRows'
 import RelationGraph, { type RelationEdge, type RelationNode } from '@/app/components/RelationGraph'
 
-const PAGE_SIZE = 1000
-
 type ArtistRow = { id: string; name: string; image_url: string | null }
-
-async function fetchAllArtists(supabase: Awaited<ReturnType<typeof createClient>>): Promise<ArtistRow[]> {
-  const rows: ArtistRow[] = []
-  let offset = 0
-  // アーティスト総数がPostgRESTの1回あたり上限(1000件)を超えたためページングする
-  // (この上限のせいで最近登録されたアーティストが相関図に出ない不具合が実際に発生した)
-  while (true) {
-    const { data } = await supabase.from('artist').select('id, name, image_url').range(offset, offset + PAGE_SIZE - 1)
-    if (!data || data.length === 0) break
-    rows.push(...data)
-    if (data.length < PAGE_SIZE) break
-    offset += PAGE_SIZE
-  }
-  return rows
-}
+type RelationRow = { artist_id_a: string; artist_id_b: string; relation_type: string; relation_style: string | null; description: string | null }
+type ArtistGenreRow = { artist_id: string; genre: { name: string } | { name: string }[] | null }
 
 export default async function RelationsPage() {
   const supabase = await createClient()
 
-  const [artists, { data: relations }, { data: artistGenres }] = await Promise.all([
-    fetchAllArtists(supabase),
-    supabase
-      .from('artist_relation')
-      .select('artist_id_a, artist_id_b, relation_type, relation_style, description'),
-    supabase.from('artist_genre').select('artist_id, genre:genre_id(name)'),
+  // artist_relation(1675件)・artist_genre(1223件)ともにPostgRESTの1回あたり上限
+  // (1000件)を超えており、単純な.select()だと後半の関係性・ジャンルが相関図から
+  // 丸ごと消えていた(アーティスト自体は既にfetchAllRowsでページング済みだったが、
+  // こちらは対応漏れだった)
+  const [artists, relations, artistGenres] = await Promise.all([
+    fetchAllRows<ArtistRow>(supabase, 'artist', 'id, name, image_url', 'id'),
+    fetchAllRows<RelationRow>(supabase, 'artist_relation', 'artist_id_a, artist_id_b, relation_type, relation_style, description', 'id'),
+    fetchAllRows<ArtistGenreRow>(supabase, 'artist_genre', 'artist_id, genre:genre_id(name)', 'artist_id'),
   ])
 
   const categoryByArtist = new Map<string, string>()

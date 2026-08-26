@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation'
 import { createClient } from '@/utils/Supabase/server'
 import { inputClass, buttonClass } from '../../../../adminUi'
 import SearchableSelect from '../../../../SearchableSelect'
-import { searchTracks, searchAlbums } from '../../../../actions'
+import { searchTracks, searchAlbums, searchArtists } from '../../../../actions'
 import { updateRadioRotation, deleteRadioRotation } from '../../../actions'
 
 const PERIOD_TYPE_OPTIONS = [
@@ -20,16 +20,15 @@ export default async function EditRadioRotationPage({ params }: { params: Promis
   const { id } = await params
   const supabase = await createClient()
 
-  const [{ data: entry, error }, { data: mediaPrograms }, { data: artists }] = await Promise.all([
+  const [{ data: entry, error }, { data: mediaPrograms }] = await Promise.all([
     supabase
       .from('radio_rotation')
       .select(
-        'id, media_program_id, period_type, period_start_date, music_type, note, track_id, album_id, artist_id, track:track_id(title, artist:artist_id(name), album:album_id(title)), album:album_id(title, artist:artist_id(name))'
+        'id, media_program_id, period_type, period_start_date, music_type, note, track_id, album_id, artist_id, track:track_id(title, artist:artist_id(name), album:album_id(title)), album:album_id(title, artist:artist_id(name)), artist:artist_id(name)'
       )
       .eq('id', id)
       .single(),
     supabase.from('media_program').select('id, program_name, media:media_id(name)').order('program_name'),
-    supabase.from('artist').select('id, name').order('name'),
   ])
 
   if (error || !entry) {
@@ -47,7 +46,7 @@ export default async function EditRadioRotationPage({ params }: { params: Promis
   const albumArtist = album ? (Array.isArray(album.artist) ? album.artist[0] : album.artist) : null
   const albumLabel = album ? `${album.title}${albumArtist?.name ? ` — ${albumArtist.name}` : ''}` : null
 
-  const artistOptions = artists ?? []
+  const directArtist = Array.isArray(entry.artist) ? entry.artist[0] : entry.artist
 
   return (
     <div className="mx-auto max-w-[1600px] px-6 py-12">
@@ -112,14 +111,12 @@ export default async function EditRadioRotationPage({ params }: { params: Promis
             placeholder="アルバムを検索(任意)"
             defaultSelected={albumLabel ? [{ id: entry.album_id!, label: albumLabel }] : []}
           />
-          <select name="artist_id" className={`${inputClass} max-w-xs`} defaultValue={entry.artist_id ?? ''}>
-            <option value="">(アーティスト指定なし)</option>
-            {artistOptions.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.name}
-              </option>
-            ))}
-          </select>
+          <SearchableSelect
+            searchAction={searchArtists}
+            name="artist_id"
+            placeholder="アーティストを検索(任意)"
+            defaultSelected={directArtist?.name && entry.artist_id ? [{ id: entry.artist_id, label: directArtist.name }] : []}
+          />
         </div>
         <input name="note" placeholder="メモ(任意)" defaultValue={entry.note ?? ''} className={inputClass} />
         <button type="submit" className={buttonClass}>

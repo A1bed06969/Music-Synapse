@@ -3,7 +3,7 @@ import { createClient } from '@/utils/Supabase/server'
 import { PREFECTURE_COORDS } from '@/utils/prefectures'
 import { inputClass, buttonClass } from '../adminUi'
 import SearchableSelect from '../SearchableSelect'
-import { searchTracks, searchAlbums } from '../actions'
+import { searchTracks, searchAlbums, searchArtists } from '../actions'
 import { createMedia, createMediaProgram, createRadioRotation } from './actions'
 
 const MEDIA_TYPE_OPTIONS = [
@@ -31,8 +31,7 @@ export default async function MediaAdminPage({
   const { success, error } = await searchParams
   const supabase = await createClient()
 
-  const [{ data: artists }, { data: mediaList }, { data: mediaPrograms }, { data: rotations }] = await Promise.all([
-    supabase.from('artist').select('id, name').order('name'),
+  const [{ data: mediaList }, { data: mediaPrograms }, { data: rotations }] = await Promise.all([
     supabase.from('media').select('id, name, area').order('name'),
     supabase.from('media_program').select('id, program_name, period_type, media:media_id(name)').order('program_name'),
     supabase
@@ -43,7 +42,6 @@ export default async function MediaAdminPage({
       .order('period_start_date', { ascending: false }),
   ])
 
-  const artistOptions = artists ?? []
   const mediaOptions = mediaList ?? []
   const mediaProgramOptions = mediaPrograms ?? []
 
@@ -172,14 +170,7 @@ export default async function MediaAdminPage({
             multiple
           />
           <SearchableSelect searchAction={searchAlbums} name="album_id" placeholder="アルバムを検索(任意)" />
-          <select name="artist_id" className={`${inputClass} max-w-xs`} defaultValue="">
-            <option value="">(アーティスト指定なし)</option>
-            {artistOptions.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.name}
-              </option>
-            ))}
-          </select>
+          <SearchableSelect searchAction={searchArtists} name="artist_id" placeholder="アーティストを検索(任意)" />
         </div>
         <input name="note" placeholder="メモ(任意)" className={inputClass} />
         <button type="submit" className={buttonClass}>

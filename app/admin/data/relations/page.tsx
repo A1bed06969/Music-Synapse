@@ -1,7 +1,11 @@
 import Link from 'next/link'
 import { createClient } from '@/utils/Supabase/server'
+import { fetchAllRows } from '@/utils/fetchAllRows'
 import { inputClass, buttonClass } from '../adminUi'
+import SearchableSelect from '../SearchableSelect'
+import { searchArtists } from '../actions'
 import { createRelation } from './actions'
+import RelationListClient from './RelationListClient'
 
 const RELATION_TYPE_OPTIONS = [
   { value: 'membership', label: '在籍・メンバー(実線)' },
@@ -20,15 +24,23 @@ export default async function RelationsAdminPage({
   const { success, error } = await searchParams
   const supabase = await createClient()
 
-  const [{ data: artists }, { data: relations }] = await Promise.all([
-    supabase.from('artist').select('id, name').order('name'),
-    supabase
-      .from('artist_relation')
-      .select('id, relation_type, relation_style, description, artist_a:artist_id_a(name), artist_b:artist_id_b(name)')
-      .order('id', { ascending: false }),
-  ])
+  type RelationRow = {
+    id: number
+    relation_type: string
+    relation_style: string | null
+    description: string | null
+    artist_a: { name: string } | { name: string }[] | null
+    artist_b: { name: string } | { name: string }[] | null
+  }
 
-  const artistOptions = artists ?? []
+  // artist_relationは1675件でPostgRESTの上限(1000件)を超えており、単純な.select()
+  // だと後半の相関が一覧から丸ごと消えていた
+  const relations = await fetchAllRows<RelationRow>(
+    supabase,
+    'artist_relation',
+    'id, relation_type, relation_style, description, artist_a:artist_id_a(name), artist_b:artist_id_b(name)',
+    'id'
+  )
 
   return (
     <div className="mx-auto max-w-[1600px] px-6 py-12">
@@ -52,26 +64,8 @@ export default async function RelationsAdminPage({
 
       <form action={createRelation} className="mt-6 space-y-2">
         <div className="flex flex-wrap gap-2">
-          <select name="artist_id_a" required className={`${inputClass} max-w-xs`} defaultValue="">
-            <option value="" disabled>
-              アーティストA
-            </option>
-            {artistOptions.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.name}
-              </option>
-            ))}
-          </select>
-          <select name="artist_id_b" required className={`${inputClass} max-w-xs`} defaultValue="">
-            <option value="" disabled>
-              アーティストB
-            </option>
-            {artistOptions.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.name}
-              </option>
-            ))}
-          </select>
+          <SearchableSelect searchAction={searchArtists} name="artist_id_a" placeholder="アーティストAを検索..." />
+          <SearchableSelect searchAction={searchArtists} name="artist_id_b" placeholder="アーティストBを検索..." />
           <select name="relation_type" required className={`${inputClass} max-w-xs`} defaultValue="">
             <option value="" disabled>
               関係の種類
@@ -89,19 +83,21 @@ export default async function RelationsAdminPage({
         </button>
       </form>
 
-      {relations && relations.length > 0 && (
-        <ul className="mt-4 space-y-1 text-sm text-white/60">
-          {relations.map((row) => {
+      {relations.length > 0 && (
+        <RelationListClient
+          rows={relations.map((row) => {
             const a = Array.isArray(row.artist_a) ? row.artist_a[0] : row.artist_a
             const b = Array.isArray(row.artist_b) ? row.artist_b[0] : row.artist_b
-            return (
-              <li key={row.id}>
-                {a?.name} {row.relation_style === 'dotted' ? '┄' : '─'} {b?.name}
-                <span className="text-white/30"> ({row.relation_type}{row.description ? `: ${row.description}` : ''})</span>
-              </li>
-            )
+            return {
+              id: row.id,
+              artistAName: a?.name ?? '',
+              artistBName: b?.name ?? '',
+              dotted: row.relation_style === 'dotted',
+              relationType: row.relation_type,
+              description: row.description,
+            }
           })}
-        </ul>
+        />
       )}
     </div>
   )
