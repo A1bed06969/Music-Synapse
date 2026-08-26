@@ -14,23 +14,30 @@ type AlbumRow = {
 }
 
 async function fetchAllAlbums(supabase: Awaited<ReturnType<typeof createClient>>): Promise<AlbumRow[]> {
-  const rows: AlbumRow[] = []
-  let offset = 0
-  // PostgRESTは1回のクエリで最大1000件しか返さないため、アルバム全件(1000件超)を
-  // 取得するにはoffsetをずらしながらページ単位で取得する必要がある。
-  while (true) {
-    const { data } = await supabase
-      .from('album')
-      .select('id, title, title_kana, jacket_url, release_date, streaming_status, artist:artist_id(name)')
-      .is('primary_album_id', null)
-      .order('id', { ascending: true })
-      .range(offset, offset + PAGE_SIZE - 1)
-    if (!data || data.length === 0) break
-    rows.push(...data)
-    if (data.length < PAGE_SIZE) break
-    offset += PAGE_SIZE
-  }
-  return rows
+  // PostgRESTは1回のクエリで最大1000件しか返さないため、アルバム全件(26,000件超)は
+  // ページ単位で取得する必要がある。以前はoffsetをずらしながら逐次awaitしており、
+  // 27回前後の往復が直列に発生してページ生成が重くなっていた(/artistsで実際に
+  // 発生した52秒バグと同じ原因)。まず件数だけ取得してページ数を決め、
+  // 各ページを並列に取得することで、往復回数はそのままでも合計の待ち時間を
+  // ほぼ1往復分まで縮める。
+  const { count } = await supabase
+    .from('album')
+    .select('id', { count: 'exact', head: true })
+    .is('primary_album_id', null)
+  const totalCount = count ?? 0
+  const pageCount = Math.max(1, Math.ceil(totalCount / PAGE_SIZE))
+
+  const pages = await Promise.all(
+    Array.from({ length: pageCount }, (_, i) =>
+      supabase
+        .from('album')
+        .select('id, title, title_kana, jacket_url, release_date, streaming_status, artist:artist_id(name)')
+        .is('primary_album_id', null)
+        .order('id', { ascending: true })
+        .range(i * PAGE_SIZE, i * PAGE_SIZE + PAGE_SIZE - 1)
+    )
+  )
+  return pages.flatMap((p) => (p.data ?? []) as AlbumRow[])
 }
 
 export default async function AlbumsPage({

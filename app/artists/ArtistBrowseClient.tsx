@@ -157,7 +157,7 @@ function ArtistGrid({ items, emptyMessage }: { items: Artist[]; emptyMessage: st
       {items.length === 0 ? (
         <p className="mt-8 text-sm text-white/40">{emptyMessage}</p>
       ) : (
-        <div className="mt-6 grid grid-cols-3 gap-4 sm:grid-cols-4 md:grid-cols-6">
+        <div className="mt-6 grid grid-cols-3 gap-4 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8">
           {items.map((artist) => (
             <Link key={artist.id} href={`/artists/${artist.id}`} className="group block">
               <div className="aspect-square overflow-hidden rounded-full bg-white/5">
@@ -189,7 +189,7 @@ function MemberGrid({ items, emptyMessage }: { items: Member[]; emptyMessage: st
       {items.length === 0 ? (
         <p className="mt-8 text-sm text-white/40">{emptyMessage}</p>
       ) : (
-        <div className="mt-6 grid grid-cols-3 gap-4 sm:grid-cols-4 md:grid-cols-6">
+        <div className="mt-6 grid grid-cols-3 gap-4 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8">
           {items.map((member) => (
             <Link key={member.id} href={`/artists/${member.id}`} className="group block">
               <div className="aspect-square overflow-hidden rounded-full bg-white/5">

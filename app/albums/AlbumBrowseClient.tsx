@@ -115,7 +115,7 @@ export default function AlbumBrowseClient({
       {filtered.length === 0 ? (
         <p className="mt-8 text-sm text-white/40">該当するアルバムが見つかりませんでした。</p>
       ) : (
-        <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4 md:grid-cols-6">
+        <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8">
           {filtered.map((album) => {
             const status = album.streamingStatus ? STREAMING_STATUS_LABEL[album.streamingStatus] : null
             return (
