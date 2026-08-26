@@ -1,33 +1,10 @@
 import { createClient } from '@/utils/Supabase/server'
 import { resolveArtistPageKind } from '@/utils/artistPageKind'
+import { fetchAllRows } from '@/utils/fetchAllRows'
 import ArtistBrowseClient from './ArtistBrowseClient'
 
 export default async function ArtistsPage() {
   const supabase = await createClient()
-
-  // PostgRESTの1リクエストあたり行数上限(既定1000件)を超える全件取得は
-  // .range()で分割する(credit_person/artist_creditは既にこの上限を超えている)
-  async function fetchAllRows<T>(
-    table: string,
-    columns: string,
-    order: string
-  ): Promise<T[]> {
-    const rows: T[] = []
-    const pageSize = 1000
-    let offset = 0
-    while (true) {
-      const { data } = await supabase
-        .from(table)
-        .select(columns)
-        .order(order, { ascending: true })
-        .range(offset, offset + pageSize - 1)
-      const page = (data ?? []) as T[]
-      rows.push(...page)
-      if (page.length < pageSize) break
-      offset += pageSize
-    }
-    return rows
-  }
 
   type ArtistRow = {
     id: string
@@ -44,14 +21,15 @@ export default async function ArtistsPage() {
       // 超え、この上限のせいで最近登録されたアーティストがアーティスト一覧・検索に
       // 一切出てこない不具合が実際に発生した(例: Radio Fabres)。credit_person/artist_credit
       // と同様にページングする
-      fetchAllRows<ArtistRow>('artist', 'id, name, name_kana, name_en, image_url, page_override', 'id'),
+      fetchAllRows<ArtistRow>(supabase, 'artist', 'id, name, name_kana, name_en, image_url, page_override', 'id'),
       supabase
         .from('artist_relation')
         .select('artist_id_a, artist_id_b, band:artist_id_a(name)')
         .eq('relation_type', 'membership'),
       supabase.from('instrument').select('id, name'),
-      fetchAllRows<{ id: string; name: string }>('credit_person', 'id, name', 'id'),
+      fetchAllRows<{ id: string; name: string }>(supabase, 'credit_person', 'id, name', 'id'),
       fetchAllRows<{ credit_person_id: string; role: string; instrument_id: string | null }>(
+        supabase,
         'artist_credit',
         'credit_person_id, role, instrument_id',
         'id'

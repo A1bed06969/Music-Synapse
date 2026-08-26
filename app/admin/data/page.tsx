@@ -1,6 +1,7 @@
-import Link from 'next/link'
 import { createClient } from '@/utils/Supabase/server'
+import { fetchAllRows } from '@/utils/fetchAllRows'
 import SearchableSelect from './SearchableSelect'
+import AdminArtistSearchList from './AdminArtistSearchList'
 import { searchArtists, mergeArtist } from './actions'
 
 export default async function AdminDataPage({
@@ -10,8 +11,9 @@ export default async function AdminDataPage({
 }) {
   const { success, error } = await searchParams
   const supabase = await createClient()
-  const { data: artists } = await supabase.from('artist').select('id, name').order('name')
-  const artistOptions = artists ?? []
+  // 2026年8月時点でアーティスト総数がPostgRESTの1リクエストあたり行数上限(既定1000件)を
+  // 超えており、単純な.select()だと後半のアーティストが一覧から丸ごと消えていた
+  const artistOptions = await fetchAllRows<{ id: string; name: string }>(supabase, 'artist', 'id, name', 'name')
 
   return (
     <div className="mx-auto max-w-[1600px] px-6 py-12">
@@ -32,20 +34,9 @@ export default async function AdminDataPage({
         <p className="mt-2 text-xs text-white/40">
           プロフィール項目(bio・URL・配信状況等)の編集はこちらから。新規登録はiTunes一括登録のみ対応。
         </p>
-        {artistOptions.length === 0 ? (
-          <p className="mt-4 text-sm text-white/40">まだアーティストが登録されていません。</p>
-        ) : (
-          <ul className="mt-4 divide-y divide-white/10">
-            {artistOptions.map((a) => (
-              <li key={a.id} className="flex items-center justify-between py-2 text-sm">
-                <span>{a.name}</span>
-                <Link href={`/admin/data/artists/${a.id}/edit`} className="text-xs text-white/40 hover:text-white/70">
-                  編集 →
-                </Link>
-              </li>
-            ))}
-          </ul>
-        )}
+        <div className="mt-4">
+          <AdminArtistSearchList artists={artistOptions} />
+        </div>
       </section>
 
       <section className="mt-10 rounded-md border border-red-500/20 p-4">
