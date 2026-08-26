@@ -58,18 +58,21 @@ export default async function ArtistsPage() {
       ),
     ])
 
-  // 本人名義のリリース(album/track)有無を判定するため、全件をページングで取得する
-  // (PostgRESTの1リクエストあたり行数上限を超えないよう分割)
-  async function fetchAllArtistIdsFrom(table: 'album' | 'track'): Promise<Set<string>> {
+  // 本人名義のリリース(album/track)有無を判定するため、artist_idの集合が欲しいだけ
+  // なのに、以前は全行(trackだけで131,000件超)を1000件ずつ逐次ページングして
+  // いた(132回の逐次往復が発生し、ページ生成に50秒以上かかる原因になっていた)。
+  // Postgres側でDISTINCTした結果だけをRPCで返すよう変更する(distinct_*_artist_ids、
+  // supabase/migrations/20260826_add_distinct_artist_ids_rpc.sql)。RPCの戻り値も
+  // PostgRESTの1リクエストあたり行数上限(1000件)の対象になるため、それでも
+  // ページングは必要だが、artist総数(2687件)が上限のため最大でも3往復で済む
+  async function fetchDistinctArtistIdsFrom(rpcName: 'distinct_album_artist_ids' | 'distinct_track_artist_ids'): Promise<Set<string>> {
     const ids = new Set<string>()
     const pageSize = 1000
     let offset = 0
     while (true) {
-      const { data } = await supabase.from(table).select('artist_id').order('id', { ascending: true }).range(offset, offset + pageSize - 1)
-      const rows = data ?? []
-      for (const row of rows) {
-        if (row.artist_id) ids.add(row.artist_id)
-      }
+      const { data } = await supabase.rpc(rpcName).range(offset, offset + pageSize - 1)
+      const rows = (data ?? []) as { artist_id: string }[]
+      for (const row of rows) ids.add(row.artist_id)
       if (rows.length < pageSize) break
       offset += pageSize
     }
@@ -77,8 +80,8 @@ export default async function ArtistsPage() {
   }
 
   const [releasedByAlbum, releasedByTrack] = await Promise.all([
-    fetchAllArtistIdsFrom('album'),
-    fetchAllArtistIdsFrom('track'),
+    fetchDistinctArtistIdsFrom('distinct_album_artist_ids'),
+    fetchDistinctArtistIdsFrom('distinct_track_artist_ids'),
   ])
   const releasedIds = new Set<string>([...releasedByAlbum, ...releasedByTrack])
 
