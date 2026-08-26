@@ -247,17 +247,27 @@ export default function LandscapeView({
     setIsDragging(true)
   }
   function handlePointerMove(e: React.PointerEvent<SVGSVGElement>) {
+    // タッチはTouch系イベント(handleTouchMove)で処理する。WebKitはタッチ操作でも
+    // Pointer Eventsを並行して発火するため、ここでガードしないと1本指パン中に
+    // handleTouchMoveとhandlePointerMoveの両方がdragRef(共有)を使って
+    // setTransformを二重に呼び、かつgetBoundingClientRect()による強制レイアウトが
+    // フレームごとに二重発生する(レイアウトスラッシング)。ピンチ(2本指)では
+    // handleTouchStartがdragRef.currentをnullにするためこの経路は発火せず、
+    // パン操作特有でモバイルSafariがクラッシュしていた原因はこれだった
+    if (e.pointerType === 'touch') return
     const rect = svgRef.current?.getBoundingClientRect()
     if (rect) setPointer({ x: e.clientX - rect.left, y: e.clientY - rect.top })
     if (!dragRef.current) return
     const { dx, dy } = clientDeltaToViewBox(e.clientX - dragRef.current.startX, e.clientY - dragRef.current.startY)
     setTransform((prev) => ({ ...prev, tx: dragRef.current!.startTx + dx, ty: dragRef.current!.startTy + dy }))
   }
-  function handlePointerUp() {
+  function handlePointerUp(e: React.PointerEvent<SVGSVGElement>) {
+    if (e.pointerType === 'touch') return
     dragRef.current = null
     setIsDragging(false)
   }
-  function handlePointerLeave() {
+  function handlePointerLeave(e: React.PointerEvent<SVGSVGElement>) {
+    if (e.pointerType === 'touch') return
     dragRef.current = null
     setIsDragging(false)
     setPointer(null)
