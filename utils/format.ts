@@ -20,6 +20,16 @@ export function formatDate(dateStr: string | null): string {
   return `${y}.${m}.${d}`
 }
 
+/** ラジオ局のパワープレイ&ヘビロテ集計期間の表示用。月間集計はperiod_start_dateが
+ * 常にその月1日付になっている(実際の集計期間は月全体)ため、日付ではなく
+ * 「◯月度」表記にする。週間集計は従来通り日付表示のまま */
+export function formatRotationPeriod(dateStr: string | null, periodType: string): string {
+  if (!dateStr) return '未定'
+  if (periodType !== 'monthly') return formatDate(dateStr)
+  const [y, m] = dateStr.split('-')
+  return `${y}年${Number(m)}月度`
+}
+
 export const STREAMING_STATUS_LABEL: Record<string, { label: string; icon: string }> = {
   all: { label: '全配信中', icon: '🟢' },
   apple_only: { label: 'Apple Music限定', icon: '🍏' },

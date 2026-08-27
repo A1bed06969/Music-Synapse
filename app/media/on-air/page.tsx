@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { createClient } from '@/utils/Supabase/server'
-import { formatDate } from '@/utils/format'
+import { formatRotationPeriod } from '@/utils/format'
 import PrefectureMap, { type PrefectureEntry, type PrefectureMapData } from '@/app/components/PrefectureMap'
 
 const MUSIC_TYPE_LABEL: Record<string, string> = {
@@ -374,8 +374,8 @@ export default async function OnAirPage({
                     {media?.name} {program?.program_name}
                   </p>
                   <p>
-                    {formatDate(row.period_start_date)}({row.period_type === 'weekly' ? '週間' : '月間'}) ·{' '}
-                    {MUSIC_TYPE_LABEL[row.music_type]}
+                    {formatRotationPeriod(row.period_start_date, row.period_type)}
+                    {row.period_type === 'weekly' ? '(週間)' : ''} · {MUSIC_TYPE_LABEL[row.music_type]}
                   </p>
                 </div>
               </li>

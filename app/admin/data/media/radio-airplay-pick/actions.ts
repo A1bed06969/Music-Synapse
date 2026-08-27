@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation'
 import { createAdminClient } from '@/utils/Supabase/admin'
 import { searchTracks, fetchTrackById } from '@/utils/itunes'
 import { registerTrackFromSearch } from '@/app/admin/import/search/actions'
+import { getStationPeriodType } from '@/utils/radioStationPeriod'
 
 export type PickerItem = { id: string; label: string; imageUrl?: string }
 
@@ -91,13 +92,6 @@ function redirectWith(result: 'success' | 'error', message: string): never {
   redirect(`/admin/data/media/radio-airplay-pick?view=matched&${result}=${encodeURIComponent(message)}`)
 }
 
-/** campaign_nameの表記から週間/月間を推定する(HRPPには周期の列が無いため)。
- * 判別できない場合はパワープレイの一般的な形式である週間扱いにする */
-function inferPeriodType(campaignName: string | null): 'weekly' | 'monthly' {
-  if (!campaignName) return 'weekly'
-  return /month|monthly|マンスリー|マンプレ|月間/i.test(campaignName) ? 'monthly' : 'weekly'
-}
-
 /** マッチ済み候補を本番のradio_rotationへ登録する(パワープレイ&ヘビロテページに反映)。
  * カタログに未登録のアーティスト/トラックは、検索・選択式バルク登録と同じ
  * registerTrackFromSearch(アルバム単位の正規登録、MusicBrainz補完・版統合込み)で
@@ -167,7 +161,7 @@ export async function registerPickToRotation(formData: FormData) {
     .eq('program_name', programName)
     .maybeSingle()
   let programId = existingProgram?.id as string | undefined
-  const periodType = inferPeriodType(pick.campaign_name)
+  const periodType = getStationPeriodType(pick.station_name)
   if (!programId) {
     const { data: createdProgram, error } = await supabase
       .from('media_program')

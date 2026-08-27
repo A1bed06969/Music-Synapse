@@ -3,6 +3,7 @@
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/utils/Supabase/admin'
+import { getStationPeriodType } from '@/utils/radioStationPeriod'
 
 function redirectWith(result: 'success' | 'error', message: string): never {
   redirect(`/admin/data/media/radio-pilot?${result}=${encodeURIComponent(message)}`)
@@ -22,6 +23,7 @@ export async function registerRadioPick(formData: FormData) {
   }
 
   const supabase = createAdminClient()
+  const periodType = getStationPeriodType(stationName)
 
   const { data: existingMedia } = await supabase.from('media').select('id').eq('name', stationName).maybeSingle()
   let mediaId = existingMedia?.id as string | undefined
@@ -47,7 +49,7 @@ export async function registerRadioPick(formData: FormData) {
   if (!programId) {
     const { data: createdProgram, error } = await supabase
       .from('media_program')
-      .insert({ media_id: mediaId, program_name: programName, period_type: 'monthly' })
+      .insert({ media_id: mediaId, program_name: programName, period_type: periodType })
       .select('id')
       .single()
     if (error || !createdProgram) {
@@ -58,7 +60,7 @@ export async function registerRadioPick(formData: FormData) {
 
   const { error: rotationError } = await supabase.from('radio_rotation').insert({
     media_program_id: programId,
-    period_type: 'monthly',
+    period_type: periodType,
     period_start_date: periodStartDate,
     music_type: musicType,
     artist_id: artistId,

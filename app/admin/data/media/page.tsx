@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { createClient } from '@/utils/Supabase/server'
 import { PREFECTURE_COORDS } from '@/utils/prefectures'
+import { formatRotationPeriod } from '@/utils/format'
 import { inputClass, buttonClass } from '../adminUi'
 import SearchableSelect from '../SearchableSelect'
 import { searchTracks, searchAlbums, searchArtists } from '../actions'
@@ -193,7 +194,7 @@ export default async function MediaAdminPage({
             return (
               <li key={row.id} className="flex items-center justify-between gap-2">
                 <span>
-                  {row.period_start_date} {media?.name} {program?.program_name} — {target}
+                  {formatRotationPeriod(row.period_start_date, row.period_type)} {media?.name} {program?.program_name} — {target}
                   <span className="text-white/30"> ({row.music_type === 'DOMESTIC' ? '邦楽' : '洋楽'})</span>
                 </span>
                 <Link
