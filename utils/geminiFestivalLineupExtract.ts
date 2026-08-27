@@ -47,10 +47,15 @@ export function extractOgImage(html: string): string | null {
 }
 
 /** HTMLからscript/styleを除去し、タグを取り除いた可視テキストに変換する。
- * Geminiへの入力トークンを抑えるため、一定の長さで打ち切る。 */
+ * Geminiへの入力トークンを抑えるため、一定の長さで打ち切る。
+ *
+ * フェスの出演者一覧は、テキストではなくロゴ画像の並び(<img alt="アーティスト名">)
+ * で組まれているサイトが実際にあり(例: numbershot.jp)、alt属性を先に本文へ
+ * 展開しておかないとタグ除去で丸ごと消えて抽出0件になる。 */
 export function stripHtmlToText(html: string, maxLength = 15000): string {
   const withoutScripts = html.replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<style[\s\S]*?<\/style>/gi, '')
-  const text = withoutScripts
+  const withImgAltExpanded = withoutScripts.replace(/<img\b[^>]*\balt=["']([^"']*)["'][^>]*>/gi, ' $1 ')
+  const text = withImgAltExpanded
     .replace(/<br\s*\/?>/gi, '\n')
     .replace(/<\/(p|div|li|tr|h[1-6])>/gi, '\n')
     .replace(/<[^>]+>/g, ' ')

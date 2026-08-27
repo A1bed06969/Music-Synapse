@@ -108,6 +108,35 @@ export async function saveFestivalPilotDataset(formData: FormData) {
   redirectDatasetsWith('success', `「${label}」を保存しました(${picks!.length}件)。`)
 }
 
+export type QuickAddPilotResult = { success: true; key: string; message: string } | { success: false; message: string }
+
+/** AI抽出(Gemini)がJS描画サイト等で0件だった場合の受け皿。空のpicks([])で
+ * festival_pilot_datasetにエントリだけ作り、/festival-pilot/datasetsから後で
+ * 手動でJSONを追記できるようにする(公式サイトのJSONデータエンドポイントを
+ * 直接見つけて手動投入するケースが実際にあったため、その置き場を用意する)。
+ * saveFestivalPilotDatasetと違い、空配列を意図的なプレースホルダーとして許可する。 */
+export async function quickAddFestivalPilotDataset(eventId: string, eventName: string): Promise<QuickAddPilotResult> {
+  const key = eventId.toLowerCase()
+  const supabase = createAdminClient()
+
+  const { data: existing } = await supabase.from('festival_pilot_dataset').select('key').eq('key', key).maybeSingle()
+  if (existing) {
+    return { success: true, key, message: `既に「${eventName}」はパイロット登録にあります。` }
+  }
+
+  const { error } = await supabase
+    .from('festival_pilot_dataset')
+    .upsert({ key, label: eventName, picks: [] }, { onConflict: 'key' })
+
+  if (error) {
+    return { success: false, message: `パイロット登録への追加に失敗しました: ${error.message}` }
+  }
+
+  revalidatePath('/admin/data/events/festival-pilot')
+  revalidatePath('/admin/data/events/festival-pilot/datasets')
+  return { success: true, key, message: `「${eventName}」をパイロット登録に追加しました。` }
+}
+
 export async function deleteFestivalPilotDataset(formData: FormData) {
   const id = String(formData.get('id') ?? '')
   if (!id) {

@@ -1,8 +1,10 @@
 'use client'
 
+import Link from 'next/link'
 import { useState, useTransition } from 'react'
 import { extractFestivalLineupCandidates, setEventImageFromUrl, type FestivalExtractResult } from '../../../actions'
 import UnmatchedArtistTag from '../../../festival-pilot/UnmatchedArtistTag'
+import { quickAddFestivalPilotDataset } from '../../../festival-pilot/actions'
 
 export default function FestivalLineupExtractor({
   eventId,
@@ -14,15 +16,31 @@ export default function FestivalLineupExtractor({
   const [result, setResult] = useState<FestivalExtractResult | null>(null)
   const [imageApplied, setImageApplied] = useState(false)
   const [imageMessage, setImageMessage] = useState<string | null>(null)
+  const [pilotAdded, setPilotAdded] = useState<{ key: string; message: string } | null>(null)
+  const [pilotError, setPilotError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
 
   function handleExtract() {
     setResult(null)
     setImageApplied(false)
     setImageMessage(null)
+    setPilotAdded(null)
+    setPilotError(null)
     startTransition(async () => {
       const res = await extractFestivalLineupCandidates(eventId, eventEditionId)
       setResult(res)
+    })
+  }
+
+  function handleAddToPilot(eventName: string) {
+    setPilotError(null)
+    startTransition(async () => {
+      const res = await quickAddFestivalPilotDataset(eventId, eventName)
+      if (res.success) {
+        setPilotAdded({ key: res.key, message: res.message })
+      } else {
+        setPilotError(res.message)
+      }
     })
   }
 
@@ -78,7 +96,32 @@ export default function FestivalLineupExtractor({
           )}
 
           {result.candidates.length === 0 ? (
-            <p className="text-xs text-white/30">出演者候補が見つかりませんでした(JS描画のサイトでは取得できないことがあります)。</p>
+            <div className="space-y-2">
+              <p className="text-xs text-white/30">
+                出演者候補が見つかりませんでした(JS描画のサイトでは取得できないことがあります)。
+              </p>
+              {pilotAdded ? (
+                <p className="text-xs text-green-400">
+                  ✓ {pilotAdded.message}{' '}
+                  <Link
+                    href={`/admin/data/events/festival-pilot?festival=${pilotAdded.key}`}
+                    className="underline hover:text-green-300"
+                  >
+                    パイロット登録画面へ →
+                  </Link>
+                </p>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => handleAddToPilot(result.festivalName)}
+                  disabled={isPending}
+                  className="rounded border border-white/15 px-2 py-1 text-xs hover:bg-white/5 disabled:opacity-40"
+                >
+                  パイロット登録に追加する(公式サイトのJSONデータ等を後で手動投入する置き場を作る)
+                </button>
+              )}
+              {pilotError && <p className="text-xs text-red-400">{pilotError}</p>}
+            </div>
           ) : (
             <div>
               <p className="text-xs text-white/40">出演者候補({result.candidates.length}件)。タップしてApple Musicと照合・登録:</p>
