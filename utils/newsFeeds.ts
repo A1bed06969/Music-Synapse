@@ -4,11 +4,11 @@ export type NewsSource = {
 }
 
 // 主要な音楽メディアのRSSフィード一覧。フィードURLは事前に実アクセスして
-// 有効性を確認済み(OTOTOYはAtom形式、他はRSS2.0)。
+// 有効性を確認済み(他はRSS2.0)。
 // 注: TURN(turntokyo.com)は現時点でフィード自体は有効だが記事が0件のため、
 // 復活すれば自動的に表示される想定でそのまま残している。
+// OTOTOYはリンク先の記事が閲覧できない(会員限定等)ため除外。
 export const NEWS_SOURCES: NewsSource[] = [
-  { name: 'OTOTOY', feedUrl: 'https://ototoy.jp/news/feed' },
   { name: 'Qetic', feedUrl: 'https://qetic.jp/feed/' },
   { name: 'indienative', feedUrl: 'https://www.indienative.com/feed/' },
   { name: '音楽ナタリー', feedUrl: 'https://natalie.mu/music/feed/news' },
