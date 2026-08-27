@@ -4,10 +4,10 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { fetchAllRows } from '@/utils/fetchAllRows'
 import type { LineageEdge } from '@/utils/genreHistory'
 import { resolveRootGenreId, resolveRootGenreName, calculateLandscapePosition, calculateLeafArtistPosition } from '@/lib/landscape/coordinate'
-import type { Vector2 } from '@/lib/landscape/genreAnchors'
+import { getGenreAnchor, type Vector2 } from '@/lib/landscape/genreAnchors'
 import { colorForGenre } from '@/lib/landscape/genreColors'
 import { getDerivationChildren, getSubtreeGenreIds, resolveGenrePath } from '@/lib/landscape/hierarchy'
-import LandscapeView, { type LandscapeArtist } from '../LandscapeView'
+import LandscapeView, { type LandscapeArtist, type GenreZoomTarget } from '../LandscapeView'
 import SubgenreBrowseView, { type SubgenreTile } from '../SubgenreBrowseView'
 import LandscapeBreadcrumb, { type BreadcrumbStep } from '../LandscapeBreadcrumb'
 
@@ -341,32 +341,30 @@ export default async function LandscapePage({ params }: { params: Promise<{ path
     a.localeCompare(b)
   )
 
+  // ルート一覧のズームを、別リストのテキストリンクではなく地図上の実座標に
+  // 直接重ねたクリック可能マーカーにする(ジャンルのアンカー位置=そのジャンルの
+  // アーティストがクラスタしている場所そのもの)
+  const genreZoomTargets: GenreZoomTarget[] = [...rootGenreIdByName.entries()].map(([name, id]) => {
+    const anchor = getGenreAnchor(name, dbGenreAnchors)
+    return {
+      name,
+      x: anchor.x,
+      y: anchor.y,
+      href: `/landscape/${id}`,
+      artistCount: idsByGenre.get(name)?.length ?? 0,
+    }
+  })
+
   return (
     <div className="mx-auto max-w-[1600px] px-6 py-12">
       <h1 className="text-2xl font-bold">MUSIC LANDSCAPE</h1>
       <p className="mt-2 text-sm text-white/50">
         アーティストをジャンルの近さで空間に配置した地図。検索するのではなく、眺めながら歩いて音楽と出会うためのビジュアライゼーションです。
-        (現在は各ジャンル上位{PER_GENRE_CAP}組・{landscapeArtists.length}組を表示中)
+        (現在は各ジャンル上位{PER_GENRE_CAP}組・{landscapeArtists.length}組を表示中。丸いマーカーをクリックするとそのジャンルへズームします)
       </p>
 
-      <div className="mt-4 flex flex-wrap gap-1.5">
-        {genreOptions.map((name) => {
-          const id = rootGenreIdByName.get(name)
-          if (!id) return null
-          return (
-            <a
-              key={id}
-              href={`/landscape/${id}`}
-              className="rounded-full border border-white/15 px-2.5 py-1 text-xs text-white/60 hover:border-white/30 hover:text-white/90"
-            >
-              {name}をズーム →
-            </a>
-          )
-        })}
-      </div>
-
       <div className="mt-8">
-        <LandscapeView artists={landscapeArtists} genreOptions={genreOptions} />
+        <LandscapeView artists={landscapeArtists} genreOptions={genreOptions} genreZoomTargets={genreZoomTargets} />
       </div>
     </div>
   )

@@ -1,8 +1,11 @@
 'use client'
 
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useRef, useState, useCallback, memo } from 'react'
 import { UNCLASSIFIED_COLOR } from '@/lib/landscape/genreColors'
+
+export type GenreZoomTarget = { name: string; x: number; y: number; href: string; artistCount: number }
 
 export type LandscapeArtist = {
   artistId: string
@@ -158,13 +161,60 @@ const LandscapeNodes = memo(function LandscapeNodes({
   )
 })
 
+/** ルート一覧で「◯◯をズーム」を押せるようにするマーカー。テキストの別リストに
+ * せず、そのジャンルの実際のアンカー座標(アーティストがクラスタしている場所)に
+ * 直接重ねて表示することで「地図をクリックして掘り下げる」体験にする。 */
+const GenreZoomMarkers = memo(function GenreZoomMarkers({
+  targets,
+  onNavigate,
+}: {
+  targets: GenreZoomTarget[]
+  onNavigate: (href: string) => void
+}) {
+  const maxCount = Math.max(1, ...targets.map((t) => t.artistCount))
+  return (
+    <>
+      {targets.map((target) => {
+        const cx = toViewX(target.x)
+        const cy = toViewY(target.y)
+        const r = 16 + Math.sqrt(target.artistCount / maxCount) * 28
+        return (
+          <g
+            key={target.name}
+            className="cursor-pointer"
+            tabIndex={0}
+            role="button"
+            aria-label={`${target.name}をズーム`}
+            onClick={() => onNavigate(target.href)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                onNavigate(target.href)
+              }
+            }}
+          >
+            <circle cx={cx} cy={cy} r={r} fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.35)" strokeWidth={1.5} />
+            <text x={cx} y={cy} textAnchor="middle" dominantBaseline="middle" fontSize={12} fill="rgba(255,255,255,0.75)" pointerEvents="none">
+              {target.name}
+            </text>
+          </g>
+        )
+      })}
+    </>
+  )
+})
+
 export default function LandscapeView({
   artists,
   genreOptions,
+  genreZoomTargets = [],
 }: {
   artists: LandscapeArtist[]
   genreOptions: string[]
+  /** ルート一覧のときだけ渡す。ジャンルの実座標にクリック可能なマーカーを重ねる。 */
+  genreZoomTargets?: GenreZoomTarget[]
 }) {
+  const router = useRouter()
   const svgRef = useRef<SVGSVGElement>(null)
   const [transform, setTransform] = useState<Transform>(initialTransform)
   const [hoveredId, setHoveredId] = useState<string | null>(null)
@@ -465,6 +515,9 @@ export default function LandscapeView({
               onBlurNode={handleBlurNode}
               onSelect={handleSelect}
             />
+            {genreZoomTargets.length > 0 && (
+              <GenreZoomMarkers targets={genreZoomTargets} onNavigate={(href) => router.push(href)} />
+            )}
           </g>
         </svg>
 
