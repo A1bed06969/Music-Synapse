@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from 'react'
 
-type Item = { id: string; label: string }
+type Item = { id: string; label: string; imageUrl?: string }
 
 export default function SearchableSelect({
   searchAction,
@@ -105,8 +105,12 @@ export default function SearchableSelect({
           {selected.map((item) => (
             <span
               key={item.id}
-              className="flex items-center gap-1 rounded-md border border-white/15 bg-white/5 px-2 py-1 text-xs text-white"
+              className="flex items-center gap-1.5 rounded-md border border-white/15 bg-white/5 px-2 py-1 text-xs text-white"
             >
+              {item.imageUrl && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={item.imageUrl} alt="" className="h-5 w-5 shrink-0 rounded object-cover" />
+              )}
               <span className="max-w-[220px] truncate">{item.label}</span>
               <button
                 type="button"
@@ -122,7 +126,11 @@ export default function SearchableSelect({
       )}
 
       {!multiple && selected.length > 0 ? (
-        <div className="flex items-center gap-1 rounded-md border border-white/15 bg-white/5 px-3 py-2 text-sm text-white">
+        <div className="flex items-center gap-2 rounded-md border border-white/15 bg-white/5 px-3 py-2 text-sm text-white">
+          {selected[0].imageUrl && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={selected[0].imageUrl} alt="" className="h-8 w-8 shrink-0 rounded object-cover" />
+          )}
           <span className="flex-1 truncate">{selected[0].label}</span>
           <button
             type="button"
@@ -164,9 +172,13 @@ export default function SearchableSelect({
                 type="button"
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => selectItem(item)}
-                className="block w-full px-3 py-2 text-left text-sm text-white hover:bg-white/10"
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-white hover:bg-white/10"
               >
-                {item.label}
+                {item.imageUrl && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={item.imageUrl} alt="" className="h-8 w-8 shrink-0 rounded object-cover" />
+                )}
+                <span className="min-w-0 flex-1 truncate">{item.label}</span>
               </button>
             ))
           )}

@@ -20,6 +20,9 @@ export type MatchResult = {
     // 正しいマッチ(表記ゆれ込み)は0.79〜1.0、無関係なマッチは0.15〜0.17前後
     // まで下がるため、確認UI側で「要確認」判定のしきい値として使える。
     similarity: number;
+    // 確認画面で候補にジャケットを表示するため。自前DBはalbum.jacket_url、
+    // Apple Music候補はartworkUrl100由来(どちらも無ければundefined)。
+    artwork_url?: string;
   }>;
 };
 
@@ -30,6 +33,7 @@ type FuzzyAlbumRow = {
   artist_name: string;
   title_similarity: number;
   artist_similarity: number;
+  jacket_url: string | null;
 };
 
 function normalizeForMatch(s: string): string {
@@ -71,6 +75,7 @@ async function searchAppleMusicCandidates(
       title: r.collectionName,
       artist_name: r.artistName,
       similarity,
+      artwork_url: r.artworkUrl100,
     };
   });
 }
@@ -106,6 +111,7 @@ export async function matchAlbumsWithCandidates(
       title: r.title,
       artist_name: r.artist_name,
       similarity: (r.title_similarity + r.artist_similarity) / 2,
+      artwork_url: r.jacket_url ?? undefined,
     }));
     const appleCandidates = await searchAppleMusicCandidates(album.artist_name, album.title);
 

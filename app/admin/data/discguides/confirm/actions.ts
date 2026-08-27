@@ -13,7 +13,7 @@
 // (register route側でこのプレフィックスを見てregisterAlbumFromSearchを呼ぶ)。
 import { searchAlbums as searchItunesAlbums } from '@/utils/itunes'
 
-export type PickerItem = { id: string; label: string }
+export type PickerItem = { id: string; label: string; imageUrl?: string }
 
 export async function searchAppleMusicAlbums(query: string): Promise<PickerItem[]> {
   const trimmed = query.trim()
@@ -29,5 +29,6 @@ export async function searchAppleMusicAlbums(query: string): Promise<PickerItem[
   return results.map((a) => ({
     id: `itunes:${a.collectionId}`,
     label: `${a.collectionName} — ${a.artistName}`,
+    imageUrl: a.artworkUrl100,
   }))
 }

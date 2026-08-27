@@ -6,6 +6,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import SearchableSelect from '../../SearchableSelect'
 import { searchAppleMusicAlbums } from './actions'
+import AlbumCandidatePicker from './AlbumCandidatePicker'
 
 type AlbumExtract = {
   title: string
@@ -21,6 +22,7 @@ type Candidate = {
   // 既存の確認待ちレコード(similarity追加前に保存されたもの)には無い可能性が
   // あるため任意。無い場合は未確認扱い(=要確認)にするのが安全なデフォルト。
   similarity?: number
+  artwork_url?: string
 }
 
 // 実データでの実測値: 正しいマッチ(表記ゆれ込み)は0.79〜1.0、無関係なマッチは
@@ -225,19 +227,11 @@ export default function ConfirmationClient({ pending }: { pending: PendingRecord
 
               <div className="mt-3">
                 <label className="text-xs text-white/40">マッチするアルバム</label>
-                <select
+                <AlbumCandidatePicker
+                  candidates={match?.candidates ?? []}
                   value={selections[i] || 'new'}
-                  onChange={(e) => setSelections({ ...selections, [i]: e.target.value })}
-                  className="mt-1 w-full rounded bg-white/5 px-2 py-1 text-sm text-white"
-                >
-                  <option value="new">新規作成</option>
-                  {match?.candidates?.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.title} / {c.artist_name}
-                      {c.similarity !== undefined ? ` (一致度${Math.round(c.similarity * 100)}%)` : ''}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(id) => setSelections({ ...selections, [i]: id })}
+                />
               </div>
 
               <div className="mt-2">
