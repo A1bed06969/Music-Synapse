@@ -115,10 +115,14 @@ function estimateAnchorFromName(nameLower: string): Vector2 {
 }
 
 /** ジャンル名(表記ゆれを吸収するため小文字化して照合)から基準座標を返す。
- * 未登録の場合はキーワード推定にフォールバックする。 */
-export function getGenreAnchor(genreName: string | null): Vector2 {
+ * dbAnchors(genre.landscape_x/yから作ったUMAP埋め込みのマップ)に該当する
+ * エントリがあれば最優先で使う。無ければ手動アンカー、それも無ければ
+ * キーワード推定にフォールバックする(仕様29番: embeddingへの置き換え後も
+ * genre_lineageにエッジの無いジャンルは推定が必要なため、3段構成のまま残す)。 */
+export function getGenreAnchor(genreName: string | null, dbAnchors?: Map<string, Vector2>): Vector2 {
   if (!genreName) return UNCLASSIFIED_ANCHOR
   const key = genreName.trim().toLowerCase()
+  if (dbAnchors?.has(key)) return dbAnchors.get(key)!
   if (GENRE_ANCHORS[key]) return GENRE_ANCHORS[key]
   return estimateAnchorFromName(key)
 }

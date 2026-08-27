@@ -60,9 +60,16 @@ export type LandscapeCoordinateInput = {
  * Tag Offsetは、このDBにfreeformなTagテーブルが存在しないためMVPでは
  * 未実装(仕様39番が許容する「Tagが無い」ケースとして扱う)。将来Tagテーブルが
  * 追加された場合は、ここにsubgenreOffsetと同じ要領でtagOffsetを足すだけでよい。
+ *
+ * dbAnchors: genre.landscape_x/y(genre_lineageからのUMAP埋め込み、仕様29番の
+ * ステップ2)を呼び出し側が1回だけ読み込んで渡すマップ。渡さない場合は
+ * getGenreAnchorの手動アンカー/キーワード推定にフォールバックする。
  */
-export function calculateLandscapePosition(input: LandscapeCoordinateInput): LandscapePosition {
-  const anchor = getGenreAnchor(input.rootGenreName)
+export function calculateLandscapePosition(
+  input: LandscapeCoordinateInput,
+  dbAnchors?: Map<string, Vector2>
+): LandscapePosition {
+  const anchor = getGenreAnchor(input.rootGenreName, dbAnchors)
 
   const isRootItself =
     !input.specificGenreName || !input.rootGenreName || input.specificGenreName.toLowerCase() === input.rootGenreName.toLowerCase()

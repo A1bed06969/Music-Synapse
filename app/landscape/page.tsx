@@ -2,6 +2,7 @@ import { createClient } from '@/utils/Supabase/server'
 import { fetchAllRows } from '@/utils/fetchAllRows'
 import type { LineageEdge } from '@/utils/genreHistory'
 import { resolveRootGenreName, calculateLandscapePosition } from '@/lib/landscape/coordinate'
+import type { Vector2 } from '@/lib/landscape/genreAnchors'
 import { colorForGenre } from '@/lib/landscape/genreColors'
 import LandscapeView, { type LandscapeArtist } from './LandscapeView'
 
@@ -45,7 +46,7 @@ export default async function LandscapePage() {
   // 選定漏れにつながる)ためページングする
   const [{ data: lineageRows }, { data: genreRows }, { data: highlightRows }, tagRows] = await Promise.all([
     supabase.from('genre_lineage').select('parent_genre_id, child_genre_id, relation_type'),
-    supabase.from('genre').select('id, name'),
+    supabase.from('genre').select('id, name, landscape_x, landscape_y'),
     supabase.from('genre_highlight').select('artist_id, genre_id').not('artist_id', 'is', null),
     fetchAllRows<{ artist_id: string; genre_id: string }>(supabase, 'artist_genre', 'artist_id, genre_id', 'artist_id'),
   ])
@@ -56,6 +57,15 @@ export default async function LandscapePage() {
     relationType: (r.relation_type as LineageEdge['relationType']) ?? 'derivation',
   }))
   const genreNameById = new Map((genreRows ?? []).map((g) => [g.id, g.name]))
+
+  // genre_lineageからのUMAP埋め込み(仕様29番ステップ2)。座標が計算済みの
+  // ジャンルのみキー(小文字化した名前)を持つ。無いジャンルはgetGenreAnchor側の
+  // 手動アンカー/キーワード推定にフォールバックする
+  const dbGenreAnchors = new Map<string, Vector2>(
+    (genreRows ?? [])
+      .filter((g) => g.landscape_x != null && g.landscape_y != null)
+      .map((g) => [g.name.trim().toLowerCase(), { x: g.landscape_x as number, y: g.landscape_y as number }])
+  )
 
   const genreIdByArtistId = pickPrimaryGenrePerArtist(
     (highlightRows ?? []) as { artist_id: string | null; genre_id: string }[],
@@ -190,7 +200,7 @@ export default async function LandscapePage() {
 
     const specificGenreName = specificGenreByArtistId.get(artistId) ?? null
     const rootGenreName = rootGenreByArtistId.get(artistId) ?? null
-    const position = calculateLandscapePosition({ seedId: artistId, rootGenreName, specificGenreName })
+    const position = calculateLandscapePosition({ seedId: artistId, rootGenreName, specificGenreName }, dbGenreAnchors)
     const highlightCount = highlightCountByArtistId.get(artistId) ?? 0
 
     landscapeArtists.push({
