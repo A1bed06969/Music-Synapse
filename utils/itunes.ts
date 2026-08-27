@@ -190,6 +190,27 @@ export type ItunesTrackSearchResult = {
 }
 
 /**
+ * 指定IDのトラック単体を取得する(検索結果から選択したtrackIdの完全な情報を
+ * 再取得するために使う。searchTracksはキーワード検索でありID直接引きができないため、
+ * 選択後の確定保存にはこちらのLookup APIベースの関数を使うこと)
+ */
+export async function fetchTrackById(trackId: number): Promise<ItunesTrackSearchResult | null> {
+  const url = `${ITUNES_LOOKUP_BASE}?id=${trackId}&entity=song&country=JP`
+  const data = await fetchItunes(url, 'track lookup')
+  const r = data.results.find((x: any) => x.wrapperType === 'track')
+  if (!r) return null
+  return {
+    trackId: r.trackId,
+    trackName: r.trackName,
+    artistId: r.artistId,
+    artistName: r.artistName,
+    collectionId: r.collectionId,
+    collectionName: r.collectionName,
+    artworkUrl100: r.artworkUrl100,
+  }
+}
+
+/**
  * キーワードでトラックを検索する(entity=song)。管理画面の検索・選択式
  * バルク登録UIで使う
  */

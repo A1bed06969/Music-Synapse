@@ -57,6 +57,9 @@ export default async function MediaAdminPage({
           <Link href="/admin/data/media/radio-pilot" className="text-xs text-white/40 hover:text-white/70">
             ラジオ局PP収集(パイロット) →
           </Link>
+          <Link href="/admin/data/media/radio-airplay-pick" className="text-xs text-white/40 hover:text-white/70">
+            HRPP 手動マッチング →
+          </Link>
           <Link href="/media/on-air" className="text-xs text-white/40 hover:text-white/70">
             公開ページを見る →
           </Link>
