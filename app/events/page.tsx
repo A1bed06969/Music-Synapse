@@ -143,7 +143,7 @@ async function fetchMonthEvents(
   return [...festivalEvents, ...liveEvents]
 }
 
-type UpcomingVenueEvent = { label: string; href: string; imageUrl: string | null; dateLabel: string }
+type UpcomingVenueEvent = { key: string; label: string; href: string; imageUrl: string | null; dates: string[] }
 
 /** マップ表示用: 今日以降に開催予定のフェス・ライブの会場をvenue_location(ジオコード済み
  * 会場マスタ、/mapページと共通)と突き合わせてマーカー化する。開催日を跨がず月に縛られず
@@ -176,66 +176,78 @@ async function fetchUpcomingVenueMarkers(supabase: Awaited<ReturnType<typeof cre
     .select('id, end_date, venue, event:event_id(id, name, name_ja, image_url)')
     .gte('end_date', today)
 
-  const eventsByVenue = new Map<string, UpcomingVenueEvent[]>()
-  function addEvent(venue: string | null, entry: UpcomingVenueEvent) {
+  // 同じフェス(event)が複数日程(event_edition_date)を持つ場合、日程ごとに別カードに
+  // ならないよう「会場+イベント」単位で1件にまとめ、日付だけ配列で積み上げる
+  const eventsByVenue = new Map<string, Map<string, UpcomingVenueEvent>>()
+  function addDate(venue: string | null, key: string, base: Omit<UpcomingVenueEvent, 'dates'>, date: string) {
     if (!venue) return
-    const key = normalizeVenueName(venue)
-    const list = eventsByVenue.get(key) ?? []
-    list.push(entry)
-    eventsByVenue.set(key, list)
+    const venueKey = normalizeVenueName(venue)
+    const venueEvents = eventsByVenue.get(venueKey) ?? new Map<string, UpcomingVenueEvent>()
+    const existing = venueEvents.get(key)
+    if (existing) {
+      if (!existing.dates.includes(date)) existing.dates.push(date)
+    } else {
+      venueEvents.set(key, { ...base, dates: [date] })
+    }
+    eventsByVenue.set(venueKey, venueEvents)
   }
 
   for (const row of editionDateRows ?? []) {
     const edition = Array.isArray(row.event_edition) ? row.event_edition[0] : row.event_edition
     const ev = edition ? (Array.isArray(edition.event) ? edition.event[0] : edition.event) : null
     if (!ev?.id) continue
-    addEvent(row.venue, {
-      label: ev.name || ev.name_ja || '(名称不明)',
-      href: `/events/${ev.id}`,
-      imageUrl: ev.image_url ?? null,
-      dateLabel: row.date,
-    })
+    addDate(
+      row.venue,
+      `event-${ev.id}`,
+      { key: `event-${ev.id}`, label: ev.name || ev.name_ja || '(名称不明)', href: `/events/${ev.id}`, imageUrl: ev.image_url ?? null },
+      row.date
+    )
   }
 
   for (const edition of editionRows ?? []) {
     if (editionsWithDates.has(edition.id)) continue
     const ev = Array.isArray(edition.event) ? edition.event[0] : edition.event
     if (!ev?.id) continue
-    addEvent(edition.venue, {
-      label: ev.name || ev.name_ja || '(名称不明)',
-      href: `/events/${ev.id}`,
-      imageUrl: ev.image_url ?? null,
-      dateLabel: edition.end_date,
-    })
+    addDate(
+      edition.venue,
+      `event-${ev.id}`,
+      { key: `event-${ev.id}`, label: ev.name || ev.name_ja || '(名称不明)', href: `/events/${ev.id}`, imageUrl: ev.image_url ?? null },
+      edition.end_date
+    )
   }
 
   for (const l of liveRows ?? []) {
     if (!l.event_date) continue
     const artist = Array.isArray(l.artist) ? l.artist[0] : l.artist
-    addEvent(l.venue, {
-      label: l.name ?? artist?.name ?? '(名称不明)',
-      href: artist?.id ? `/artists/${artist.id}` : '',
-      imageUrl: null,
-      dateLabel: l.event_date,
-    })
+    addDate(
+      l.venue,
+      `live-${l.id}`,
+      {
+        key: `live-${l.id}`,
+        label: l.name ?? artist?.name ?? '(名称不明)',
+        href: artist?.id ? `/artists/${artist.id}` : '',
+        imageUrl: null,
+      },
+      l.event_date
+    )
   }
 
   const markers: MapMarker[] = []
   for (const v of venueLocations ?? []) {
     const events = eventsByVenue.get(normalizeVenueName(v.venue_name))
-    if (!events || events.length === 0) continue
+    if (!events || events.size === 0) continue
 
-    const eventsHtml = events
-      .map(
-        (e) =>
-          `<div style="margin-top:6px;"><a href="${escapeHtml(e.href)}" style="color:inherit;display:block;">${
-            e.imageUrl
-              ? `<img src="${escapeHtml(e.imageUrl)}" alt="" style="width:100%;height:auto;max-height:160px;object-fit:cover;border-radius:4px;display:block;" />`
-              : ''
-          }<div style="margin-top:4px;font-size:12px;">${escapeHtml(e.label)}</div><div style="font-size:11px;color:#888;">${escapeHtml(
-            e.dateLabel
-          )}</div></a></div>`
-      )
+    const eventsHtml = Array.from(events.values())
+      .map((e) => {
+        const datesLabel = e.dates.slice().sort().join(' / ')
+        return `<div style="margin-top:6px;"><a href="${escapeHtml(e.href)}" style="color:inherit;display:block;">${
+          e.imageUrl
+            ? `<img src="${escapeHtml(e.imageUrl)}" alt="" style="width:100%;height:auto;max-height:160px;object-fit:cover;border-radius:4px;display:block;" />`
+            : ''
+        }<div style="margin-top:4px;font-size:12px;">${escapeHtml(e.label)}</div><div style="font-size:11px;color:#888;">${escapeHtml(
+          datesLabel
+        )}</div></a></div>`
+      })
       .join('')
 
     markers.push({
