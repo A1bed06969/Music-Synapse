@@ -1,6 +1,10 @@
 import Link from 'next/link'
 import { createClient } from '@/utils/Supabase/server'
 import { continentForCountry, CONTINENT_ORDER } from '@/utils/continents'
+import { normalizeVenueName } from '@/utils/textNormalize'
+import { escapeHtml } from '@/utils/format'
+import MapClientWrapper from '@/app/map/MapClientWrapper'
+import type { MapMarker } from '@/app/map/LeafletMap'
 import EventCalendarView, { type CalendarLiveEvent } from './EventCalendarView'
 
 function monthRange(month: string) {
@@ -139,6 +143,115 @@ async function fetchMonthEvents(
   return [...festivalEvents, ...liveEvents]
 }
 
+type UpcomingVenueEvent = { label: string; href: string; imageUrl: string | null; dateLabel: string }
+
+/** マップ表示用: 今日以降に開催予定のフェス・ライブの会場をvenue_location(ジオコード済み
+ * 会場マスタ、/mapページと共通)と突き合わせてマーカー化する。開催日を跨がず月に縛られず
+ * 「今後すべて」を対象にする(カレンダー表示は月単位のfetchMonthEventsを使う)。 */
+async function fetchUpcomingVenueMarkers(supabase: Awaited<ReturnType<typeof createClient>>): Promise<MapMarker[]> {
+  const today = new Date().toISOString().slice(0, 10)
+
+  const [{ data: venueLocations }, { data: editionDateRows }, { data: allEditionDateRows }, { data: liveRows }] =
+    await Promise.all([
+      supabase.from('venue_location').select('id, venue_name, latitude, longitude'),
+      supabase
+        .from('event_edition_date')
+        .select(
+          'id, event_edition_id, date, venue, event_edition:event_edition_id(event:event_id(id, name, name_ja, image_url))'
+        )
+        .gte('date', today)
+        .order('date', { ascending: true }),
+      supabase.from('event_edition_date').select('event_edition_id'),
+      supabase
+        .from('music_event')
+        .select('id, name, event_date, venue, artist:artist_id(id, name)')
+        .gte('event_date', today)
+        .order('event_date', { ascending: true }),
+    ])
+
+  const editionsWithDates = new Set((allEditionDateRows ?? []).map((r) => r.event_edition_id))
+
+  const { data: editionRows } = await supabase
+    .from('event_edition')
+    .select('id, end_date, venue, event:event_id(id, name, name_ja, image_url)')
+    .gte('end_date', today)
+
+  const eventsByVenue = new Map<string, UpcomingVenueEvent[]>()
+  function addEvent(venue: string | null, entry: UpcomingVenueEvent) {
+    if (!venue) return
+    const key = normalizeVenueName(venue)
+    const list = eventsByVenue.get(key) ?? []
+    list.push(entry)
+    eventsByVenue.set(key, list)
+  }
+
+  for (const row of editionDateRows ?? []) {
+    const edition = Array.isArray(row.event_edition) ? row.event_edition[0] : row.event_edition
+    const ev = edition ? (Array.isArray(edition.event) ? edition.event[0] : edition.event) : null
+    if (!ev?.id) continue
+    addEvent(row.venue, {
+      label: ev.name || ev.name_ja || '(名称不明)',
+      href: `/events/${ev.id}`,
+      imageUrl: ev.image_url ?? null,
+      dateLabel: row.date,
+    })
+  }
+
+  for (const edition of editionRows ?? []) {
+    if (editionsWithDates.has(edition.id)) continue
+    const ev = Array.isArray(edition.event) ? edition.event[0] : edition.event
+    if (!ev?.id) continue
+    addEvent(edition.venue, {
+      label: ev.name || ev.name_ja || '(名称不明)',
+      href: `/events/${ev.id}`,
+      imageUrl: ev.image_url ?? null,
+      dateLabel: edition.end_date,
+    })
+  }
+
+  for (const l of liveRows ?? []) {
+    if (!l.event_date) continue
+    const artist = Array.isArray(l.artist) ? l.artist[0] : l.artist
+    addEvent(l.venue, {
+      label: l.name ?? artist?.name ?? '(名称不明)',
+      href: artist?.id ? `/artists/${artist.id}` : '',
+      imageUrl: null,
+      dateLabel: l.event_date,
+    })
+  }
+
+  const markers: MapMarker[] = []
+  for (const v of venueLocations ?? []) {
+    const events = eventsByVenue.get(normalizeVenueName(v.venue_name))
+    if (!events || events.length === 0) continue
+
+    const eventsHtml = events
+      .map(
+        (e) =>
+          `<div style="margin-top:6px;"><a href="${escapeHtml(e.href)}" style="color:inherit;display:block;">${
+            e.imageUrl
+              ? `<img src="${escapeHtml(e.imageUrl)}" alt="" style="width:100%;height:auto;max-height:160px;object-fit:cover;border-radius:4px;display:block;" />`
+              : ''
+          }<div style="margin-top:4px;font-size:12px;">${escapeHtml(e.label)}</div><div style="font-size:11px;color:#888;">${escapeHtml(
+            e.dateLabel
+          )}</div></a></div>`
+      )
+      .join('')
+
+    markers.push({
+      id: `venue-${v.id}`,
+      latitude: Number(v.latitude),
+      longitude: Number(v.longitude),
+      color: '#5aa9e6',
+      category: 'venue',
+      label: v.venue_name,
+      popupHtml: `<div style="width:220px;"><div style="font-weight:bold;">${escapeHtml(v.venue_name)}</div>${eventsHtml}</div>`,
+    })
+  }
+
+  return markers
+}
+
 const EVENT_TYPE_LABEL: Record<string, string> = {
   festival: 'フェス',
   one_off_live: '単発イベント',
@@ -166,13 +279,14 @@ export default async function EventsPage({
   const { event_type: eventType, view, month: monthParam } = await searchParams
   const supabase = await createClient()
   const isCalendarView = view === 'calendar'
+  const isMapView = view === 'map'
   const currentMonth = monthParam && /^\d{4}-\d{2}$/.test(monthParam) ? monthParam : new Date().toISOString().slice(0, 7)
 
   const viewToggle = (
     <div className="mt-4 flex gap-1 border-b border-white/10 pb-2">
       <Link
         href="/events"
-        className={`rounded px-3 py-1.5 text-sm transition ${!isCalendarView ? 'bg-white text-black' : 'text-white/60 hover:text-white'}`}
+        className={`rounded px-3 py-1.5 text-sm transition ${!isCalendarView && !isMapView ? 'bg-white text-black' : 'text-white/60 hover:text-white'}`}
       >
         一覧
       </Link>
@@ -181,6 +295,12 @@ export default async function EventsPage({
         className={`rounded px-3 py-1.5 text-sm transition ${isCalendarView ? 'bg-white text-black' : 'text-white/60 hover:text-white'}`}
       >
         カレンダー
+      </Link>
+      <Link
+        href="/events?view=map"
+        className={`rounded px-3 py-1.5 text-sm transition ${isMapView ? 'bg-white text-black' : 'text-white/60 hover:text-white'}`}
+      >
+        マップ
       </Link>
     </div>
   )
@@ -199,6 +319,24 @@ export default async function EventsPage({
           nextMonthHref={`/events?view=calendar&month=${shiftMonth(currentMonth, 1)}`}
           events={monthEvents}
         />
+      </div>
+    )
+  }
+
+  if (isMapView) {
+    const venueMarkers = await fetchUpcomingVenueMarkers(supabase)
+    return (
+      <div className="mx-auto max-w-[1600px] px-6 py-12">
+        <h1 className="text-2xl font-bold">フェス&イベント</h1>
+        <p className="mt-2 text-sm text-white/50">今後開催予定のフェス・ライブの会場を地図上にプロットします。</p>
+        {viewToggle}
+        <div className="mt-6">
+          {venueMarkers.length === 0 ? (
+            <p className="mt-10 text-sm text-white/40">今後開催予定で会場の位置情報が登録されているイベントがありません。</p>
+          ) : (
+            <MapClientWrapper markers={venueMarkers} heightClassName="h-[600px]" />
+          )}
+        </div>
       </div>
     )
   }
