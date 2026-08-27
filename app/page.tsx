@@ -1,117 +1,76 @@
 import Link from 'next/link'
-import { createClient } from '@/utils/Supabase/server'
-import { formatDate, STREAMING_STATUS_LABEL } from '@/utils/format'
-import CatalogSearchBox from '@/app/components/CatalogSearchBox'
+import HomeSnapScrollEffect from '@/app/components/HomeSnapScrollEffect'
+import { HOME_HEADER_HEIGHT_PX } from '@/app/components/SiteHeader'
 
-async function getLatestAlbums() {
-  const supabase = await createClient()
-  const { data } = await supabase
-    .from('album')
-    .select('id, title, jacket_url, release_date, streaming_status, artist:artist_id(id, name)')
-    .is('primary_album_id', null)
-    .order('release_date', { ascending: false, nullsFirst: false })
-    .limit(12)
+type NavItem = { label: string; href: string }
+type HomeSection = { title: string; subtitle: string; items: NavItem[] }
 
-  return data ?? []
-}
-
-const HUB_CARDS: { image: string; title: string; subtitle: string; href: string }[] = [
-  { image: '/release_schedule.png', title: '新譜リリーススケジュール', subtitle: '今週・来週の新譜一覧', href: '/albums/calendar' },
-  { image: '/news_stream.png', title: '最新ニュースストリーム', subtitle: '直近の更新・記事一覧', href: '/media/news' },
-  { image: '/curation_playlist.png', title: '厳選プレイリストハブ', subtitle: 'キュレーションプレイリスト集', href: '/media/playlists' },
+const SECTIONS: HomeSection[] = [
+  {
+    title: 'MUSIC SYNAPSE',
+    subtitle: '音楽をつなぎ、新しい発見へ。',
+    items: [
+      { label: 'NEW RELEASE', href: '/albums?sort=release' },
+      { label: 'FES & LIVE INFO', href: '/events' },
+      { label: 'POWER PLAY / HEAVY ROTATION', href: '#' },
+    ],
+  },
+  {
+    title: 'MUSIC PLANET',
+    subtitle: '世界中のアーティスト・ショップを地図で探す。',
+    items: [
+      { label: 'ARTIST', href: '/map' },
+      { label: 'EVENT', href: '/events' },
+      { label: 'SHOP', href: '/map' },
+    ],
+  },
+  {
+    title: 'MUSIC TAPESTRY',
+    subtitle: 'アーティスト・ジャンル・レーベルのつながりを辿る。',
+    items: [
+      { label: 'ARTIST', href: '/artists' },
+      { label: 'GENRE', href: '/genres' },
+      { label: 'LABEL', href: '#' },
+    ],
+  },
+  {
+    title: 'MEDIA & DISC GUIDE',
+    subtitle: 'メディアの企画・キュレーション・ディスクガイドを見る。',
+    items: [
+      { label: 'TIE UP', href: '/media/sync' },
+      { label: 'CURATION', href: '/media/features' },
+      { label: 'DISC GUIDE', href: '/discguides' },
+    ],
+  },
 ]
 
-export default async function Home() {
-  const latestAlbums = await getLatestAlbums()
-
+export default function Home() {
   return (
-    <div className="mx-auto max-w-[1600px] px-6 py-12">
-      <section className="text-center">
-        <h1>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src="/logo-full.png"
-            alt="Music Synapse"
-            className="mx-auto h-24 w-auto object-contain sm:h-32"
-          />
-        </h1>
-        <p className="mt-2 text-sm text-white/50">音楽をつなぎ、新しい発見へ。</p>
-
-        <div className="mx-auto mt-8 max-w-xl">
-          <CatalogSearchBox variant="overlay" />
-        </div>
-      </section>
-
-      <section className="mt-14 grid grid-cols-1 gap-4 sm:grid-cols-3">
-        {HUB_CARDS.map((card) => (
-          <Link
-            key={card.href}
-            href={card.href}
-            className="group relative block aspect-[4/3] overflow-hidden rounded-lg border border-white/10 transition hover:border-white/25"
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={card.image}
-              alt={card.title}
-              className="h-full w-full object-cover transition duration-300 group-hover:scale-105 group-hover:opacity-80"
-            />
-          </Link>
-        ))}
-      </section>
-
-      <section className="mt-14">
-        <div className="flex items-baseline justify-between">
-          <h2 className="text-lg font-semibold">新着アルバム</h2>
-          <div className="flex items-center gap-4">
-            <Link href="/albums/calendar" className="text-xs text-white/40 hover:text-white/70">
-              🗓️ カレンダーで見る
-            </Link>
-            <Link href="/albums?sort=release" className="text-xs text-white/40 hover:text-white/70">
-              発売日順ですべて見る →
-            </Link>
+    <>
+      <HomeSnapScrollEffect />
+      {SECTIONS.map((section) => (
+        <section
+          key={section.title}
+          className="flex h-screen snap-start flex-col md:flex-row"
+          style={{ scrollMarginTop: HOME_HEADER_HEIGHT_PX }}
+        >
+          <div className="flex flex-1 flex-col items-start justify-center border-b border-white/10 px-8 py-10 md:border-b-0 md:border-r md:px-16">
+            <h2 className="text-3xl font-bold tracking-tight sm:text-5xl">{section.title}</h2>
+            <p className="mt-4 max-w-md text-sm text-white/50 sm:text-base">{section.subtitle}</p>
           </div>
-        </div>
-
-        {latestAlbums.length === 0 ? (
-          <p className="mt-6 text-sm text-white/40">まだアルバムが登録されていません。</p>
-        ) : (
-          <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4 md:grid-cols-6">
-            {latestAlbums.map((album) => {
-              const artist = Array.isArray(album.artist) ? album.artist[0] : album.artist
-              const status = album.streaming_status ? STREAMING_STATUS_LABEL[album.streaming_status] : null
-
-              return (
-                <Link
-                  key={album.id}
-                  href={`/albums/${album.id}`}
-                  className="group block"
-                >
-                  <div className="aspect-square overflow-hidden rounded-md bg-white/5">
-                    {album.jacket_url ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={album.jacket_url}
-                        alt={album.title}
-                        className="h-full w-full object-cover transition group-hover:scale-105"
-                      />
-                    ) : (
-                      <div className="flex h-full w-full items-center justify-center text-white/20">
-                        No Art
-                      </div>
-                    )}
-                  </div>
-                  <p className="mt-2 truncate text-sm font-medium">{album.title}</p>
-                  <p className="truncate text-xs text-white/50">{artist?.name}</p>
-                  <p className="mt-0.5 text-xs text-white/30">
-                    {formatDate(album.release_date)}
-                    {status ? ` · ${status.icon}` : ''}
-                  </p>
-                </Link>
-              )
-            })}
+          <div className="flex flex-1 flex-col">
+            {section.items.map((item) => (
+              <Link
+                key={item.label}
+                href={item.href}
+                className="group flex flex-1 items-center justify-center border-b border-white/10 px-8 text-lg font-semibold tracking-wide text-white/70 transition last:border-b-0 hover:bg-white/5 hover:text-white sm:text-xl"
+              >
+                {item.label}
+              </Link>
+            ))}
           </div>
-        )}
-      </section>
-    </div>
+        </section>
+      ))}
+    </>
   )
 }
