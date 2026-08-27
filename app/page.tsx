@@ -3,10 +3,10 @@ import { NEWS_SOURCES } from '@/utils/newsFeeds'
 import { fetchAllNews, formatRelativeTime } from '@/utils/newsParser'
 import CatalogSearchBox from '@/app/components/CatalogSearchBox'
 
-const HUB_CARDS: { title: string; subtitle: string; href: string }[] = [
-  { title: 'Discover New Music', subtitle: '新譜ピックアップ・リリースカレンダー', href: '/albums/calendar' },
-  { title: 'Fes & Live Freak', subtitle: '国内外のフェス・イベント情報', href: '/events' },
-  { title: 'Monthly Next Break', subtitle: '今月のパワープレイ集計ランキング', href: '#' },
+const HUB_CARDS: { title: string; image: string; href: string }[] = [
+  { title: 'Discover New Music', image: '/banner-discover-new-music.png', href: '/albums/calendar' },
+  { title: 'Fes & Live Freak', image: '/banner-fes-live-freak.png', href: '/events' },
+  { title: 'Monthly Next Break', image: '/banner-monthly-next-break.png', href: '#' },
 ]
 
 const NEWS_PREVIEW_COUNT = 8
@@ -33,15 +33,19 @@ export default async function Home() {
         </div>
       </section>
 
-      <section className="mt-14 grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <section className="mt-14 space-y-4">
         {HUB_CARDS.map((card) => (
           <Link
             key={card.title}
             href={card.href}
-            className="group flex flex-col justify-center rounded-lg border border-white/10 px-6 py-8 text-center transition hover:border-white/25 hover:bg-white/[0.03]"
+            className="group block overflow-hidden rounded-lg border border-white/10 transition hover:border-white/25"
           >
-            <h2 className="text-lg font-bold tracking-tight">{card.title}</h2>
-            <p className="mt-2 text-xs text-white/50">{card.subtitle}</p>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={card.image}
+              alt={card.title}
+              className="w-full transition duration-300 group-hover:opacity-90"
+            />
           </Link>
         ))}
       </section>
