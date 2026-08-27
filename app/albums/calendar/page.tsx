@@ -75,6 +75,11 @@ export default async function AlbumCalendarPage({
       }
     })
 
+  const { data: pickupRows } = await supabase
+    .from('album_pickup')
+    .select('id, blurb, album:album_id(id, title, jacket_url, artist:artist_id(name))')
+    .order('sort_order', { ascending: true })
+
   return (
     <div className="mx-auto max-w-[1600px] px-6 py-12">
       <div className="flex items-center justify-between">
@@ -88,6 +93,38 @@ export default async function AlbumCalendarPage({
           ← アルバム一覧に戻る
         </Link>
       </div>
+
+      {pickupRows && pickupRows.length > 0 && (
+        <section className="mt-8">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-white/50">今週の新譜ピックアップ</h2>
+          <div className="mt-4 flex gap-4 overflow-x-auto pb-2">
+            {pickupRows.map((p) => {
+              const album = Array.isArray(p.album) ? p.album[0] : p.album
+              const artist = album ? (Array.isArray(album.artist) ? album.artist[0] : album.artist) : null
+              if (!album) return null
+              return (
+                <Link key={p.id} href={`/albums/${album.id}`} className="group block w-40 shrink-0">
+                  <div className="aspect-square overflow-hidden rounded-md bg-white/5">
+                    {album.jacket_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={album.jacket_url}
+                        alt={album.title}
+                        className="h-full w-full object-cover transition group-hover:scale-105"
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center text-white/20">No Art</div>
+                    )}
+                  </div>
+                  <p className="mt-2 truncate text-sm font-medium group-hover:opacity-70">{album.title}</p>
+                  <p className="truncate text-xs text-white/50">{artist?.name}</p>
+                  {p.blurb && <p className="mt-1 line-clamp-3 text-xs text-white/40">{p.blurb}</p>}
+                </Link>
+              )
+            })}
+          </div>
+        </section>
+      )}
 
       <CalendarView
         month={currentMonth}
