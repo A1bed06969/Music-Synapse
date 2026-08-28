@@ -70,6 +70,40 @@ export async function updateMedia(formData: FormData) {
   redirectWith('success', `メディア「${name}」を更新しました。`)
 }
 
+/** 重複登録された局の削除用。media_programがひとつでも紐づいている場合は
+ * ON DELETE CASCADEでオンエア実績ごと消えてしまうため、空(番組が1件も
+ * 無い)の局に限って削除を許可する。実績がある局を統合したい場合は、
+ * 先にmedia_programを目的の局へ付け替えてから削除すること。 */
+export async function deleteMedia(formData: FormData) {
+  const id = String(formData.get('id') ?? '')
+  if (!id) {
+    redirectWith('error', '不正なリクエストです。')
+  }
+
+  const supabase = createAdminClient()
+
+  const { data: media } = await supabase.from('media').select('name').eq('id', id).maybeSingle()
+  const { count: programCount } = await supabase
+    .from('media_program')
+    .select('id', { count: 'exact', head: true })
+    .eq('media_id', id)
+
+  if ((programCount ?? 0) > 0) {
+    redirectWith(
+      'error',
+      `「${media?.name ?? id}」には番組・オンエア実績が${programCount}件紐づいているため削除できません。統合する場合は先に番組を別の局へ付け替えてください。`
+    )
+  }
+
+  const { error } = await supabase.from('media').delete().eq('id', id)
+  if (error) {
+    redirectWith('error', `削除に失敗しました: ${error.message}`)
+  }
+
+  revalidatePath('/admin/data/media')
+  redirectWith('success', `メディア「${media?.name ?? id}」を削除しました。`)
+}
+
 export async function createMediaProgram(formData: FormData) {
   const mediaId = String(formData.get('media_id') ?? '')
   const programName = String(formData.get('program_name') ?? '').trim()

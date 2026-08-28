@@ -84,7 +84,7 @@ export default async function MediaAdminPage({
             </option>
           ))}
         </select>
-        <input name="area" placeholder="エリア(任意。例: 関西)" className={`${inputClass} max-w-[160px]`} />
+        <input name="area" placeholder="エリア(任意。例: 関西、全国)" className={`${inputClass} max-w-[160px]`} />
         <select name="prefecture" className={`${inputClass} max-w-[140px]`} defaultValue="">
           <option value="">都道府県(任意)</option>
           {PREFECTURE_COORDS.map((p) => (

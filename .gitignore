@@ -45,3 +45,6 @@ next-env.d.ts
 
 # tesseract.js downloads language data into cwd at runtime
 *.traineddata
+
+# superpowers brainstorming visual companion scratch files
+.superpowers/
