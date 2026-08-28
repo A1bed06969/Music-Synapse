@@ -36,6 +36,9 @@ export default async function TrackEditPage({
 
       <h1 className="mt-4 text-2xl font-bold">{track.title} を編集</h1>
       {artist && <p className="mt-1 text-sm text-white/50">{artist.name}</p>}
+      <Link href={`/admin/data/tracks/${id}/co-artists`} className="mt-2 inline-block text-xs text-white/40 hover:text-white/70">
+        追加アーティストを紐付け →
+      </Link>
 
       <form action={updateTrack} className="mt-8 space-y-4">
         <input type="hidden" name="track_id" value={track.id} />

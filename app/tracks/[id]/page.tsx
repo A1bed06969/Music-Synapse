@@ -33,7 +33,7 @@ export default async function TrackDetailPage({
     notFound()
   }
 
-  const [{ data: credits }, { data: trackInstruments }, { data: syncEntries }, { data: rotations }] =
+  const [{ data: credits }, { data: trackInstruments }, { data: syncEntries }, { data: rotations }, { data: coArtistRows }] =
     await Promise.all([
       supabase
         .from('artist_credit')
@@ -52,10 +52,26 @@ export default async function TrackDetailPage({
         )
         .eq('track_id', id)
         .order('period_start_date', { ascending: false }),
+      supabase
+        .from('track_artist')
+        .select('artist_id, role, billing_order, artist:artist_id(id, name)')
+        .eq('track_id', id)
+        .order('billing_order', { ascending: true, nullsFirst: false }),
     ])
 
   const album = Array.isArray(track.album) ? track.album[0] : track.album
   const artist = Array.isArray(track.artist) ? track.artist[0] : track.artist
+
+  type ArtistRef = { id: string; name: string }
+  const additionalArtists: ArtistRef[] = (coArtistRows ?? [])
+    .map((row) => (Array.isArray(row.artist) ? row.artist[0] : row.artist))
+    .filter((a): a is ArtistRef => a != null)
+  const seenArtistIds = new Set<string>()
+  const allArtists: ArtistRef[] = (artist ? [artist, ...additionalArtists] : additionalArtists).filter((a) => {
+    if (seenArtistIds.has(a.id)) return false
+    seenArtistIds.add(a.id)
+    return true
+  })
 
   // 「ミュージシャン」ロールは楽器名ごとに演奏者をまとめて「使用楽器」欄で表示するため、
   // ここでは楽器を伴わないロール(プロデューサー等)だけを対象にする
@@ -132,10 +148,17 @@ export default async function TrackDetailPage({
 
         <div>
           <h1 className="text-2xl font-bold">{track.title}</h1>
-          {artist && (
-            <Link href={`/artists/${artist.id}`} className="mt-1 block text-sm text-white/60 hover:text-white">
-              {artist.name}
-            </Link>
+          {allArtists.length > 0 && (
+            <p className="mt-1 flex flex-wrap items-center gap-x-1 text-sm text-white/60">
+              {allArtists.map((a, i) => (
+                <span key={a.id} className="flex items-center">
+                  <Link href={`/artists/${a.id}`} className="hover:text-white">
+                    {a.name}
+                  </Link>
+                  {i < allArtists.length - 1 && <span className="text-white/40">,</span>}
+                </span>
+              ))}
+            </p>
           )}
           <div className="mt-3 flex items-center gap-3">
             <PreviewButton previewUrl={track.preview_url} trackId={track.id} size="lg" />
