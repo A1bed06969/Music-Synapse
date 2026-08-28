@@ -25,6 +25,17 @@ export default async function CurationPage({
   const mediaOptions = mediaList ?? []
   const rankingOptions = rankings ?? []
 
+  const stubCountByRanking = new Map<string, number>()
+  const { data: stubRows } = await supabase
+    .from('ranking_entry')
+    .select('ranking_id, album:album_id(streaming_status, tower_url, discogs_url)')
+  for (const row of stubRows ?? []) {
+    const album = Array.isArray(row.album) ? row.album[0] : row.album
+    if (album?.streaming_status !== 'unreleased') continue
+    if (album.tower_url || album.discogs_url) continue
+    stubCountByRanking.set(row.ranking_id, (stubCountByRanking.get(row.ranking_id) ?? 0) + 1)
+  }
+
   return (
     <div className="mx-auto max-w-[1600px] px-6 py-12">
       <Link href="/admin/data" className="text-xs text-white/40 hover:text-white/70">
@@ -67,6 +78,29 @@ export default async function CurationPage({
           企画を追加
         </button>
       </form>
+
+      {rankingOptions.length > 0 && (
+        <ul className="mt-6 flex flex-wrap gap-2">
+          {rankingOptions.map((r) => {
+            const stubCount = stubCountByRanking.get(r.id) ?? 0
+            return (
+              <li key={r.id}>
+                <Link
+                  href={`/admin/data/curation/${r.id}/match`}
+                  className="flex items-center gap-2 rounded-md border border-white/10 px-3 py-1.5 text-xs text-white/60 hover:border-white/25 hover:text-white"
+                >
+                  <span>{r.name}</span>
+                  {stubCount > 0 && (
+                    <span className="rounded-full border border-orange-400/40 px-1.5 py-0.5 text-[10px] text-orange-300">
+                      要マッチング{stubCount}件
+                    </span>
+                  )}
+                </Link>
+              </li>
+            )
+          })}
+        </ul>
+      )}
 
       <p className="mt-6 text-xs text-white/40">
         対象は「トラック」「アルバム」「アーティスト」のうちどれか1つだけ選んでください。順位は「順位あり」企画のみ入力してください(「選出のみ」企画では空欄のままでOK)。
