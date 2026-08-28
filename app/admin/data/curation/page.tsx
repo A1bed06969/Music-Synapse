@@ -15,7 +15,7 @@ export default async function CurationPage({
 
   const [{ data: mediaList }, { data: rankings }, { data: rankingEntries }] = await Promise.all([
     supabase.from('media').select('id, name').order('name'),
-    supabase.from('ranking').select('id, name, source, media:media_id(name)').order('name'),
+    supabase.from('ranking').select('id, name, source, list_type, media:media_id(name)').order('name'),
     supabase
       .from('ranking_entry')
       .select('id, rank, ranking:ranking_id(name), track:track_id(title), album:album_id(title), artist:artist_id(name)')
@@ -57,6 +57,10 @@ export default async function CurationPage({
             ))}
           </select>
           <input name="source" placeholder="出典(メディア未登録の場合の自由記述)" className={`${inputClass} max-w-xs`} />
+          <select name="list_type" className={`${inputClass} max-w-[160px]`} defaultValue="ranked">
+            <option value="ranked">順位あり(ランキング)</option>
+            <option value="selection">選出のみ(順不同)</option>
+          </select>
         </div>
         <input name="description" placeholder="概要(任意)" className={inputClass} />
         <button type="submit" className={buttonClass}>
@@ -65,7 +69,7 @@ export default async function CurationPage({
       </form>
 
       <p className="mt-6 text-xs text-white/40">
-        対象は「トラック」「アルバム」「アーティスト」のうちどれか1つだけ選んでください。
+        対象は「トラック」「アルバム」「アーティスト」のうちどれか1つだけ選んでください。順位は「順位あり」企画のみ入力してください(「選出のみ」企画では空欄のままでOK)。
       </p>
       <form action={createRankingEntry} className="mt-2 space-y-2">
         <div className="flex flex-wrap gap-2">
@@ -76,10 +80,11 @@ export default async function CurationPage({
             {rankingOptions.map((r) => (
               <option key={r.id} value={r.id}>
                 {r.name}
+                {r.list_type === 'selection' ? '(選出のみ)' : ''}
               </option>
             ))}
           </select>
-          <input name="rank" type="number" min="1" placeholder="順位" required className={`${inputClass} max-w-[100px]`} />
+          <input name="rank" type="number" min="1" placeholder="順位(選出のみ企画は空欄)" className={`${inputClass} max-w-[220px]`} />
           <input name="period_date" type="date" required className={`${inputClass} max-w-[160px]`} />
         </div>
         <div className="flex flex-wrap gap-2">
@@ -106,7 +111,7 @@ export default async function CurationPage({
             const target = track?.title ?? album?.title ?? artist?.name
             return (
               <li key={row.id}>
-                {ranking?.name} #{row.rank} — {target}
+                {ranking?.name} {row.rank != null ? `#${row.rank}` : ''} — {target}
               </li>
             )
           })}

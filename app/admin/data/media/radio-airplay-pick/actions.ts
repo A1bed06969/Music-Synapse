@@ -9,6 +9,45 @@ import { getStationPeriodType, isAlbumCampaign } from '@/utils/radioStationPerio
 
 export type PickerItem = { id: string; label: string; imageUrl?: string }
 
+type AdminClient = ReturnType<typeof createAdminClient>
+
+/** コラボ/feat.クレジットの作品は、参加アーティストそれぞれのカタログに同じ
+ * apple_music_album_idが重複して存在しうる(各自のディスコグラフィーに現れるため)。
+ * artist_idも合わせて絞り込むことで、検索結果が正しく1件に定まるようにする。 */
+async function findRegisteredAlbum(supabase: AdminClient, itunesArtistId: number, collectionId: number) {
+  const { data: artist } = await supabase
+    .from('artist')
+    .select('id')
+    .eq('apple_music_artist_id', String(itunesArtistId))
+    .maybeSingle()
+  if (!artist) return null
+
+  const { data: album } = await supabase
+    .from('album')
+    .select('id')
+    .eq('apple_music_album_id', String(collectionId))
+    .eq('artist_id', artist.id)
+    .maybeSingle()
+  return album
+}
+
+async function findRegisteredTrack(supabase: AdminClient, itunesArtistId: number, trackId: number) {
+  const { data: artist } = await supabase
+    .from('artist')
+    .select('id')
+    .eq('apple_music_artist_id', String(itunesArtistId))
+    .maybeSingle()
+  if (!artist) return null
+
+  const { data: track } = await supabase
+    .from('track')
+    .select('id')
+    .eq('apple_music_track_id', String(trackId))
+    .eq('artist_id', artist.id)
+    .maybeSingle()
+  return track
+}
+
 /** HRPPの手動検索用。自動マッチング(scripts/backfill-radio-pick-itunes-candidates.ts)
  * で候補が見つからなかった行を、Apple Musicカタログ全体から検索して選べるようにする。 */
 export async function searchAppleMusicTracksForPick(query: string): Promise<PickerItem[]> {
@@ -203,60 +242,57 @@ export async function registerPickToRotation(formData: FormData) {
   let albumId: string | null = null
 
   if (albumMode) {
-    let { data: album } = await supabase
-      .from('album')
-      .select('id')
-      .eq('apple_music_album_id', String(pick.candidate_collection_id))
-      .maybeSingle()
+    const itunesAlbum = await fetchAlbumById(pick.candidate_collection_id)
+    if (!itunesAlbum) {
+      redirectWith('error', `「${candidateLabel}」がiTunesで見つかりませんでした。`)
+    }
 
-    if (!album) {
+    // コラボ/feat.クレジットの作品は同じapple_music_album_idが複数アーティストの
+    // カタログに重複して存在しうるため(各参加アーティスト自身のディスコグラフィーにも
+    // 同じ作品が現れる)、artist_idも合わせて絞り込まないと.maybeSingle()が
+    // 「複数件ヒット」エラーで常にnullを返し、既に登録済みでも見つけられない
+    // (実際にEBiDANのコラボ曲でこの不具合が発生した)
+    const album = await findRegisteredAlbum(supabase, itunesAlbum!.artistId, pick.candidate_collection_id)
+    if (album) {
+      albumId = album.id
+    } else {
       const registerResult = await registerAlbumFromSearch(pick.candidate_collection_id)
       if (!registerResult.success) {
         redirectWith('error', `カタログ登録に失敗しました: ${registerResult.message}`)
       }
-      const { data: reFetchedAlbum } = await supabase
-        .from('album')
-        .select('id')
-        .eq('apple_music_album_id', String(pick.candidate_collection_id))
-        .maybeSingle()
-      album = reFetchedAlbum
+      const reFetchedAlbum = await findRegisteredAlbum(supabase, itunesAlbum!.artistId, pick.candidate_collection_id)
+      if (!reFetchedAlbum) {
+        redirectWith('error', `「${candidateLabel}」はカタログ登録後も見つかりませんでした。`)
+      }
+      albumId = reFetchedAlbum!.id
     }
-
-    if (!album) {
-      redirectWith('error', `「${candidateLabel}」はカタログ登録後も見つかりませんでした。`)
-    }
-    albumId = album!.id
   } else {
     if (!pick.candidate_track_id) {
       redirectWith('error', '候補情報が見つかりませんでした。')
     }
 
-    let { data: track } = await supabase
-      .from('track')
-      .select('id')
-      .eq('apple_music_track_id', String(pick.candidate_track_id))
-      .maybeSingle()
+    const itunesTrack = await fetchTrackById(pick.candidate_track_id)
+    if (!itunesTrack) {
+      redirectWith('error', `「${candidateLabel}」がiTunesで見つかりませんでした。`)
+    }
 
-    if (!track) {
+    const track = await findRegisteredTrack(supabase, itunesTrack!.artistId, pick.candidate_track_id)
+    if (track) {
+      trackId = track.id
+    } else {
       const registerResult = await registerTrackFromSearch(pick.candidate_collection_id)
       if (!registerResult.success) {
         redirectWith('error', `カタログ登録に失敗しました: ${registerResult.message}`)
       }
-      const { data: reFetchedTrack } = await supabase
-        .from('track')
-        .select('id')
-        .eq('apple_music_track_id', String(pick.candidate_track_id))
-        .maybeSingle()
-      track = reFetchedTrack
+      const reFetchedTrack = await findRegisteredTrack(supabase, itunesTrack!.artistId, pick.candidate_track_id)
+      if (!reFetchedTrack) {
+        redirectWith(
+          'error',
+          `「${candidateLabel}」はカタログ登録後も見つかりませんでした(収録アルバムが変更/削除された可能性があります)。`
+        )
+      }
+      trackId = reFetchedTrack!.id
     }
-
-    if (!track) {
-      redirectWith(
-        'error',
-        `「${candidateLabel}」はカタログ登録後も見つかりませんでした(収録アルバムが変更/削除された可能性があります)。`
-      )
-    }
-    trackId = track!.id
   }
 
   const { data: existingMedia } = await supabase.from('media').select('id').eq('name', pick.station_name).maybeSingle()

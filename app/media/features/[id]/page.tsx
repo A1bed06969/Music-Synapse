@@ -18,13 +18,15 @@ export default async function MediaFeatureDetailPage({
 
   const { data: ranking, error } = await supabase
     .from('ranking')
-    .select('id, name, source, description, media:media_id(id, name)')
+    .select('id, name, source, description, list_type, media:media_id(id, name)')
     .eq('id', id)
     .single()
 
   if (error || !ranking) {
     notFound()
   }
+
+  const isSelection = ranking.list_type === 'selection'
 
   const { data: entries } = await supabase
     .from('ranking_entry')
@@ -35,7 +37,7 @@ export default async function MediaFeatureDetailPage({
        artist:artist_id(id, name)`
     )
     .eq('ranking_id', id)
-    .order('rank', { ascending: true })
+    .order(isSelection ? 'id' : 'rank', { ascending: true })
 
   const media = firstOf(ranking.media)
 
@@ -50,7 +52,9 @@ export default async function MediaFeatureDetailPage({
       {ranking.description && <p className="mt-3 text-sm leading-relaxed text-white/70">{ranking.description}</p>}
 
       {!entries || entries.length === 0 ? (
-        <p className="mt-10 text-sm text-white/40">まだランクインしたコンテンツが登録されていません。</p>
+        <p className="mt-10 text-sm text-white/40">
+          {isSelection ? 'まだ選出されたコンテンツが登録されていません。' : 'まだランクインしたコンテンツが登録されていません。'}
+        </p>
       ) : (
         <ol className="mt-8 divide-y divide-white/10">
           {entries.map((entry) => {
@@ -66,7 +70,9 @@ export default async function MediaFeatureDetailPage({
 
             return (
               <li key={entry.id} className="flex items-center gap-4 py-3">
-                <span className="w-8 shrink-0 text-right text-lg font-bold text-white/30">{entry.rank}</span>
+                {!isSelection && (
+                  <span className="w-8 shrink-0 text-right text-lg font-bold text-white/30">{entry.rank}</span>
+                )}
                 <div className="flex-1">
                   {href ? (
                     <Link href={href} className="font-medium hover:opacity-70">

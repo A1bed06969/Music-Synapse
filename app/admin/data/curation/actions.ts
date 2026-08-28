@@ -13,9 +13,13 @@ export async function createRanking(formData: FormData) {
   const mediaId = String(formData.get('media_id') ?? '')
   const source = String(formData.get('source') ?? '').trim()
   const description = String(formData.get('description') ?? '').trim()
+  const listType = String(formData.get('list_type') ?? 'ranked').trim()
 
   if (!name) {
     redirectWith('error', '企画名を入力してください。')
+  }
+  if (listType !== 'ranked' && listType !== 'selection') {
+    redirectWith('error', '企画種別が不正です。')
   }
 
   const supabase = createAdminClient()
@@ -24,6 +28,7 @@ export async function createRanking(formData: FormData) {
     media_id: mediaId || null,
     source: source || null,
     description: description || null,
+    list_type: listType,
   })
 
   if (error) {
@@ -45,8 +50,8 @@ export async function createRankingEntry(formData: FormData) {
   const albumId = String(formData.get('album_id') ?? '')
   const artistId = String(formData.get('artist_id') ?? '')
 
-  if (!rankingId || !rank || !periodDate) {
-    redirectWith('error', '企画・順位・日付を入力してください。')
+  if (!rankingId || !periodDate) {
+    redirectWith('error', '企画・日付を入力してください。')
   }
 
   const targetCount = [trackId, albumId, artistId].filter(Boolean).length
@@ -55,9 +60,19 @@ export async function createRankingEntry(formData: FormData) {
   }
 
   const supabase = createAdminClient()
+
+  const { data: ranking } = await supabase.from('ranking').select('list_type').eq('id', rankingId).maybeSingle()
+  if (!ranking) {
+    redirectWith('error', '指定の企画が見つかりませんでした。')
+  }
+  if (ranking!.list_type === 'ranked' && !rank) {
+    redirectWith('error', '順位あり企画には順位を入力してください。')
+  }
+
   const { error } = await supabase.from('ranking_entry').insert({
     ranking_id: rankingId,
-    rank: Number(rank),
+    // 選出企画(順不同)は順位を持たせない。順位あり企画のみ数値を保存する
+    rank: ranking!.list_type === 'ranked' && rank ? Number(rank) : null,
     period_date: periodDate,
     metric_value: metricValue ? Number(metricValue) : null,
     metric_label: metricLabel || null,
