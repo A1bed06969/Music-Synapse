@@ -33,7 +33,7 @@ export default async function MediaAdminPage({
   const supabase = await createClient()
 
   const [{ data: mediaList }, { data: mediaPrograms }, { data: rotations }] = await Promise.all([
-    supabase.from('media').select('id, name, area').order('name'),
+    supabase.from('media').select('id, name, area, prefecture, media_type').order('name'),
     supabase.from('media_program').select('id, program_name, period_type, media:media_id(name)').order('program_name'),
     supabase
       .from('radio_rotation')
@@ -97,6 +97,27 @@ export default async function MediaAdminPage({
           メディアを追加
         </button>
       </form>
+
+      {mediaOptions.length > 0 && (
+        <ul className="mt-4 flex flex-wrap gap-2">
+          {mediaOptions.map((m) => (
+            <li key={m.id}>
+              <Link
+                href={`/admin/data/media/${m.id}/edit`}
+                className="flex items-center gap-2 rounded-md border border-white/10 px-3 py-1.5 text-xs text-white/60 hover:border-white/25 hover:text-white"
+              >
+                <span>
+                  {m.name}
+                  {m.area ? `(${m.area})` : ''}
+                  {m.prefecture ? ` · ${m.prefecture}` : ''}
+                  {m.media_type ? ` · ${MEDIA_TYPE_OPTIONS.find((o) => o.value === m.media_type)?.label ?? m.media_type}` : ''}
+                </span>
+                <span className="text-white/30">編集 →</span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
 
       <form action={createMediaProgram} className="mt-4 flex flex-wrap gap-2">
         <select name="media_id" required className={`${inputClass} max-w-xs`} defaultValue="">

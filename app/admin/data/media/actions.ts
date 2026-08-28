@@ -36,6 +36,40 @@ export async function createMedia(formData: FormData) {
   redirectWith('success', `メディア「${name}」を登録しました。`)
 }
 
+export async function updateMedia(formData: FormData) {
+  const id = String(formData.get('id') ?? '')
+  const name = String(formData.get('name') ?? '').trim()
+  const mediaType = String(formData.get('media_type') ?? '').trim()
+  const area = String(formData.get('area') ?? '').trim()
+  const prefecture = String(formData.get('prefecture') ?? '').trim()
+  const logoUrl = String(formData.get('logo_url') ?? '').trim()
+  const validPrefecture = PREFECTURE_COORDS.some((p) => p.name === prefecture) ? prefecture : null
+
+  if (!id || !name) {
+    redirectWith('error', 'メディア名を入力してください。')
+  }
+
+  const supabase = createAdminClient()
+  const { error } = await supabase
+    .from('media')
+    .update({
+      name,
+      media_type: mediaType || null,
+      area: area || null,
+      prefecture: validPrefecture,
+      logo_url: logoUrl || null,
+    })
+    .eq('id', id)
+
+  if (error) {
+    redirectWith('error', `メディアの更新に失敗しました: ${error.message}`)
+  }
+
+  revalidatePath('/admin/data/media')
+  revalidatePath('/media/on-air')
+  redirectWith('success', `メディア「${name}」を更新しました。`)
+}
+
 export async function createMediaProgram(formData: FormData) {
   const mediaId = String(formData.get('media_id') ?? '')
   const programName = String(formData.get('program_name') ?? '').trim()
