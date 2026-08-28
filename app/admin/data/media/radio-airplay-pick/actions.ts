@@ -271,12 +271,20 @@ export async function registerPickToRotation(formData: FormData) {
       redirectWith('error', '候補情報が見つかりませんでした。')
     }
 
-    const itunesTrack = await fetchTrackById(pick.candidate_track_id)
-    if (!itunesTrack) {
+    // オムニバス盤(例: 「HiGH & LOW ORIGINAL BEST ALBUM」)はアルバム自体の
+    // アーティストが「Various Artists」等になる一方、fetchTrackByIdが返す
+    // トラック単体のartistIdは実際の演者になっており、両者が一致しない。
+    // カタログへの実際の登録(registerAlbumFromSearch/syncOneAlbum)は常に
+    // アルバム側のartistIdをtrack.artist_idとして使うため、絞り込みも
+    // トラック単体のartistIdではなくアルバム側のartistIdを使う必要がある
+    // (トラック側で絞り込むと、オムニバス盤収録曲が既に登録済みでも
+    // 「見つからない」と誤判定して延々と再登録を試みてしまう)。
+    const itunesAlbumForTrack = await fetchAlbumById(pick.candidate_collection_id)
+    if (!itunesAlbumForTrack) {
       redirectWith('error', `「${candidateLabel}」がiTunesで見つかりませんでした。`)
     }
 
-    const track = await findRegisteredTrack(supabase, itunesTrack!.artistId, pick.candidate_track_id)
+    const track = await findRegisteredTrack(supabase, itunesAlbumForTrack!.artistId, pick.candidate_track_id)
     if (track) {
       trackId = track.id
     } else {
@@ -284,7 +292,7 @@ export async function registerPickToRotation(formData: FormData) {
       if (!registerResult.success) {
         redirectWith('error', `カタログ登録に失敗しました: ${registerResult.message}`)
       }
-      const reFetchedTrack = await findRegisteredTrack(supabase, itunesTrack!.artistId, pick.candidate_track_id)
+      const reFetchedTrack = await findRegisteredTrack(supabase, itunesAlbumForTrack!.artistId, pick.candidate_track_id)
       if (!reFetchedTrack) {
         redirectWith(
           'error',
