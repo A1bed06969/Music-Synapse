@@ -125,7 +125,7 @@ export default async function RadioAirplayPickAdminPage({
                     <img src={p.candidate_artwork_url} alt="" className="h-8 w-8 shrink-0 rounded object-cover" />
                   )}
                   <span className="max-w-[220px] truncate">
-                    {p.candidate_track_name ?? p.candidate_collection_name} — {p.candidate_artist_name}
+                    {isAlbumCampaign(p.campaign_name) ? p.candidate_collection_name : (p.candidate_track_name ?? p.candidate_collection_name)} — {p.candidate_artist_name}
                   </span>
                 </div>
                 <form action={registerPickToRotation}>
@@ -150,7 +150,7 @@ export default async function RadioAirplayPickAdminPage({
                     <img src={p.candidate_artwork_url} alt="" className="h-8 w-8 shrink-0 rounded object-cover" />
                   )}
                   <span className="max-w-[220px] truncate">
-                    {p.candidate_track_name ?? p.candidate_collection_name} — {p.candidate_artist_name}
+                    {isAlbumCampaign(p.campaign_name) ? p.candidate_collection_name : (p.candidate_track_name ?? p.candidate_collection_name)} — {p.candidate_artist_name}
                   </span>
                 </div>
                 <form action={unregisterPickFromRotation}>
