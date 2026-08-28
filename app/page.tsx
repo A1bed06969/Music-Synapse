@@ -2,17 +2,27 @@ import Link from 'next/link'
 import { NEWS_SOURCES } from '@/utils/newsFeeds'
 import { fetchAllNews, formatRelativeTime } from '@/utils/newsParser'
 import CatalogSearchBox from '@/app/components/CatalogSearchBox'
-
-const HUB_CARDS: { title: string; image: string; href: string }[] = [
-  { title: 'Discover New Music', image: '/banner-discover-new-music.png', href: '/albums/calendar' },
-  { title: 'Fes & Live Freak', image: '/banner-fes-live-freak.png', href: '/events' },
-  { title: 'Monthly Next Break', image: '/banner-monthly-next-break.png', href: '#' },
-]
+import { createClient } from '@/utils/Supabase/server'
+import { fetchUpcomingAlbums, fetchUpcomingFestivals, fetchMonthlyPowerPlayTop } from '@/utils/homeCards'
+import { DiscoverNewMusicCard, FesLiveFreakCard, MonthlyNextBreakCard } from '@/app/components/HomeHubCards'
 
 const NEWS_PREVIEW_COUNT = 8
+const HUB_ITEM_COUNT = 10
+const POWER_PLAY_TOP_COUNT = 5
+
+function currentMonthLabel() {
+  const [y, m] = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 7).split('-')
+  return `${y}年${Number(m)}月`
+}
 
 export default async function Home() {
-  const { items: newsItems } = await fetchAllNews(NEWS_SOURCES)
+  const supabase = await createClient()
+  const [{ items: newsItems }, albums, festivals, powerPlay] = await Promise.all([
+    fetchAllNews(NEWS_SOURCES),
+    fetchUpcomingAlbums(supabase, HUB_ITEM_COUNT),
+    fetchUpcomingFestivals(supabase, HUB_ITEM_COUNT),
+    fetchMonthlyPowerPlayTop(supabase, POWER_PLAY_TOP_COUNT),
+  ])
   const latestNews = newsItems.slice(0, NEWS_PREVIEW_COUNT)
 
   return (
@@ -33,26 +43,13 @@ export default async function Home() {
             <CatalogSearchBox variant="overlay" />
           </div>
         </section>
-      </div>
 
-      <section className="mt-14 space-y-4">
-        {HUB_CARDS.map((card) => (
-          <Link
-            key={card.title}
-            href={card.href}
-            className="group block w-full overflow-hidden rounded-lg border border-white/10 transition hover:border-white/25"
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={card.image}
-              alt={card.title}
-              className="w-full transition duration-300 group-hover:opacity-90"
-            />
-          </Link>
-        ))}
-      </section>
+        <section className="mt-14 space-y-4">
+          <DiscoverNewMusicCard albums={albums} />
+          <FesLiveFreakCard festivals={festivals} />
+          <MonthlyNextBreakCard top={powerPlay.top} prefectureData={powerPlay.prefectureData} monthLabel={currentMonthLabel()} />
+        </section>
 
-      <div className="mx-auto max-w-[1600px] px-6">
         <section className="mt-14">
           <div className="flex items-baseline justify-between">
             <h2 className="text-lg font-semibold">音楽ニュース</h2>
