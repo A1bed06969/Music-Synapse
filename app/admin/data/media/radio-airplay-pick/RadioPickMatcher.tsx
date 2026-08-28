@@ -2,9 +2,15 @@
 
 import { useState, useTransition } from 'react'
 import SearchableSelect from '../../SearchableSelect'
-import { searchAppleMusicTracksForPick, setPickCandidateFromSearch, type PickerItem } from './actions'
+import {
+  searchAppleMusicTracksForPick,
+  searchAppleMusicAlbumsForPick,
+  setPickCandidateFromSearch,
+  setAlbumCandidateFromSearch,
+  type PickerItem,
+} from './actions'
 
-export default function RadioPickMatcher({ pickId }: { pickId: string }) {
+export default function RadioPickMatcher({ pickId, albumMode = false }: { pickId: string; albumMode?: boolean }) {
   const [saved, setSaved] = useState<PickerItem | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
@@ -24,14 +30,16 @@ export default function RadioPickMatcher({ pickId }: { pickId: string }) {
   return (
     <div>
       <SearchableSelect
-        searchAction={searchAppleMusicTracksForPick}
+        searchAction={albumMode ? searchAppleMusicAlbumsForPick : searchAppleMusicTracksForPick}
         name={`candidate_${pickId}`}
-        placeholder="Apple Musicでトラックを検索..."
+        placeholder={albumMode ? 'Apple Musicでアルバムを検索...' : 'Apple Musicでトラックを検索...'}
         onSelect={(item) => {
           if (!item) return
           setError(null)
           startTransition(async () => {
-            const result = await setPickCandidateFromSearch(pickId, item.id)
+            const result = albumMode
+              ? await setAlbumCandidateFromSearch(pickId, item.id)
+              : await setPickCandidateFromSearch(pickId, item.id)
             if (result.success) {
               setSaved(item)
             } else {

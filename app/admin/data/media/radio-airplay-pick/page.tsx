@@ -1,7 +1,8 @@
 import Link from 'next/link'
 import { createClient } from '@/utils/Supabase/server'
 import RadioPickMatcher from './RadioPickMatcher'
-import { clearPickCandidate, registerPickToRotation } from './actions'
+import { clearPickCandidate, registerPickToRotation, unregisterPickFromRotation } from './actions'
+import { isAlbumCampaign } from '@/utils/radioStationPeriod'
 
 type ViewState = 'unmatched' | 'matched' | 'registered'
 
@@ -31,7 +32,7 @@ export default async function RadioAirplayPickAdminPage({
   const supabase = await createClient()
 
   const selectCols =
-    'id, region, station_name, campaign_name, picked_date, artist_name, track_title, candidate_track_name, candidate_artist_name, candidate_artwork_url'
+    'id, region, station_name, campaign_name, picked_date, artist_name, track_title, candidate_track_name, candidate_collection_name, candidate_artist_name, candidate_artwork_url'
 
   let qb = supabase
     .from('radio_airplay_pick')
@@ -74,7 +75,7 @@ export default async function RadioAirplayPickAdminPage({
 
       <p className="mt-2 text-sm text-white/50">
         {viewState === 'registered'
-          ? `パワープレイ&ヘビロテ(/media/on-air)に反映済みの${count ?? 0}件です。`
+          ? `パワープレイ&ヘビロテ(/media/on-air)に反映済みの${count ?? 0}件です。誤登録があれば「本登録を解除」で公開データから削除し、マッチ済み・未登録に戻せます(そこから「解除」で候補ごとクリアして再検索も可能)。`
           : viewState === 'matched'
             ? `Apple Musicの候補が付いた${count ?? 0}件です。「登録」でカタログ登録(未登録アーティスト/トラックは自動作成)とパワープレイ&ヘビロテへの反映を行います。誤マッチがあれば「解除」で未マッチに戻せます。`
             : `自動マッチング(scripts/backfill-radio-pick-itunes-candidates.ts)で候補が見つからなかった${count ?? 0}件を、Apple Musicカタログから手動で検索して候補を設定できます。あくまで候補としての保存であり、artist/track本体への自動登録は行いません。`}
@@ -113,7 +114,7 @@ export default async function RadioAirplayPickAdminPage({
             </div>
             {viewState === 'unmatched' && (
               <div className="w-full max-w-xs shrink-0">
-                <RadioPickMatcher pickId={p.id} />
+                <RadioPickMatcher pickId={p.id} albumMode={isAlbumCampaign(p.campaign_name)} />
               </div>
             )}
             {viewState === 'matched' && (
@@ -124,7 +125,7 @@ export default async function RadioAirplayPickAdminPage({
                     <img src={p.candidate_artwork_url} alt="" className="h-8 w-8 shrink-0 rounded object-cover" />
                   )}
                   <span className="max-w-[220px] truncate">
-                    {p.candidate_track_name} — {p.candidate_artist_name}
+                    {p.candidate_track_name ?? p.candidate_collection_name} — {p.candidate_artist_name}
                   </span>
                 </div>
                 <form action={registerPickToRotation}>
@@ -142,14 +143,22 @@ export default async function RadioAirplayPickAdminPage({
               </div>
             )}
             {viewState === 'registered' && (
-              <div className="flex items-center gap-2 text-xs text-white/60">
-                {p.candidate_artwork_url && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={p.candidate_artwork_url} alt="" className="h-8 w-8 shrink-0 rounded object-cover" />
-                )}
-                <span className="max-w-[220px] truncate">
-                  {p.candidate_track_name} — {p.candidate_artist_name}
-                </span>
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2 text-xs text-white/60">
+                  {p.candidate_artwork_url && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={p.candidate_artwork_url} alt="" className="h-8 w-8 shrink-0 rounded object-cover" />
+                  )}
+                  <span className="max-w-[220px] truncate">
+                    {p.candidate_track_name ?? p.candidate_collection_name} — {p.candidate_artist_name}
+                  </span>
+                </div>
+                <form action={unregisterPickFromRotation}>
+                  <input type="hidden" name="id" value={p.id} />
+                  <button type="submit" className="shrink-0 text-xs text-red-400/70 hover:text-red-400">
+                    本登録を解除
+                  </button>
+                </form>
               </div>
             )}
           </li>
