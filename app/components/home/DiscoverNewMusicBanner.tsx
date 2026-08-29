@@ -32,31 +32,43 @@ export default function DiscoverNewMusicBanner({ albums }: { albums: UpcomingAlb
       <DynamicArtworkCarousel
         emptyMessage="近日リリース予定の新譜はまだ登録されていません。"
         pages={chunk(albums, PAGE_SIZE).map((page, pageIndex) => (
-          <div key={pageIndex} className="flex items-end overflow-x-auto pb-2 pl-1 pt-2">
-            {page.map((a, i) => (
-              <Link
-                key={a.id}
-                href={`/albums/${a.id}`}
-                className={`group relative block w-28 shrink-0 transition-transform duration-200 hover:z-20 hover:-translate-y-2 sm:w-32 ${
-                  i > 0 ? '-ml-6 sm:-ml-8' : ''
-                }`}
-                style={{ transform: `rotate(${ROTATIONS[i % ROTATIONS.length]}deg)`, zIndex: i }}
-              >
-                <div className="aspect-square overflow-hidden rounded-md bg-white/5 shadow-lg shadow-black/50 ring-1 ring-white/10 transition group-hover:ring-white/40">
-                  {a.jacketUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={a.jacketUrl} alt={a.title} className="h-full w-full object-cover" />
-                  ) : (
-                    <div className="flex h-full w-full items-center justify-center text-[10px] text-white/20">
-                      No Art
-                    </div>
-                  )}
-                </div>
-                <p className="mt-2 truncate text-xs font-medium text-white/80 group-hover:text-white">{a.title}</p>
-                <p className="truncate text-[11px] text-white/40">{a.artistName}</p>
-                <p className="text-[10px] text-white/25">{formatShortDate(a.releaseDate)}</p>
-              </Link>
-            ))}
+          <div key={pageIndex}>
+            {/* ジャケットだけを斜めに重ねたコラージュ行(テキストはここに含めない。
+             * 重なり分のマイナスマージンをテキストにまで適用すると隣同士の
+             * キャプションが衝突してしまうため、行を分けている) */}
+            <div className="flex items-end overflow-x-auto pb-1 pl-1 pt-2">
+              {page.map((a, i) => (
+                <Link
+                  key={a.id}
+                  href={`/albums/${a.id}`}
+                  className={`group relative block w-28 shrink-0 transition-transform duration-200 hover:z-20 hover:-translate-y-2 sm:w-32 ${
+                    i > 0 ? '-ml-6 sm:-ml-8' : ''
+                  }`}
+                  style={{ transform: `rotate(${ROTATIONS[i % ROTATIONS.length]}deg)`, zIndex: i }}
+                >
+                  <div className="aspect-square overflow-hidden rounded-md bg-white/5 shadow-lg shadow-black/50 ring-1 ring-white/10 transition group-hover:ring-white/40">
+                    {a.jacketUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={a.jacketUrl} alt={a.title} className="h-full w-full object-cover" />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center text-[10px] text-white/20">
+                        No Art
+                      </div>
+                    )}
+                  </div>
+                </Link>
+              ))}
+            </div>
+            {/* キャプション行: 重ならない通常の間隔で、各ジャケットと同じ順序・幅で並べる */}
+            <div className="mt-3 flex gap-3 overflow-x-auto pb-1 pl-1">
+              {page.map((a) => (
+                <Link key={a.id} href={`/albums/${a.id}`} className="group block w-28 shrink-0 sm:w-32">
+                  <p className="truncate text-xs font-medium text-white/80 group-hover:text-white">{a.title}</p>
+                  <p className="truncate text-[11px] text-white/40">{a.artistName}</p>
+                  <p className="text-[10px] text-white/25">{formatShortDate(a.releaseDate)}</p>
+                </Link>
+              ))}
+            </div>
           </div>
         ))}
       />

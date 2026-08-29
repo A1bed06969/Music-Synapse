@@ -84,8 +84,11 @@ export default function MonthlyNextBreakBanner({
                           <img src={r.artistImageUrl} alt="" className="h-full w-full object-cover" />
                         ) : null}
                       </div>
-                      <span className="truncate text-sm text-white/70 group-hover:text-white">
-                        {r.sub ?? r.label}
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm text-white/80 group-hover:text-white">
+                          {r.sub ?? r.label}
+                        </span>
+                        {r.sub && <span className="block truncate text-[11px] text-white/40">{r.label}</span>}
                       </span>
                     </Link>
                   </li>
