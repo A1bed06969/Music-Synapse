@@ -4,10 +4,13 @@ import { fetchAllNews, formatRelativeTime } from '@/utils/newsParser'
 import CatalogSearchBox from '@/app/components/CatalogSearchBox'
 import { createClient } from '@/utils/Supabase/server'
 import { fetchUpcomingAlbums, fetchUpcomingFestivals, fetchMonthlyPowerPlayTop } from '@/utils/homeCards'
-import { DiscoverNewMusicCard, FesLiveFreakCard, MonthlyNextBreakCard } from '@/app/components/HomeHubCards'
+import DiscoverNewMusicBanner from '@/app/components/home/DiscoverNewMusicBanner'
+import FesLiveFreakBanner from '@/app/components/home/FesLiveFreakBanner'
+import MonthlyNextBreakBanner from '@/app/components/home/MonthlyNextBreakBanner'
 
 const NEWS_PREVIEW_COUNT = 8
-const HUB_ITEM_COUNT = 10
+const UPCOMING_ALBUM_COUNT = 18
+const UPCOMING_FESTIVAL_COUNT = 15
 const POWER_PLAY_TOP_COUNT = 5
 
 function currentMonthLabel() {
@@ -19,8 +22,8 @@ export default async function Home() {
   const supabase = await createClient()
   const [{ items: newsItems }, albums, festivals, powerPlay] = await Promise.all([
     fetchAllNews(NEWS_SOURCES),
-    fetchUpcomingAlbums(supabase, HUB_ITEM_COUNT),
-    fetchUpcomingFestivals(supabase, HUB_ITEM_COUNT),
+    fetchUpcomingAlbums(supabase, UPCOMING_ALBUM_COUNT),
+    fetchUpcomingFestivals(supabase, UPCOMING_FESTIVAL_COUNT),
     fetchMonthlyPowerPlayTop(supabase, POWER_PLAY_TOP_COUNT),
   ])
   const latestNews = newsItems.slice(0, NEWS_PREVIEW_COUNT)
@@ -44,10 +47,10 @@ export default async function Home() {
           </div>
         </section>
 
-        <section className="mt-14 space-y-4">
-          <DiscoverNewMusicCard albums={albums} />
-          <FesLiveFreakCard festivals={festivals} />
-          <MonthlyNextBreakCard top={powerPlay.top} prefectureData={powerPlay.prefectureData} monthLabel={currentMonthLabel()} />
+        <section className="mt-14 space-y-6">
+          <DiscoverNewMusicBanner albums={albums} />
+          <FesLiveFreakBanner festivals={festivals} />
+          <MonthlyNextBreakBanner top={powerPlay.top} prefectureData={powerPlay.prefectureData} monthLabel={currentMonthLabel()} />
         </section>
 
         <section className="mt-14">

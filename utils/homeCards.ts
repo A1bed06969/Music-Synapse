@@ -8,6 +8,15 @@ function firstOf<T>(value: T | T[] | null | undefined): T | null {
   return value ?? null
 }
 
+/** TOPページのバナーカルーセル用にN件ずつへ分割する */
+export function chunk<T>(items: T[], size: number): T[][] {
+  const pages: T[][] = []
+  for (let i = 0; i < items.length; i += size) {
+    pages.push(items.slice(i, i + size))
+  }
+  return pages
+}
+
 // サーバーはUTCで動くため、単純にDate.now()+24hしても「JSTでの翌日」には
 // ならない(utils/artistTimeline.tsと同じJST変換パターンを使う)
 function tomorrowJST(): string {
