@@ -1,10 +1,8 @@
 import Link from 'next/link'
 import BannerShell from './BannerShell'
-import DynamicArtworkCarousel from './DynamicArtworkCarousel'
-import { chunk, type UpcomingFestivalCard } from '@/utils/homeCards'
+import type { UpcomingFestivalCard } from '@/utils/homeCards'
 
 const ACCENT = '#4fd1a5'
-const PAGE_SIZE = 5
 
 function formatShortDate(dateStr: string) {
   const [, m, d] = dateStr.split('-')
@@ -30,15 +28,15 @@ export default function FesLiveFreakBanner({ festivals }: { festivals: UpcomingF
       eyebrowHref="/events"
       accent={ACCENT}
     >
-      <DynamicArtworkCarousel
-        emptyMessage="近日開催予定のフェス情報はまだ登録されていません。"
-        pages={chunk(festivals, PAGE_SIZE).map((page, pageIndex) => (
-          <div key={pageIndex}>
-            {/* ビジュアルだけを少し重ねて並べる行。画像は欠けさせず全体を見せたいので
-             * object-contain(不足分は背景色でレターボックス)。テキストは別行にして
-             * 画像やジャケット同士の重なりとキャプションが衝突しないようにする */}
-            <div className="flex items-stretch overflow-x-auto pb-1 pl-1 pt-2">
-              {page.map((f, i) => (
+      {festivals.length === 0 ? (
+        <p className="text-sm text-white/30">近日開催予定のフェス情報はまだ登録されていません。</p>
+      ) : (
+        // ページ送り(ドット)方式だと続きへの横スワイプが「次のセットへジャンプ」と
+        // 衝突して操作しづらかったため、1本の長い横スクロールに統一する。
+        <div className="overflow-x-auto pb-1 pl-1 pt-2">
+          <div style={{ width: 'max-content' }}>
+            <div className="flex items-stretch">
+              {festivals.map((f, i) => (
                 <Link
                   key={f.id}
                   href={`/events/${f.id}`}
@@ -56,8 +54,8 @@ export default function FesLiveFreakBanner({ festivals }: { festivals: UpcomingF
                 </Link>
               ))}
             </div>
-            <div className="mt-3 flex gap-4 overflow-x-auto pb-1 pl-1">
-              {page.map((f) => (
+            <div className="mt-3 flex gap-4">
+              {festivals.map((f) => (
                 <Link key={f.id} href={`/events/${f.id}`} className="group block w-52 shrink-0 sm:w-60">
                   <p className="truncate text-sm font-semibold text-white group-hover:opacity-80">{f.name}</p>
                   <p className="mt-0.5 truncate text-[11px] font-medium" style={{ color: ACCENT }}>
@@ -68,8 +66,8 @@ export default function FesLiveFreakBanner({ festivals }: { festivals: UpcomingF
               ))}
             </div>
           </div>
-        ))}
-      />
+        </div>
+      )}
     </BannerShell>
   )
 }

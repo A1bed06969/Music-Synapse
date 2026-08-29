@@ -1,10 +1,8 @@
 import Link from 'next/link'
 import BannerShell from './BannerShell'
-import DynamicArtworkCarousel from './DynamicArtworkCarousel'
-import { chunk, type UpcomingAlbumCard } from '@/utils/homeCards'
+import type { UpcomingAlbumCard } from '@/utils/homeCards'
 
 const ACCENT = '#5b8def'
-const PAGE_SIZE = 6
 const ROTATIONS = [-6, 3, -3, 5, -4, 2]
 
 function formatShortDate(dateStr: string) {
@@ -29,15 +27,17 @@ export default function DiscoverNewMusicBanner({ albums }: { albums: UpcomingAlb
       eyebrowHref="/albums/calendar"
       accent={ACCENT}
     >
-      <DynamicArtworkCarousel
-        emptyMessage="近日リリース予定の新譜はまだ登録されていません。"
-        pages={chunk(albums, PAGE_SIZE).map((page, pageIndex) => (
-          <div key={pageIndex}>
-            {/* ジャケットだけを斜めに重ねたコラージュ行(テキストはここに含めない。
-             * 重なり分のマイナスマージンをテキストにまで適用すると隣同士の
-             * キャプションが衝突してしまうため、行を分けている) */}
-            <div className="flex items-end overflow-x-auto pb-1 pl-1 pt-2">
-              {page.map((a, i) => (
+      {albums.length === 0 ? (
+        <p className="text-sm text-white/30">近日リリース予定の新譜はまだ登録されていません。</p>
+      ) : (
+        // ページ送り(ドット)方式だと、続きを見ようとした横スワイプが「次のセットへ
+        // ジャンプ」と衝突して操作しづらかったため、1本の長い横スクロールに統一する。
+        // 画像行とキャプション行を同じスクロールコンテナに入れて連動させる
+        // (別々にoverflow-x-autoを持たせるとズレて操作できてしまうため)。
+        <div className="overflow-x-auto pb-1 pl-1 pt-2">
+          <div style={{ width: 'max-content' }}>
+            <div className="flex items-end">
+              {albums.map((a, i) => (
                 <Link
                   key={a.id}
                   href={`/albums/${a.id}`}
@@ -59,9 +59,8 @@ export default function DiscoverNewMusicBanner({ albums }: { albums: UpcomingAlb
                 </Link>
               ))}
             </div>
-            {/* キャプション行: 重ならない通常の間隔で、各ジャケットと同じ順序・幅で並べる */}
-            <div className="mt-3 flex gap-3 overflow-x-auto pb-1 pl-1">
-              {page.map((a) => (
+            <div className="mt-3 flex gap-3">
+              {albums.map((a) => (
                 <Link key={a.id} href={`/albums/${a.id}`} className="group block w-28 shrink-0 sm:w-32">
                   <p className="truncate text-xs font-medium text-white/80 group-hover:text-white">{a.title}</p>
                   <p className="truncate text-[11px] text-white/40">{a.artistName}</p>
@@ -70,8 +69,8 @@ export default function DiscoverNewMusicBanner({ albums }: { albums: UpcomingAlb
               ))}
             </div>
           </div>
-        ))}
-      />
+        </div>
+      )}
     </BannerShell>
   )
 }
