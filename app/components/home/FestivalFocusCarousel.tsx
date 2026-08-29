@@ -50,7 +50,7 @@ export default function FestivalFocusCarousel({
   return (
     <div
       ref={containerRef}
-      className="flex snap-x snap-mandatory items-center gap-5 overflow-x-auto px-[28%] py-3 sm:px-[32%]"
+      className="flex snap-x snap-mandatory items-center gap-5 overflow-x-auto px-[28%] py-5 sm:px-[32%]"
       style={{ scrollbarWidth: 'none' }}
     >
       {festivals.map((f, i) => {
@@ -62,15 +62,16 @@ export default function FestivalFocusCarousel({
               itemRefs.current[i] = el
             }}
             data-index={i}
-            className="w-40 shrink-0 snap-center transition-all duration-300 ease-out sm:w-48"
-            style={{
-              transform: isActive ? 'scale(1.15) translateY(-4px)' : 'scale(0.82)',
-              opacity: isActive ? 1 : 0.45,
-              zIndex: isActive ? 10 : 1,
-            }}
+            className="relative w-40 shrink-0 snap-center sm:w-48"
+            style={{ zIndex: isActive ? 10 : 1 }}
           >
             <Link href={`/events/${f.id}`} className="group block">
-              <div className="aspect-square overflow-hidden rounded-lg bg-white/5 shadow-xl shadow-black/60 ring-1 ring-white/10 transition group-hover:ring-white/40">
+              {/* 拡大縮小はビジュアル自体だけにかける(キャプションまで拡大すると
+               * カードの縦幅がスクロールコンテナの余白を超えて見切れてしまうため) */}
+              <div
+                className="aspect-square overflow-hidden rounded-lg bg-white/5 shadow-xl shadow-black/60 ring-1 ring-white/10 transition-all duration-300 ease-out group-hover:ring-white/40"
+                style={{ transform: isActive ? 'scale(1.15)' : 'scale(0.82)' }}
+              >
                 {f.imageUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={f.imageUrl} alt={f.name} className="h-full w-full object-contain" />
@@ -78,7 +79,7 @@ export default function FestivalFocusCarousel({
                   <div className="flex h-full w-full items-center justify-center text-3xl">🎪</div>
                 )}
               </div>
-              <div className="mt-2">
+              <div className="mt-2 transition-opacity duration-300" style={{ opacity: isActive ? 1 : 0.45 }}>
                 <p className="truncate text-xs font-semibold text-white group-hover:opacity-80">{f.name}</p>
                 <p className="mt-0.5 truncate text-[11px] font-medium" style={{ color: accent }}>
                   {formatDateRange(f.startDate, f.endDate)}

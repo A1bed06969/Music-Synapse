@@ -43,7 +43,7 @@ export default function AlbumFocusCarousel({ albums }: { albums: UpcomingAlbumCa
   return (
     <div
       ref={containerRef}
-      className="flex snap-x snap-mandatory gap-5 overflow-x-auto px-[32%] py-3 sm:px-[36%]"
+      className="flex snap-x snap-mandatory gap-5 overflow-x-auto px-[32%] py-5 sm:px-[36%]"
       style={{ scrollbarWidth: 'none' }}
     >
       {albums.map((a, i) => {
@@ -55,25 +55,27 @@ export default function AlbumFocusCarousel({ albums }: { albums: UpcomingAlbumCa
               itemRefs.current[i] = el
             }}
             data-index={i}
-            className="w-32 shrink-0 snap-center transition-all duration-300 ease-out sm:w-40"
-            style={{
-              transform: isActive ? 'scale(1.18) translateY(-4px)' : 'scale(0.82)',
-              opacity: isActive ? 1 : 0.45,
-              zIndex: isActive ? 10 : 1,
-            }}
+            className="relative w-32 shrink-0 snap-center sm:w-40"
+            style={{ zIndex: isActive ? 10 : 1 }}
           >
             <Link href={`/albums/${a.id}`} className="group block">
-              <div className="aspect-square overflow-hidden rounded-lg bg-white/5 shadow-xl shadow-black/60 ring-1 ring-white/10 transition group-hover:ring-white/40">
+              {/* 拡大縮小はジャケット自体だけにかける(キャプション文字まで一緒に
+               * 拡大するとカードの縦幅がスクロールコンテナの余白を超えて
+               * 上下が見切れてしまうため) */}
+              <div
+                className="aspect-square overflow-hidden rounded-lg bg-white/5 shadow-xl shadow-black/60 ring-1 ring-white/10 transition-all duration-300 ease-out group-hover:ring-white/40"
+                style={{ transform: isActive ? 'scale(1.18)' : 'scale(0.82)' }}
+              >
                 {a.jacketUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={a.jacketUrl} alt={a.title} className="h-full w-full object-cover" />
+                  <img src={a.jacketUrl} alt={a.title} className="h-full w-full object-contain" />
                 ) : (
                   <div className="flex h-full w-full items-center justify-center text-[10px] text-white/20">
                     No Art
                   </div>
                 )}
               </div>
-              <div className="mt-2">
+              <div className="mt-2 transition-opacity duration-300" style={{ opacity: isActive ? 1 : 0.45 }}>
                 <p className="truncate text-xs font-medium text-white/90 group-hover:text-white">{a.title}</p>
                 <p className="truncate text-[11px] text-white/40">{a.artistName}</p>
                 <p className="text-[10px] text-white/25">{formatShortDate(a.releaseDate)}</p>

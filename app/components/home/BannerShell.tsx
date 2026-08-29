@@ -60,13 +60,18 @@ export default function BannerShell({
       style={{ background: 'linear-gradient(160deg, #101010 0%, #050505 65%)' }}
     >
       <div className="grid grid-cols-[34%_66%] sm:grid-cols-[30%_70%]">
-        <div className="flex flex-col justify-between gap-4 p-3 sm:gap-6 sm:p-6 md:gap-10 md:p-8">
+        <Link
+          href={eyebrowHref}
+          className="group flex flex-col justify-between gap-4 p-3 transition hover:bg-white/[0.03] sm:gap-6 sm:p-6 md:gap-10 md:p-8"
+        >
           <div>
             <span className="text-xs font-bold tracking-[0.15em] sm:text-sm sm:tracking-[0.2em]" style={{ color: accent }}>
               {index}
               <EqualizerIcon accent={accent} />
             </span>
-            <h2 className={`${anton.className} mt-2 text-xl leading-[0.95] tracking-tight sm:mt-3 sm:text-4xl md:text-5xl`}>
+            <h2
+              className={`${anton.className} mt-2 text-xl leading-[0.95] tracking-tight transition group-hover:opacity-80 sm:mt-3 sm:text-4xl md:text-5xl`}
+            >
               {titleLines[0]}
               <br />
               {titleLines[1]}
@@ -82,7 +87,7 @@ export default function BannerShell({
               {dateLabel}
             </p>
           </div>
-        </div>
+        </Link>
 
         <div className="relative border-l border-white/5 p-3 pt-10 sm:p-6 sm:pt-14 md:p-8 md:pt-16">
           <Link
