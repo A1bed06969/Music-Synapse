@@ -59,47 +59,47 @@ export default function BannerShell({
       className="animate-banner-in overflow-hidden rounded-2xl border border-white/10 shadow-[0_8px_40px_rgba(0,0,0,0.35)]"
       style={{ background: 'linear-gradient(160deg, #101010 0%, #050505 65%)' }}
     >
-      <div className="grid grid-cols-[34%_66%] sm:grid-cols-[30%_70%]">
+      {/* タイトルは折り返さず横一列(矢印の向き)に展開し、余った縦幅を下の
+       * 画像エリアに回す。件名行と副題/日付行を分け、eyebrowピルもここに集約する */}
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-white/5 px-4 pt-4 sm:px-6 sm:pt-6 md:px-8">
+        <Link href={eyebrowHref} className="group flex min-w-0 items-center gap-2 sm:gap-3">
+          <span
+            className="shrink-0 text-[11px] font-bold tracking-[0.15em] sm:text-sm sm:tracking-[0.2em]"
+            style={{ color: accent }}
+          >
+            {index}
+            <EqualizerIcon accent={accent} />
+          </span>
+          <h2
+            className={`${anton.className} whitespace-nowrap text-lg leading-none tracking-tight transition group-hover:opacity-80 sm:text-3xl md:text-4xl`}
+          >
+            {titleLines[0]} {titleLines[1]}
+          </h2>
+        </Link>
         <Link
           href={eyebrowHref}
-          className="group flex flex-col justify-between gap-4 p-3 transition hover:bg-white/[0.03] sm:gap-6 sm:p-6 md:gap-10 md:p-8"
+          className="shrink-0 rounded-full border px-2.5 py-1 text-[9px] font-medium tracking-wide backdrop-blur transition hover:bg-white/10 sm:px-3 sm:text-[11px]"
+          style={{ borderColor: `${accent}55`, color: accent, backgroundColor: `${accent}14` }}
         >
-          <div>
-            <span className="text-xs font-bold tracking-[0.15em] sm:text-sm sm:tracking-[0.2em]" style={{ color: accent }}>
-              {index}
-              <EqualizerIcon accent={accent} />
-            </span>
-            <h2
-              className={`${anton.className} mt-2 text-xl leading-[0.95] tracking-tight transition group-hover:opacity-80 sm:mt-3 sm:text-4xl md:text-5xl`}
-            >
-              {titleLines[0]}
-              <br />
-              {titleLines[1]}
-            </h2>
-            <p className="mt-2 text-xs text-white/50 sm:mt-3 sm:text-sm">{subtitle}</p>
-          </div>
-          <div>
-            <p className="text-[10px] font-bold tracking-[0.1em] sm:text-xs sm:tracking-[0.15em]" style={{ color: accent }}>
-              {dateEyebrow}
-            </p>
-            <p className="mt-1 flex items-center gap-1 text-[10px] tracking-wide text-white/40 sm:mt-1.5 sm:gap-1.5 sm:text-xs">
-              <CalendarIcon accent={accent} />
-              {dateLabel}
-            </p>
-          </div>
+          {eyebrow} →
         </Link>
-
-        <div className="relative border-l border-white/5 p-3 pt-10 sm:p-6 sm:pt-14 md:p-8 md:pt-16">
-          <Link
-            href={eyebrowHref}
-            className="absolute right-3 top-3 z-10 rounded-full border px-2 py-1 text-[9px] font-medium tracking-wide backdrop-blur transition hover:bg-white/10 sm:right-6 sm:top-6 sm:px-3 sm:text-[11px] md:right-8 md:top-8"
-            style={{ borderColor: `${accent}55`, color: accent, backgroundColor: `${accent}14` }}
-          >
-            {eyebrow} →
-          </Link>
-          {children}
-        </div>
       </div>
+      <Link
+        href={eyebrowHref}
+        className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-4 pb-3 pt-2 transition hover:opacity-80 sm:px-6 md:px-8"
+      >
+        <p className="truncate text-xs text-white/50 sm:text-sm">{subtitle}</p>
+        <p className="flex shrink-0 items-center gap-1.5 text-[10px] tracking-wide text-white/40 sm:text-xs">
+          <CalendarIcon accent={accent} />
+          <span className="font-bold tracking-[0.1em]" style={{ color: accent }}>
+            {dateEyebrow}
+          </span>
+          <span className="text-white/25">·</span>
+          {dateLabel}
+        </p>
+      </Link>
+
+      <div className="relative flex items-center justify-center px-2 pb-4 pt-2 sm:px-4 sm:pb-6 md:pb-8">{children}</div>
     </div>
   )
 }

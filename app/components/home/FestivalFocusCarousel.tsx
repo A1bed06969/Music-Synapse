@@ -50,7 +50,7 @@ export default function FestivalFocusCarousel({
   return (
     <div
       ref={containerRef}
-      className="flex snap-x snap-mandatory items-start gap-5 overflow-x-auto px-[28%] py-5 sm:px-[32%]"
+      className="flex w-full snap-x snap-mandatory items-start gap-6 overflow-x-auto px-[22%] py-4 sm:px-[30%]"
       style={{ scrollbarWidth: 'none' }}
     >
       {festivals.map((f, i) => {
@@ -62,7 +62,7 @@ export default function FestivalFocusCarousel({
               itemRefs.current[i] = el
             }}
             data-index={i}
-            className="relative w-40 shrink-0 snap-center sm:w-48"
+            className="relative w-48 shrink-0 snap-center sm:w-64"
             style={{ zIndex: isActive ? 10 : 1 }}
           >
             <Link href={`/events/${f.id}`} className="group block">
@@ -73,7 +73,7 @@ export default function FestivalFocusCarousel({
                * 馴染む色にする */}
               <div
                 className="aspect-square origin-center overflow-hidden rounded-lg bg-[#0a0a0a] transition-transform duration-300 ease-out will-change-transform"
-                style={{ transform: isActive ? 'scale(1.15)' : 'scale(0.85)' }}
+                style={{ transform: isActive ? 'scale(1.2)' : 'scale(0.8)' }}
               >
                 {f.imageUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
@@ -82,8 +82,8 @@ export default function FestivalFocusCarousel({
                   <div className="flex h-full w-full items-center justify-center text-3xl">🎪</div>
                 )}
               </div>
-              <div className="mt-5 transition-opacity duration-300" style={{ opacity: isActive ? 1 : 0.45 }}>
-                <p className="truncate text-xs font-semibold text-white group-hover:opacity-80">{f.name}</p>
+              <div className="mt-6 transition-opacity duration-300" style={{ opacity: isActive ? 1 : 0.45 }}>
+                <p className="truncate text-xs font-semibold text-white group-hover:opacity-80 sm:text-sm">{f.name}</p>
                 <p className="mt-0.5 truncate text-[11px] font-medium" style={{ color: accent }}>
                   {formatDateRange(f.startDate, f.endDate)}
                 </p>

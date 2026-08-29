@@ -43,7 +43,7 @@ export default function AlbumFocusCarousel({ albums }: { albums: UpcomingAlbumCa
   return (
     <div
       ref={containerRef}
-      className="flex snap-x snap-mandatory items-start gap-5 overflow-x-auto px-[32%] py-5 sm:px-[36%]"
+      className="flex w-full snap-x snap-mandatory items-start gap-6 overflow-x-auto px-[24%] py-4 sm:px-[32%]"
       style={{ scrollbarWidth: 'none' }}
     >
       {albums.map((a, i) => {
@@ -55,7 +55,7 @@ export default function AlbumFocusCarousel({ albums }: { albums: UpcomingAlbumCa
               itemRefs.current[i] = el
             }}
             data-index={i}
-            className="relative w-32 shrink-0 snap-center sm:w-40"
+            className="relative w-40 shrink-0 snap-center sm:w-60"
             style={{ zIndex: isActive ? 10 : 1 }}
           >
             <Link href={`/albums/${a.id}`} className="group block">
@@ -66,7 +66,7 @@ export default function AlbumFocusCarousel({ albums }: { albums: UpcomingAlbumCa
                * 重ならないようにする */}
               <div
                 className="aspect-square origin-center overflow-hidden rounded-lg bg-white/5 shadow-xl shadow-black/60 ring-1 ring-white/10 transition-transform duration-300 ease-out will-change-transform group-hover:ring-white/40"
-                style={{ transform: isActive ? 'scale(1.18)' : 'scale(0.85)' }}
+                style={{ transform: isActive ? 'scale(1.25)' : 'scale(0.8)' }}
               >
                 {a.jacketUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
@@ -77,9 +77,9 @@ export default function AlbumFocusCarousel({ albums }: { albums: UpcomingAlbumCa
                   </div>
                 )}
               </div>
-              <div className="mt-5 transition-opacity duration-300" style={{ opacity: isActive ? 1 : 0.45 }}>
-                <p className="truncate text-xs font-medium text-white/90 group-hover:text-white">{a.title}</p>
-                <p className="truncate text-[11px] text-white/40">{a.artistName}</p>
+              <div className="mt-6 transition-opacity duration-300" style={{ opacity: isActive ? 1 : 0.45 }}>
+                <p className="truncate text-xs font-medium text-white/90 group-hover:text-white sm:text-sm">{a.title}</p>
+                <p className="truncate text-[11px] text-white/40 sm:text-xs">{a.artistName}</p>
                 <p className="text-[10px] text-white/25">{formatShortDate(a.releaseDate)}</p>
               </div>
             </Link>
