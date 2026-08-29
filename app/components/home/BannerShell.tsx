@@ -59,40 +59,40 @@ export default function BannerShell({
       className="animate-banner-in overflow-hidden rounded-2xl border border-white/10 shadow-[0_8px_40px_rgba(0,0,0,0.35)]"
       style={{ background: 'linear-gradient(160deg, #101010 0%, #050505 65%)' }}
     >
-      <div className="grid grid-cols-1 md:grid-cols-[30%_70%]">
-        <div className="flex flex-col justify-between gap-6 p-6 sm:p-8 md:gap-10">
+      <div className="grid grid-cols-[34%_66%] sm:grid-cols-[30%_70%]">
+        <div className="flex flex-col justify-between gap-4 p-3 sm:gap-6 sm:p-6 md:gap-10 md:p-8">
           <div>
-            <span className="text-sm font-bold tracking-[0.2em]" style={{ color: accent }}>
+            <span className="text-xs font-bold tracking-[0.15em] sm:text-sm sm:tracking-[0.2em]" style={{ color: accent }}>
               {index}
               <EqualizerIcon accent={accent} />
             </span>
-            <h2 className={`${anton.className} mt-3 text-4xl leading-[0.95] tracking-tight sm:text-5xl`}>
+            <h2 className={`${anton.className} mt-2 text-xl leading-[0.95] tracking-tight sm:mt-3 sm:text-4xl md:text-5xl`}>
               {titleLines[0]}
               <br />
               {titleLines[1]}
             </h2>
-            <p className="mt-3 text-sm text-white/50">{subtitle}</p>
+            <p className="mt-2 text-xs text-white/50 sm:mt-3 sm:text-sm">{subtitle}</p>
           </div>
           <div>
-            <p className="text-xs font-bold tracking-[0.15em]" style={{ color: accent }}>
+            <p className="text-[10px] font-bold tracking-[0.1em] sm:text-xs sm:tracking-[0.15em]" style={{ color: accent }}>
               {dateEyebrow}
             </p>
-            <p className="mt-1.5 flex items-center gap-1.5 text-xs tracking-wide text-white/40">
+            <p className="mt-1 flex items-center gap-1 text-[10px] tracking-wide text-white/40 sm:mt-1.5 sm:gap-1.5 sm:text-xs">
               <CalendarIcon accent={accent} />
               {dateLabel}
             </p>
           </div>
         </div>
 
-        <div className="relative border-t border-white/5 p-6 sm:p-8 md:border-l md:border-t-0">
+        <div className="relative border-l border-white/5 p-3 pt-10 sm:p-6 sm:pt-14 md:p-8 md:pt-16">
           <Link
             href={eyebrowHref}
-            className="absolute right-6 top-6 z-10 rounded-full border px-3 py-1 text-[11px] font-medium tracking-wide backdrop-blur transition hover:bg-white/10 sm:right-8 sm:top-8"
+            className="absolute right-3 top-3 z-10 rounded-full border px-2 py-1 text-[9px] font-medium tracking-wide backdrop-blur transition hover:bg-white/10 sm:right-6 sm:top-6 sm:px-3 sm:text-[11px] md:right-8 md:top-8"
             style={{ borderColor: `${accent}55`, color: accent, backgroundColor: `${accent}14` }}
           >
             {eyebrow} →
           </Link>
-          <div className="pt-8">{children}</div>
+          {children}
         </div>
       </div>
     </div>
