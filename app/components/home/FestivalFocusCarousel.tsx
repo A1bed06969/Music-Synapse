@@ -41,7 +41,7 @@ export default function FestivalFocusCarousel({
         }
         if (best) setActiveIndex(best.index)
       },
-      { root: container, threshold: Array.from({ length: 11 }, (_, i) => i / 10), rootMargin: '0px -30% 0px -30%' }
+      { root: container, threshold: [0, 0.25, 0.5, 0.75, 1], rootMargin: '0px -30% 0px -30%' }
     )
     itemRefs.current.forEach((el) => el && observer.observe(el))
     return () => observer.disconnect()
@@ -62,15 +62,19 @@ export default function FestivalFocusCarousel({
               itemRefs.current[i] = el
             }}
             data-index={i}
-            className="relative shrink-0 snap-center transition-[width] duration-300 ease-out"
-            style={{ width: isActive ? '13rem' : '10rem', zIndex: isActive ? 10 : 1 }}
+            className="relative w-40 shrink-0 snap-center sm:w-48"
+            style={{ zIndex: isActive ? 10 : 1 }}
           >
             <Link href={`/events/${f.id}`} className="group block">
-              {/* 実際の幅(width)を変える方式(transform: scaleだと拡大時に見た目だけ
-               * 下のキャプションへはみ出して重なってしまっていた)。フェスのビジュアルは
-               * 縁取り(ring)を付けると、object-containで生じる余白(レターボックス)まで
-               * 枠として目立ってしまうため、リング無し・背景もページに馴染む色にする */}
-              <div className="aspect-square w-full overflow-hidden rounded-lg bg-[#0a0a0a] transition">
+              {/* widthではなくtransform: scaleで拡大する(widthはレイアウトの再計算を
+               * 伴うため、スクロール中に毎フレーム発生するとカクつく)。はみ出す分は
+               * 常時mt-5で吸収する。縁取り(ring)は付けない(object-containで生じる
+               * 余白/レターボックスまで枠として目立ってしまうため)、背景もページに
+               * 馴染む色にする */}
+              <div
+                className="aspect-square origin-center overflow-hidden rounded-lg bg-[#0a0a0a] transition-transform duration-300 ease-out will-change-transform"
+                style={{ transform: isActive ? 'scale(1.15)' : 'scale(0.85)' }}
+              >
                 {f.imageUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={f.imageUrl} alt={f.name} className="h-full w-full object-contain" />
@@ -78,7 +82,7 @@ export default function FestivalFocusCarousel({
                   <div className="flex h-full w-full items-center justify-center text-3xl">🎪</div>
                 )}
               </div>
-              <div className="mt-2 transition-opacity duration-300" style={{ opacity: isActive ? 1 : 0.45 }}>
+              <div className="mt-5 transition-opacity duration-300" style={{ opacity: isActive ? 1 : 0.45 }}>
                 <p className="truncate text-xs font-semibold text-white group-hover:opacity-80">{f.name}</p>
                 <p className="mt-0.5 truncate text-[11px] font-medium" style={{ color: accent }}>
                   {formatDateRange(f.startDate, f.endDate)}

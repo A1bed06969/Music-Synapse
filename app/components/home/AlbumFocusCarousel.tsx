@@ -34,7 +34,7 @@ export default function AlbumFocusCarousel({ albums }: { albums: UpcomingAlbumCa
       },
       // 左右20%ずつを除外し、コンテナ中央付近だけを判定対象にすることで
       // 「中央に来たカード」を検出する
-      { root: container, threshold: Array.from({ length: 11 }, (_, i) => i / 10), rootMargin: '0px -30% 0px -30%' }
+      { root: container, threshold: [0, 0.25, 0.5, 0.75, 1], rootMargin: '0px -30% 0px -30%' }
     )
     itemRefs.current.forEach((el) => el && observer.observe(el))
     return () => observer.disconnect()
@@ -55,14 +55,19 @@ export default function AlbumFocusCarousel({ albums }: { albums: UpcomingAlbumCa
               itemRefs.current[i] = el
             }}
             data-index={i}
-            className="relative shrink-0 snap-center transition-[width] duration-300 ease-out"
-            style={{ width: isActive ? '10.5rem' : '8rem', zIndex: isActive ? 10 : 1 }}
+            className="relative w-32 shrink-0 snap-center sm:w-40"
+            style={{ zIndex: isActive ? 10 : 1 }}
           >
             <Link href={`/albums/${a.id}`} className="group block">
-              {/* 実際の幅(width)を変える方式にする。transform: scale()だとレイアウト上の
-               * 占有サイズは変わらないため、拡大時に見た目だけ下のキャプションへ
-               * はみ出して重なってしまっていた */}
-              <div className="aspect-square w-full overflow-hidden rounded-lg bg-white/5 shadow-xl shadow-black/60 ring-1 ring-white/10 transition group-hover:ring-white/40">
+              {/* widthではなくtransform: scaleで拡大する(widthはレイアウトの
+               * 再計算を伴うため、スクロール中に毎フレーム発生するとカクつく。
+               * transformはコンポジタだけで完結するので滑らか)。かわりに、
+               * 最大拡大時にはみ出す分を常時mt-5で吸収し、キャプションと
+               * 重ならないようにする */}
+              <div
+                className="aspect-square origin-center overflow-hidden rounded-lg bg-white/5 shadow-xl shadow-black/60 ring-1 ring-white/10 transition-transform duration-300 ease-out will-change-transform group-hover:ring-white/40"
+                style={{ transform: isActive ? 'scale(1.18)' : 'scale(0.85)' }}
+              >
                 {a.jacketUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={a.jacketUrl} alt={a.title} className="h-full w-full object-contain" />
@@ -72,7 +77,7 @@ export default function AlbumFocusCarousel({ albums }: { albums: UpcomingAlbumCa
                   </div>
                 )}
               </div>
-              <div className="mt-2 transition-opacity duration-300" style={{ opacity: isActive ? 1 : 0.45 }}>
+              <div className="mt-5 transition-opacity duration-300" style={{ opacity: isActive ? 1 : 0.45 }}>
                 <p className="truncate text-xs font-medium text-white/90 group-hover:text-white">{a.title}</p>
                 <p className="truncate text-[11px] text-white/40">{a.artistName}</p>
                 <p className="text-[10px] text-white/25">{formatShortDate(a.releaseDate)}</p>
