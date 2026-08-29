@@ -43,7 +43,7 @@ export default function AlbumFocusCarousel({ albums }: { albums: UpcomingAlbumCa
   return (
     <div
       ref={containerRef}
-      className="flex snap-x snap-mandatory gap-5 overflow-x-auto px-[32%] py-5 sm:px-[36%]"
+      className="flex snap-x snap-mandatory items-start gap-5 overflow-x-auto px-[32%] py-5 sm:px-[36%]"
       style={{ scrollbarWidth: 'none' }}
     >
       {albums.map((a, i) => {
@@ -55,17 +55,14 @@ export default function AlbumFocusCarousel({ albums }: { albums: UpcomingAlbumCa
               itemRefs.current[i] = el
             }}
             data-index={i}
-            className="relative w-32 shrink-0 snap-center sm:w-40"
-            style={{ zIndex: isActive ? 10 : 1 }}
+            className="relative shrink-0 snap-center transition-[width] duration-300 ease-out"
+            style={{ width: isActive ? '10.5rem' : '8rem', zIndex: isActive ? 10 : 1 }}
           >
             <Link href={`/albums/${a.id}`} className="group block">
-              {/* 拡大縮小はジャケット自体だけにかける(キャプション文字まで一緒に
-               * 拡大するとカードの縦幅がスクロールコンテナの余白を超えて
-               * 上下が見切れてしまうため) */}
-              <div
-                className="aspect-square overflow-hidden rounded-lg bg-white/5 shadow-xl shadow-black/60 ring-1 ring-white/10 transition-all duration-300 ease-out group-hover:ring-white/40"
-                style={{ transform: isActive ? 'scale(1.18)' : 'scale(0.82)' }}
-              >
+              {/* 実際の幅(width)を変える方式にする。transform: scale()だとレイアウト上の
+               * 占有サイズは変わらないため、拡大時に見た目だけ下のキャプションへ
+               * はみ出して重なってしまっていた */}
+              <div className="aspect-square w-full overflow-hidden rounded-lg bg-white/5 shadow-xl shadow-black/60 ring-1 ring-white/10 transition group-hover:ring-white/40">
                 {a.jacketUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={a.jacketUrl} alt={a.title} className="h-full w-full object-contain" />

@@ -50,7 +50,7 @@ export default function FestivalFocusCarousel({
   return (
     <div
       ref={containerRef}
-      className="flex snap-x snap-mandatory items-center gap-5 overflow-x-auto px-[28%] py-5 sm:px-[32%]"
+      className="flex snap-x snap-mandatory items-start gap-5 overflow-x-auto px-[28%] py-5 sm:px-[32%]"
       style={{ scrollbarWidth: 'none' }}
     >
       {festivals.map((f, i) => {
@@ -62,16 +62,15 @@ export default function FestivalFocusCarousel({
               itemRefs.current[i] = el
             }}
             data-index={i}
-            className="relative w-40 shrink-0 snap-center sm:w-48"
-            style={{ zIndex: isActive ? 10 : 1 }}
+            className="relative shrink-0 snap-center transition-[width] duration-300 ease-out"
+            style={{ width: isActive ? '13rem' : '10rem', zIndex: isActive ? 10 : 1 }}
           >
             <Link href={`/events/${f.id}`} className="group block">
-              {/* 拡大縮小はビジュアル自体だけにかける(キャプションまで拡大すると
-               * カードの縦幅がスクロールコンテナの余白を超えて見切れてしまうため) */}
-              <div
-                className="aspect-square overflow-hidden rounded-lg bg-white/5 shadow-xl shadow-black/60 ring-1 ring-white/10 transition-all duration-300 ease-out group-hover:ring-white/40"
-                style={{ transform: isActive ? 'scale(1.15)' : 'scale(0.82)' }}
-              >
+              {/* 実際の幅(width)を変える方式(transform: scaleだと拡大時に見た目だけ
+               * 下のキャプションへはみ出して重なってしまっていた)。フェスのビジュアルは
+               * 縁取り(ring)を付けると、object-containで生じる余白(レターボックス)まで
+               * 枠として目立ってしまうため、リング無し・背景もページに馴染む色にする */}
+              <div className="aspect-square w-full overflow-hidden rounded-lg bg-[#0a0a0a] transition">
                 {f.imageUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={f.imageUrl} alt={f.name} className="h-full w-full object-contain" />

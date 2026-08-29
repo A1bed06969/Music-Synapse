@@ -16,7 +16,7 @@ export default function FesLiveFreakBanner({ festivals }: { festivals: UpcomingF
   return (
     <BannerShell
       index="02"
-      titleLines={['Fes &', 'Live Freak']}
+      titleLines={['Fes & Live', 'Freak']}
       subtitle="国内外のフェス・イベント情報"
       dateEyebrow="THIS WEEK"
       dateLabel={dateLabel}
