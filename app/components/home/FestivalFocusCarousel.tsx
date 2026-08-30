@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useRef, useState } from 'react'
+import { startTransition, useEffect, useRef, useState } from 'react'
 import type { UpcomingFestivalCard } from '@/utils/homeCards'
 
 function formatShortDate(dateStr: string) {
@@ -25,21 +25,31 @@ export default function FestivalFocusCarousel({
   const containerRef = useRef<HTMLDivElement>(null)
   const itemRefs = useRef<(HTMLDivElement | null)[]>([])
   const [activeIndex, setActiveIndex] = useState(0)
+  // AlbumFocusCarouselと同じ理由で、各カードの最新の交差率を保持し、その
+  // tickのentriesだけでなく全カード分から最大値を選び直す(速いスクロール中に
+  // 一つ前のカードへ戻ったり2つ先へ飛んだりする不具合を防ぐ)
+  const ratiosRef = useRef<number[]>([])
 
   useEffect(() => {
     const container = containerRef.current
     if (!container) return
+    ratiosRef.current = new Array(festivals.length).fill(0)
 
     const observer = new IntersectionObserver(
       (entries) => {
-        let best: { index: number; ratio: number } | null = null
         for (const entry of entries) {
           const index = Number((entry.target as HTMLElement).dataset.index)
-          if (entry.intersectionRatio > (best?.ratio ?? 0)) {
-            best = { index, ratio: entry.intersectionRatio }
-          }
+          ratiosRef.current[index] = entry.intersectionRatio
         }
-        if (best) setActiveIndex(best.index)
+        let bestIndex = 0
+        let bestRatio = -1
+        ratiosRef.current.forEach((ratio, i) => {
+          if (ratio > bestRatio) {
+            bestRatio = ratio
+            bestIndex = i
+          }
+        })
+        startTransition(() => setActiveIndex(bestIndex))
       },
       { root: container, threshold: [0, 0.25, 0.5, 0.75, 1], rootMargin: '0px -30% 0px -30%' }
     )

@@ -61,7 +61,7 @@ export default function BannerShell({
     >
       {/* タイトルは折り返さず横一列(矢印の向き)に展開し、余った縦幅を下の
        * 画像エリアに回す。件名行と副題/日付行を分け、eyebrowピルもここに集約する */}
-      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-white/5 px-4 pt-4 sm:px-6 sm:pt-6 md:px-8">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-white/5 px-4 pb-4 pt-4 sm:px-6 sm:pb-5 sm:pt-6 md:px-8">
         <Link href={eyebrowHref} className="group flex min-w-0 items-center gap-2 sm:gap-3">
           <span
             className="shrink-0 text-[11px] font-bold tracking-[0.15em] sm:text-sm sm:tracking-[0.2em]"
@@ -71,7 +71,7 @@ export default function BannerShell({
             <EqualizerIcon accent={accent} />
           </span>
           <h2
-            className={`${anton.className} whitespace-nowrap text-lg leading-none tracking-tight transition group-hover:opacity-80 sm:text-3xl md:text-4xl`}
+            className={`${anton.className} whitespace-nowrap text-xl leading-none tracking-tight transition group-hover:opacity-80 sm:text-4xl md:text-5xl`}
           >
             {titleLines[0]} {titleLines[1]}
           </h2>

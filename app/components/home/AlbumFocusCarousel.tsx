@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useRef, useState } from 'react'
+import { startTransition, useEffect, useRef, useState } from 'react'
 import type { UpcomingAlbumCard } from '@/utils/homeCards'
 
 function formatShortDate(dateStr: string) {
@@ -16,21 +16,36 @@ export default function AlbumFocusCarousel({ albums }: { albums: UpcomingAlbumCa
   const containerRef = useRef<HTMLDivElement>(null)
   const itemRefs = useRef<(HTMLDivElement | null)[]>([])
   const [activeIndex, setActiveIndex] = useState(0)
+  // 各カードの最新の交差率を保持する。IntersectionObserverのコールバックには
+  // 「このtickで閾値をまたいだ要素」しか渡ってこないため、その場のentriesだけで
+  // 最大値を決めると、本当は中央にいるカードがこのtickで閾値をまたいでおらず
+  // entriesに含まれない場合、無関係な(通過中の)カードが誤って選ばれてしまう
+  // (速いスクロール中に一つ前のカードへ戻ったり、2つ先へ飛んだりする不具合の原因)。
+  // 全カード分のスコアを保持し、毎回その全体から最大値を選び直すことで解消する。
+  const ratiosRef = useRef<number[]>([])
 
   useEffect(() => {
     const container = containerRef.current
     if (!container) return
+    ratiosRef.current = new Array(albums.length).fill(0)
 
     const observer = new IntersectionObserver(
       (entries) => {
-        let best: { index: number; ratio: number } | null = null
         for (const entry of entries) {
           const index = Number((entry.target as HTMLElement).dataset.index)
-          if (entry.intersectionRatio > (best?.ratio ?? 0)) {
-            best = { index, ratio: entry.intersectionRatio }
-          }
+          ratiosRef.current[index] = entry.intersectionRatio
         }
-        if (best) setActiveIndex(best.index)
+        let bestIndex = 0
+        let bestRatio = -1
+        ratiosRef.current.forEach((ratio, i) => {
+          if (ratio > bestRatio) {
+            bestRatio = ratio
+            bestIndex = i
+          }
+        })
+        // スクロール操作自体をブロックしないよう、活性カードの切り替えは
+        // 優先度の低い更新として扱う
+        startTransition(() => setActiveIndex(bestIndex))
       },
       // 左右20%ずつを除外し、コンテナ中央付近だけを判定対象にすることで
       // 「中央に来たカード」を検出する
