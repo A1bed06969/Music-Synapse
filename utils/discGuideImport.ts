@@ -53,12 +53,23 @@ async function searchAppleMusicCandidates(
   artistName: string,
   title: string
 ): Promise<MatchResult['candidates']> {
-  let results: ItunesAlbum[];
-  try {
-    results = await searchAlbums(`${artistName} ${title}`, 5);
-  } catch {
-    return [];
+  // 取込元(タワレコメン等)のタイトルが全角英数字のカタカナ音訳(例:
+  // 「ブルジョン＆エルバリオ２０１６」)で、実カタログの表記(例: "Bulljun &
+  // El Barrio 2016")と文字列として一致しないケースがある。`アーティスト名+
+  // タイトル`の複合検索だとこの場合0件になり、実在するアルバムなのに候補に
+  // 一切出てこない(=手動でも選びようがない)。アーティスト名単体の検索も
+  // 必ず併用し、タイトルが噛み合わなくてもそのアーティストの実カタログが
+  // 候補として見える状態を保証する。
+  // fetchItunes()内のレート制限は「前回リクエスト時刻」を1つの変数で管理して
+  // いるため、並列に呼ぶと間隔制御が効かなくなる。直列に実行する。
+  const combinedResults = await searchAlbums(`${artistName} ${title}`, 5).catch(() => [] as ItunesAlbum[]);
+  const artistOnlyResults = await searchAlbums(artistName, 10).catch(() => [] as ItunesAlbum[]);
+
+  const merged = new Map<number, ItunesAlbum>();
+  for (const r of [...combinedResults, ...artistOnlyResults]) {
+    merged.set(r.collectionId, r);
   }
+  const results = Array.from(merged.values());
 
   const normalizedTitle = normalizeForMatch(title);
 
