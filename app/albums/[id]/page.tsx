@@ -23,25 +23,34 @@ export default async function AlbumDetailPage({
     notFound()
   }
 
-  const [{ data: tracks }, { data: discGuideSelections }, { data: coArtistRows }] = await Promise.all([
-    supabase
-      .from('track')
-      .select('id, disc_number, track_no, title, duration_seconds, preview_url')
-      .eq('album_id', id)
-      .order('disc_number', { ascending: true, nullsFirst: true })
-      .order('track_no', { ascending: true }),
-    supabase
-      .from('disc_guide_selection')
-      .select(
-        'id, note, disc_guide:disc_guide_id(id, title, publisher, published_year, cover_image_url)'
-      )
-      .eq('album_id', id),
-    supabase
-      .from('album_artist')
-      .select('artist_id, role, billing_order, artist:artist_id(id, name)')
-      .eq('album_id', id)
-      .order('billing_order', { ascending: true, nullsFirst: false }),
-  ])
+  const [{ data: tracks }, { data: discGuideSelections }, { data: coArtistRows }, { data: curationSelections }] =
+    await Promise.all([
+      supabase
+        .from('track')
+        .select('id, disc_number, track_no, title, duration_seconds, preview_url')
+        .eq('album_id', id)
+        .order('disc_number', { ascending: true, nullsFirst: true })
+        .order('track_no', { ascending: true }),
+      supabase
+        .from('disc_guide_selection')
+        .select(
+          'id, note, disc_guide:disc_guide_id(id, title, publisher, published_year, cover_image_url)'
+        )
+        .eq('album_id', id),
+      supabase
+        .from('album_artist')
+        .select('artist_id, role, billing_order, artist:artist_id(id, name)')
+        .eq('album_id', id)
+        .order('billing_order', { ascending: true, nullsFirst: false }),
+      // タワレコメン等の「順位のない選出企画」に選ばれているかどうか。
+      // ranking_entryはtrack_id経由でも紐づき得るが、選出系企画はアルバム単位が
+      // ほとんどのためalbum_idでの紐付けのみを対象にする
+      supabase
+        .from('ranking_entry')
+        .select('ranking:ranking_id!inner(id, name, list_type)')
+        .eq('album_id', id)
+        .eq('ranking.list_type', 'selection'),
+    ])
 
   const groupAnchorId = album.primary_album_id ?? album.id
   const { data: otherVersions } = await supabase
@@ -65,6 +74,17 @@ export default async function AlbumDetailPage({
     return true
   })
   const status = album.streaming_status ? STREAMING_STATUS_LABEL[album.streaming_status] : null
+
+  type RankingRef = { id: string; name: string }
+  const seenRankingIds = new Set<string>()
+  const curationRankings: RankingRef[] = (curationSelections ?? [])
+    .map((row) => (Array.isArray(row.ranking) ? row.ranking[0] : row.ranking))
+    .filter((r): r is RankingRef & { list_type: string } => r != null)
+    .filter((r) => {
+      if (seenRankingIds.has(r.id)) return false
+      seenRankingIds.add(r.id)
+      return true
+    })
 
   return (
     <div className="mx-auto max-w-[1600px] px-6 py-12">
@@ -145,6 +165,15 @@ export default async function AlbumDetailPage({
                 {status.icon} {status.label}
               </span>
             )}
+            {curationRankings.map((ranking) => (
+              <Link
+                key={ranking.id}
+                href={`/media/features/${ranking.id}`}
+                className="rounded-full border border-amber-400/30 bg-amber-400/10 px-2.5 py-0.5 text-amber-300 hover:bg-amber-400/20"
+              >
+                🏆 {ranking.name}選出
+              </Link>
+            ))}
           </div>
 
           <div className="mt-4 space-y-1 text-sm text-white/50">
