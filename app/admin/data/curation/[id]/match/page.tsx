@@ -66,7 +66,7 @@ export default async function RankingMatchPage({
 
   const matched = await matchAlbumsWithCandidates(
     supabase,
-    rows.map((r) => ({ title: r.title, artist_name: r.artistName }))
+    rows.map((r) => ({ title: r.title, artist_name: r.artistName, exclude_album_id: r.oldAlbumId ?? undefined }))
   )
 
   const totalPages = Math.max(1, Math.ceil((count ?? 0) / PAGE_SIZE))

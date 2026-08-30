@@ -6,6 +6,11 @@ export type AlbumExtract = {
   artist_name: string;
   label?: string;
   release_year?: number;
+  // 既にDBにある行(未マッチのスタブアルバム等)をtitle/artist_nameのまま
+  // 再検索する呼び出し元向け。指定すると、あいまい検索結果からこのIDの行
+  // 自身を除外する(自分自身との類似度が常に1.0になり、無関係な自己マッチが
+  // 「一致度100%・画像なし」の偽候補として出てしまうのを防ぐため)。
+  exclude_album_id?: string;
 };
 
 export type MatchResult = {
@@ -106,7 +111,11 @@ export async function matchAlbumsWithCandidates(
       console.error(`Error querying albums for "${album.title}":`, error);
     }
 
-    const localCandidates = ((rows ?? []) as FuzzyAlbumRow[]).map((r) => ({
+    const filteredRows = album.exclude_album_id
+      ? ((rows ?? []) as FuzzyAlbumRow[]).filter((r) => r.id !== album.exclude_album_id)
+      : ((rows ?? []) as FuzzyAlbumRow[]);
+
+    const localCandidates = filteredRows.map((r) => ({
       id: r.id,
       title: r.title,
       artist_name: r.artist_name,
@@ -132,7 +141,7 @@ export async function matchAlbumsWithCandidates(
     // されてしまう(実例: 「ハイポジ/Body Meets Sing」がtrigram類似度だけで無関係な
     // 既存アルバム「Body On Me」にマッチしてしまった)。candidatesに実在するIDのみ
     // デフォルト選択として採用する。
-    const primaryLocalRow = (rows as FuzzyAlbumRow[] | null)?.[0];
+    const primaryLocalRow = filteredRows[0];
     const defaultMatch =
       primaryLocalRow && candidates.some((c) => c.id === primaryLocalRow.id) ? primaryLocalRow : undefined;
 
