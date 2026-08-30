@@ -9,10 +9,13 @@ export default async function TowerLookupPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>
-  searchParams: Promise<{ success?: string; error?: string }>
+  searchParams: Promise<{ success?: string; error?: string; from?: string }>
 }) {
   const { id } = await params
-  const { success, error } = await searchParams
+  const { success, error, from } = await searchParams
+  // 呼び出し元(タワレコメンのマッチング画面、アーティスト編集画面等)に戻れる
+  // ようにする。外部URLへのオープンリダイレクトを避けるため管理画面配下のみ許可
+  const backHref = from && from.startsWith('/admin/') ? from : null
   const supabase = await createClient()
 
   const { data: album, error: fetchError } = await supabase
@@ -30,9 +33,16 @@ export default async function TowerLookupPage({
 
   return (
     <div className="mx-auto max-w-[1600px] px-6 py-12">
-      <Link href={`/albums/${album.id}`} className="text-xs text-white/40 hover:text-white/70">
-        ← {album.title}
-      </Link>
+      <div className="flex flex-wrap items-center gap-4">
+        {backHref && (
+          <Link href={backHref} className="text-xs text-white/40 hover:text-white/70">
+            ← 登録画面に戻る
+          </Link>
+        )}
+        <Link href={`/albums/${album.id}`} className="text-xs text-white/40 hover:text-white/70">
+          {album.title} を見る →
+        </Link>
+      </div>
 
       <h1 className="mt-4 text-2xl font-bold">Tower Recordsから情報を取り込む</h1>
       <p className="mt-2 text-sm text-white/50">
@@ -63,6 +73,7 @@ export default async function TowerLookupPage({
 
       <form action={applyTowerLookup} className="mt-6 flex flex-wrap items-center gap-2">
         <input type="hidden" name="album_id" value={album.id} />
+        {backHref && <input type="hidden" name="from" value={backHref} />}
         <input
           name="tower_url"
           placeholder="Tower Recordsの商品ページURL(https://tower.jp/item/...)"

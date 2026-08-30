@@ -5,13 +5,16 @@ import { redirect } from 'next/navigation'
 import { createAdminClient } from '@/utils/Supabase/admin'
 import { fetchTowerProductInfo } from '@/utils/towerRecords'
 
-function redirectWith(albumId: string, result: 'success' | 'error', message: string): never {
-  redirect(`/admin/data/albums/${albumId}/tower-lookup?${result}=${encodeURIComponent(message)}`)
+function redirectWith(albumId: string, result: 'success' | 'error', message: string, from?: string): never {
+  const params = new URLSearchParams({ [result]: message })
+  if (from) params.set('from', from)
+  redirect(`/admin/data/albums/${albumId}/tower-lookup?${params.toString()}`)
 }
 
 export async function applyTowerLookup(formData: FormData) {
   const albumId = String(formData.get('album_id') ?? '')
   const towerUrl = String(formData.get('tower_url') ?? '').trim()
+  const from = String(formData.get('from') ?? '') || undefined
 
   if (!albumId || !towerUrl) {
     redirect('/admin/data')
@@ -21,11 +24,11 @@ export async function applyTowerLookup(formData: FormData) {
   try {
     info = await fetchTowerProductInfo(towerUrl)
   } catch (err) {
-    redirectWith(albumId, 'error', `取得に失敗しました: ${(err as Error).message}`)
+    redirectWith(albumId, 'error', `取得に失敗しました: ${(err as Error).message}`, from)
   }
 
   if (!info.imageUrl && !info.releaseDate && !info.labelName && info.tracks.length === 0) {
-    redirectWith(albumId, 'error', '商品ページから情報を読み取れませんでした。URLをご確認ください。')
+    redirectWith(albumId, 'error', '商品ページから情報を読み取れませんでした。URLをご確認ください。', from)
   }
 
   const supabase = createAdminClient()
@@ -62,7 +65,7 @@ export async function applyTowerLookup(formData: FormData) {
   const { error: updateError } = await supabase.from('album').update(update).eq('id', albumId)
 
   if (updateError) {
-    redirectWith(albumId, 'error', `更新に失敗しました: ${updateError.message}`)
+    redirectWith(albumId, 'error', `更新に失敗しました: ${updateError.message}`, from)
   }
 
   // 既にトラックが登録されている場合は重複作成を避けるため、まだ1件も無いときだけ
@@ -99,6 +102,7 @@ export async function applyTowerLookup(formData: FormData) {
   redirectWith(
     albumId,
     'success',
-    `Tower Recordsの情報を反映しました。${tracksAdded > 0 ? `(トラック${tracksAdded}件を追加)` : ''}`
+    `Tower Recordsの情報を反映しました。${tracksAdded > 0 ? `(トラック${tracksAdded}件を追加)` : ''}`,
+    from
   )
 }

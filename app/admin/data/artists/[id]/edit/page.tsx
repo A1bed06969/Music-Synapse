@@ -241,14 +241,14 @@ export default async function ArtistEditPage({
                     クレジットを取り込む →
                   </Link>
                   <Link
-                    href={`/admin/data/albums/${album.id}/tower-lookup`}
+                    href={`/admin/data/albums/${album.id}/tower-lookup?from=${encodeURIComponent(`/admin/data/artists/${artist.id}/edit`)}`}
                     prefetch={false}
                     className="text-xs text-white/40 hover:text-white/70"
                   >
                     Tower Records取込 →
                   </Link>
                   <Link
-                    href={`/admin/data/albums/${album.id}/discogs-lookup`}
+                    href={`/admin/data/albums/${album.id}/discogs-lookup?from=${encodeURIComponent(`/admin/data/artists/${artist.id}/edit`)}`}
                     prefetch={false}
                     className="text-xs text-white/40 hover:text-white/70"
                   >

@@ -27,14 +27,17 @@ export default function RankingEntryRow({
   defaultCandidateId: string
 }) {
   const [selection, setSelection] = useState(defaultCandidateId)
-  const [saved, setSaved] = useState(false)
+  const [savedAlbumId, setSavedAlbumId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
 
-  if (saved) {
+  if (savedAlbumId) {
     return (
-      <li className="rounded-md border border-emerald-500/20 bg-emerald-500/5 p-3 text-sm text-emerald-400">
-        ✓ {artistName} / {title} を登録しました。
+      <li className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-emerald-500/20 bg-emerald-500/5 p-3 text-sm text-emerald-400">
+        <span>✓ {artistName} / {title} を登録しました。</span>
+        <Link href={`/albums/${savedAlbumId}`} className="text-xs text-emerald-300 hover:text-emerald-200">
+          アルバムを見る →
+        </Link>
       </li>
     )
   }
@@ -56,7 +59,7 @@ export default function RankingEntryRow({
             startTransition(async () => {
               const result = await linkRankingEntryCandidate(rankingId, entryId, oldAlbumId, oldArtistId, selection)
               if (result.success) {
-                setSaved(true)
+                setSavedAlbumId(result.albumId ?? selection)
               } else {
                 setError(result.message)
               }
@@ -73,13 +76,13 @@ export default function RankingEntryRow({
         <div className="mt-2 flex flex-wrap gap-3">
           <span className="text-xs text-white/30">候補に無い場合(旧譜・限定盤など):</span>
           <Link
-            href={`/admin/data/albums/${oldAlbumId}/tower-lookup`}
+            href={`/admin/data/albums/${oldAlbumId}/tower-lookup?from=${encodeURIComponent(`/admin/data/curation/${rankingId}/match`)}`}
             className="text-xs text-white/40 hover:text-white/70"
           >
             Tower Recordsから取込 →
           </Link>
           <Link
-            href={`/admin/data/albums/${oldAlbumId}/discogs-lookup`}
+            href={`/admin/data/albums/${oldAlbumId}/discogs-lookup?from=${encodeURIComponent(`/admin/data/curation/${rankingId}/match`)}`}
             className="text-xs text-white/40 hover:text-white/70"
           >
             Discogsから取込 →

@@ -5,7 +5,7 @@ import { createAdminClient } from '@/utils/Supabase/admin'
 import { fetchAlbumById } from '@/utils/itunes'
 import { registerAlbumFromSearch } from '@/app/admin/import/search/actions'
 
-export type LinkResult = { success: boolean; message: string }
+export type LinkResult = { success: boolean; message: string; albumId?: string }
 
 /** コラボ/feat.クレジットの作品は参加アーティストそれぞれのカタログに同じ
  * apple_music_album_idが重複して存在しうるため、artist_idも合わせて絞り込む
@@ -89,5 +89,5 @@ export async function linkRankingEntryCandidate(
   revalidatePath('/admin/data/curation')
   revalidatePath(`/media/features/${rankingId}`)
 
-  return { success: true, message: '登録しました。' }
+  return { success: true, message: '登録しました。', albumId: newAlbumId }
 }

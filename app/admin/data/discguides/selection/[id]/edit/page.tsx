@@ -37,13 +37,13 @@ export default async function EditDiscGuideSelectionPage({ params }: { params: P
       {selection.album_id && (
         <div className="mt-2 flex flex-wrap gap-3">
           <Link
-            href={`/admin/data/albums/${selection.album_id}/tower-lookup`}
+            href={`/admin/data/albums/${selection.album_id}/tower-lookup?from=${encodeURIComponent(`/admin/data/discguides/selection/${id}/edit`)}`}
             className="inline-block text-xs text-white/40 hover:text-white/70"
           >
             Apple Musicに無い作品の場合: Tower Recordsから画像・発売日を取込 →
           </Link>
           <Link
-            href={`/admin/data/albums/${selection.album_id}/discogs-lookup`}
+            href={`/admin/data/albums/${selection.album_id}/discogs-lookup?from=${encodeURIComponent(`/admin/data/discguides/selection/${id}/edit`)}`}
             className="inline-block text-xs text-white/40 hover:text-white/70"
           >
             Discogsから取込 →

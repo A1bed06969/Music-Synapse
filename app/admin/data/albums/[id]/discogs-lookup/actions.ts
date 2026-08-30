@@ -5,13 +5,16 @@ import { redirect } from 'next/navigation'
 import { createAdminClient } from '@/utils/Supabase/admin'
 import { fetchDiscogsReleaseInfo } from '@/utils/discogs'
 
-function redirectWith(albumId: string, result: 'success' | 'error', message: string): never {
-  redirect(`/admin/data/albums/${albumId}/discogs-lookup?${result}=${encodeURIComponent(message)}`)
+function redirectWith(albumId: string, result: 'success' | 'error', message: string, from?: string): never {
+  const params = new URLSearchParams({ [result]: message })
+  if (from) params.set('from', from)
+  redirect(`/admin/data/albums/${albumId}/discogs-lookup?${params.toString()}`)
 }
 
 export async function applyDiscogsLookup(formData: FormData) {
   const albumId = String(formData.get('album_id') ?? '')
   const discogsUrl = String(formData.get('discogs_url') ?? '').trim()
+  const from = String(formData.get('from') ?? '') || undefined
 
   if (!albumId || !discogsUrl) {
     redirect('/admin/data')
@@ -21,11 +24,11 @@ export async function applyDiscogsLookup(formData: FormData) {
   try {
     info = await fetchDiscogsReleaseInfo(discogsUrl)
   } catch (err) {
-    redirectWith(albumId, 'error', `取得に失敗しました: ${(err as Error).message}`)
+    redirectWith(albumId, 'error', `取得に失敗しました: ${(err as Error).message}`, from)
   }
 
   if (!info.imageUrl && !info.releaseDate && !info.labelName && info.tracks.length === 0) {
-    redirectWith(albumId, 'error', 'リリースページから情報を読み取れませんでした。URLをご確認ください。')
+    redirectWith(albumId, 'error', 'リリースページから情報を読み取れませんでした。URLをご確認ください。', from)
   }
 
   const supabase = createAdminClient()
@@ -62,7 +65,7 @@ export async function applyDiscogsLookup(formData: FormData) {
   const { error: updateError } = await supabase.from('album').update(update).eq('id', albumId)
 
   if (updateError) {
-    redirectWith(albumId, 'error', `更新に失敗しました: ${updateError.message}`)
+    redirectWith(albumId, 'error', `更新に失敗しました: ${updateError.message}`, from)
   }
 
   // Tower Records取込と同じく、既にトラックが登録されている場合は重複作成を避けるため
@@ -98,6 +101,7 @@ export async function applyDiscogsLookup(formData: FormData) {
   redirectWith(
     albumId,
     'success',
-    `Discogsの情報を反映しました。${tracksAdded > 0 ? `(トラック${tracksAdded}件を追加)` : ''}`
+    `Discogsの情報を反映しました。${tracksAdded > 0 ? `(トラック${tracksAdded}件を追加)` : ''}`,
+    from
   )
 }
