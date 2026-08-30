@@ -2,10 +2,33 @@
 
 import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/utils/Supabase/admin'
-import { fetchAlbumById } from '@/utils/itunes'
+import { fetchAlbumById, searchAlbums } from '@/utils/itunes'
 import { registerAlbumFromSearch } from '@/app/admin/import/search/actions'
 
 export type LinkResult = { success: boolean; message: string; albumId?: string }
+export type SearchItem = { id: string; label: string; imageUrl?: string }
+
+/** 自動マッチング(タイトル/アーティスト名の一致度)では見つからなかった候補を、
+ * 管理者が自分でキーワードを入れて検索できるようにする(HRPPの手動マッチング
+ * 検索と同じ考え方)。返り値のidはlinkRankingEntryCandidateへそのまま渡せる
+ * `itunes:<collectionId>`形式。 */
+export async function searchAppleMusicAlbumsForCuration(query: string): Promise<SearchItem[]> {
+  const trimmed = query.trim()
+  if (trimmed.length < 2) return []
+
+  let results
+  try {
+    results = await searchAlbums(trimmed, 10)
+  } catch {
+    return []
+  }
+
+  return results.map((a) => ({
+    id: `itunes:${a.collectionId}`,
+    label: `${a.collectionName} — ${a.artistName}`,
+    imageUrl: a.artworkUrl100,
+  }))
+}
 
 /** コラボ/feat.クレジットの作品は参加アーティストそれぞれのカタログに同じ
  * apple_music_album_idが重複して存在しうるため、artist_idも合わせて絞り込む

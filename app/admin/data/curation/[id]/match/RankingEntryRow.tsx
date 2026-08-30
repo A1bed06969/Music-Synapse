@@ -3,7 +3,8 @@
 import { useState, useTransition } from 'react'
 import Link from 'next/link'
 import AlbumCandidatePicker from '../../../discguides/confirm/AlbumCandidatePicker'
-import { linkRankingEntryCandidate } from './actions'
+import SearchableSelect from '../../../SearchableSelect'
+import { linkRankingEntryCandidate, searchAppleMusicAlbumsForCuration } from './actions'
 
 type Candidate = { id: string; title: string; artist_name: string; similarity?: number; artwork_url?: string }
 
@@ -72,9 +73,31 @@ export default function RankingEntryRow({
         {selection === 'new' && <span className="text-xs text-white/30">候補を選ぶと登録できます</span>}
         {error && <span className="text-xs text-red-400">{error}</span>}
       </div>
+      <div className="mt-3 max-w-md">
+        <p className="mb-1 text-xs text-white/30">
+          候補に見つからない場合は手動でApple Musicを検索(表記ゆれ等で自動検索に出てこない場合):
+        </p>
+        <SearchableSelect
+          searchAction={searchAppleMusicAlbumsForCuration}
+          name={`manual_search_${entryId}`}
+          placeholder="アルバム名・アーティスト名で検索..."
+          onSelect={(item) => {
+            if (!item) return
+            setError(null)
+            startTransition(async () => {
+              const result = await linkRankingEntryCandidate(rankingId, entryId, oldAlbumId, oldArtistId, item.id)
+              if (result.success) {
+                setSavedAlbumId(result.albumId ?? item.id)
+              } else {
+                setError(result.message)
+              }
+            })
+          }}
+        />
+      </div>
       {oldAlbumId && (
         <div className="mt-2 flex flex-wrap gap-3">
-          <span className="text-xs text-white/30">候補に無い場合(旧譜・限定盤など):</span>
+          <span className="text-xs text-white/30">それでも無い場合(旧譜・限定盤など):</span>
           <Link
             href={`/admin/data/albums/${oldAlbumId}/tower-lookup?from=${encodeURIComponent(`/admin/data/curation/${rankingId}/match`)}`}
             className="text-xs text-white/40 hover:text-white/70"
