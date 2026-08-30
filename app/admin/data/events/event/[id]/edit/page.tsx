@@ -15,6 +15,8 @@ import {
   deleteFestivalEdition,
   createFestivalAppearance,
   deleteFestivalAppearance,
+  createFestivalEditionDates,
+  deleteFestivalEditionDate,
 } from '../../../actions'
 
 const EVENT_TYPE_OPTIONS = [
@@ -57,12 +59,17 @@ export default async function EditEventPage({
     artist: { id: string; name: string } | { id: string; name: string }[] | null
   }
 
+  type EditionDateRow = { id: string; event_edition_id: string; date: string; venue: string; region: string | null }
+
+  const editionIds = (await supabase.from('event_edition').select('id').eq('event_id', id)).data?.map((e) => e.id) ?? []
+
   const [
     { data: entry, error: fetchError },
     { data: genres },
     { data: venues },
     { data: editions },
     { data: appearances },
+    { data: editionDates },
   ] = await Promise.all([
     supabase
       .from('event')
@@ -79,13 +86,13 @@ export default async function EditEventPage({
       .select(
         'id, event_edition_id, stage, venue, start_time, end_time, is_headliner, artist_id, artist:artist_id(id, name)'
       )
-      .in(
-        'event_edition_id',
-        (
-          await supabase.from('event_edition').select('id').eq('event_id', id)
-        ).data?.map((e) => e.id) ?? []
-      )
+      .in('event_edition_id', editionIds)
       .order('start_time', { ascending: true }),
+    supabase
+      .from('event_edition_date')
+      .select('id, event_edition_id, date, venue, region')
+      .in('event_edition_id', editionIds)
+      .order('date', { ascending: true }),
   ])
 
   if (fetchError || !entry) {
@@ -96,6 +103,31 @@ export default async function EditEventPage({
   for (const row of (appearances ?? []) as AppearanceRow[]) {
     if (!appearancesByEdition.has(row.event_edition_id)) appearancesByEdition.set(row.event_edition_id, [])
     appearancesByEdition.get(row.event_edition_id)!.push(row)
+  }
+
+  const editionDatesByEdition = new Map<string, EditionDateRow[]>()
+  for (const row of (editionDates ?? []) as EditionDateRow[]) {
+    if (!editionDatesByEdition.has(row.event_edition_id)) editionDatesByEdition.set(row.event_edition_id, [])
+    editionDatesByEdition.get(row.event_edition_id)!.push(row)
+  }
+
+  // 連続する日付はまとめて「9/12〜9/13」のように1つのラウンドとして表示する
+  // (登録はrangeでまとめて行ったか単発ずつ行ったかに関わらず、見た目は統一する)
+  function groupConsecutiveDates(rows: EditionDateRow[]): { start: EditionDateRow; end: EditionDateRow; ids: string[] }[] {
+    const groups: { start: EditionDateRow; end: EditionDateRow; ids: string[] }[] = []
+    for (const row of rows) {
+      const last = groups[groups.length - 1]
+      const prevDay = new Date(`${row.date}T00:00:00Z`)
+      prevDay.setUTCDate(prevDay.getUTCDate() - 1)
+      const prevDayStr = prevDay.toISOString().slice(0, 10)
+      if (last && last.end.date === prevDayStr && last.end.venue === row.venue && last.end.region === row.region) {
+        last.end = row
+        last.ids.push(row.id)
+      } else {
+        groups.push({ start: row, end: row, ids: [row.id] })
+      }
+    }
+    return groups
   }
 
   return (
@@ -273,6 +305,52 @@ export default async function EditEventPage({
                       </button>
                     </form>
                   </div>
+                </div>
+
+                {/* ロック・イン・ジャパンのように同じ年で2ラウンド(週)に分かれる
+                 * フェスに対応するため、上のstart_date/end_dateとは別に、開催
+                 * ラウンドを何回でも追加登録できるようにする */}
+                <div className="mt-3 rounded-md border border-white/10 bg-white/[0.03] p-2.5">
+                  <p className="text-xs font-medium text-white/60">開催ラウンド(2週開催などで期間が分かれる場合)</p>
+                  {(() => {
+                    const groups = groupConsecutiveDates(editionDatesByEdition.get(ed.id) ?? [])
+                    return groups.length === 0 ? (
+                      <p className="mt-1.5 text-xs text-white/30">まだ個別の開催日程が登録されていません。</p>
+                    ) : (
+                      <ul className="mt-1.5 space-y-1">
+                        {groups.map((g, i) => (
+                          <li key={i} className="flex flex-wrap items-center justify-between gap-2 text-xs text-white/70">
+                            <span>
+                              {g.start.date}
+                              {g.end.date !== g.start.date ? `〜${g.end.date}` : ''} @ {g.start.venue}
+                              {g.start.region ? `(${g.start.region})` : ''}
+                            </span>
+                            <form action={deleteFestivalEditionDate}>
+                              {g.ids.map((gid) => (
+                                <input key={gid} type="hidden" name="id" value={gid} />
+                              ))}
+                              <input type="hidden" name="event_id" value={entry.id} />
+                              <button type="submit" className="text-red-400/70 hover:text-red-400">
+                                削除
+                              </button>
+                            </form>
+                          </li>
+                        ))}
+                      </ul>
+                    )
+                  })()}
+                  <form action={createFestivalEditionDates} className="mt-2 flex flex-wrap items-center gap-1.5">
+                    <input type="hidden" name="event_id" value={entry.id} />
+                    <input type="hidden" name="event_edition_id" value={ed.id} />
+                    <input name="start_date" type="date" required className={`${inputClass} max-w-[150px]`} />
+                    <span className="text-xs text-white/30">〜</span>
+                    <input name="end_date" type="date" placeholder="単日ならなくてOK" className={`${inputClass} max-w-[150px]`} />
+                    <input name="venue" placeholder="会場" required className={`${inputClass} max-w-[160px]`} />
+                    <input name="region" placeholder="都市(任意)" className={`${inputClass} max-w-[120px]`} />
+                    <button type="submit" className={buttonClass}>
+                      ラウンドを追加
+                    </button>
+                  </form>
                 </div>
 
                 <ul className="mt-3 space-y-1.5 text-sm">

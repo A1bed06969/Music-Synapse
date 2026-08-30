@@ -850,6 +850,85 @@ export async function deleteFestivalEdition(formData: FormData) {
   redirectToEventEdit(eventId, 'success', '開催年を削除しました(紐づく出演情報も削除されました)。')
 }
 
+const MAX_EDITION_DATE_RANGE_DAYS = 31
+
+/** ロック・イン・ジャパンのように同じ開催年の中で2ラウンド(週)に分かれる
+ * フェスに対応するため、開催年1件につき開催日程(event_edition_date)を
+ * 複数回に分けて追加できるようにする。1回の登録は開始日〜終了日の範囲を
+ * 日ごとの行に展開して一括登録する(1日だけの場合は終了日を省略してよい)。
+ * フェス登録画面からの追加。追加後は同じフェスの編集画面に戻る。 */
+export async function createFestivalEditionDates(formData: FormData) {
+  const eventId = String(formData.get('event_id') ?? '')
+  const eventEditionId = String(formData.get('event_edition_id') ?? '')
+  const startDate = String(formData.get('start_date') ?? '').trim()
+  const endDateRaw = String(formData.get('end_date') ?? '').trim()
+  const venue = String(formData.get('venue') ?? '').trim()
+  const region = String(formData.get('region') ?? '').trim()
+  const endDate = endDateRaw || startDate
+
+  if (!eventId || !eventEditionId || !startDate || !venue) {
+    redirectToEventEdit(eventId, 'error', '開催年・開始日・会場を入力してください。')
+  }
+
+  if (endDate < startDate) {
+    redirectToEventEdit(eventId, 'error', '終了日は開始日以降にしてください。')
+  }
+
+  const dates: string[] = []
+  for (let d = new Date(`${startDate}T00:00:00Z`); d.toISOString().slice(0, 10) <= endDate; d.setUTCDate(d.getUTCDate() + 1)) {
+    dates.push(d.toISOString().slice(0, 10))
+    if (dates.length > MAX_EDITION_DATE_RANGE_DAYS) {
+      redirectToEventEdit(eventId, 'error', `一度に登録できるのは${MAX_EDITION_DATE_RANGE_DAYS}日分までです。`)
+    }
+  }
+
+  const supabase = createAdminClient()
+  const { error } = await supabase.from('event_edition_date').insert(
+    dates.map((date) => ({
+      event_edition_id: eventEditionId,
+      date,
+      venue,
+      region: region || null,
+    }))
+  )
+
+  if (error) {
+    redirectToEventEdit(eventId, 'error', `開催日程の登録に失敗しました: ${error.message}`)
+  }
+
+  revalidatePath(`/admin/data/events/event/${eventId}/edit`)
+  revalidatePath('/admin/data/events')
+  revalidatePath('/albums/calendar')
+  redirectToEventEdit(
+    eventId,
+    'success',
+    dates.length > 1 ? `開催日程を${dates.length}日分登録しました。` : '開催日程を登録しました。'
+  )
+}
+
+/** 連続日程は画面上1つの「ラウンド」としてまとめて表示しているため、削除も
+ * そのラウンドを構成する全行(複数のidが送られてくる)をまとめて行う。 */
+export async function deleteFestivalEditionDate(formData: FormData) {
+  const ids = formData.getAll('id').map(String).filter(Boolean)
+  const eventId = String(formData.get('event_id') ?? '')
+
+  if (ids.length === 0 || !eventId) {
+    redirectToEventEdit(eventId, 'error', '不正なリクエストです。')
+  }
+
+  const supabase = createAdminClient()
+  const { error } = await supabase.from('event_edition_date').delete().in('id', ids)
+
+  if (error) {
+    redirectToEventEdit(eventId, 'error', `開催日程の削除に失敗しました: ${error.message}`)
+  }
+
+  revalidatePath(`/admin/data/events/event/${eventId}/edit`)
+  revalidatePath('/admin/data/events')
+  revalidatePath('/albums/calendar')
+  redirectToEventEdit(eventId, 'success', '開催日程を削除しました。')
+}
+
 /** フェス登録画面からのタイムテーブル(出演情報)追加。追加後は同じフェスの
  * 編集画面に戻る(generic版のcreateEventAppearanceは一覧ページに戻ってしまうため別関数)。 */
 export async function createFestivalAppearance(formData: FormData) {
