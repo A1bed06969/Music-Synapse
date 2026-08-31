@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import SiteHeader from "./components/SiteHeader";
 import SiteFooter from "./components/SiteFooter";
 import { PreviewPlayerProvider } from "./components/PreviewPlayerContext";
+import RecordDiggingLauncher from "./components/record-digging/RecordDiggingLauncher";
 import { getStats } from "@/utils/stats";
 import "./globals.css";
 
@@ -37,6 +38,7 @@ export default async function RootLayout({
         <SiteHeader stats={stats} />
         <PreviewPlayerProvider>
           <main className="flex-1">{children}</main>
+          <RecordDiggingLauncher />
         </PreviewPlayerProvider>
         <SiteFooter />
       </body>
