@@ -13,6 +13,7 @@ export type RecentReleaseAlbum = {
   releaseDate: string
   artistId: string | null
   artistName: string
+  artistImageUrl: string | null
   review: string | null
   tracks: RecentReleaseTrack[]
 }
@@ -57,7 +58,28 @@ export default function RecentReleasesCarousel({ albums }: { albums: RecentRelea
       { root: container, threshold: [0, 0.25, 0.5, 0.75, 1], rootMargin: '0px -30% 0px -30%' }
     )
     itemRefs.current.forEach((el) => el && observer.observe(el))
-    return () => observer.disconnect()
+
+    // 先頭・末尾のカードはpx-[24%]等のパーセント指定と実際のカード幅の兼ね合いで
+    // 「完全な中央」にわずかに届かないことがあり、そのぶん交差率が本来の1位を
+    // 取れず先頭カードの詳細が一度も表示されないことがあった(実際に「一番最初の
+    // アルバムが紹介されない」不具合として発生)。IntersectionObserverの比率
+    // 比較だけに頼らず、スクロール位置が両端に達したら直接先頭/末尾を採用する
+    function handleScroll() {
+      const el = containerRef.current
+      if (!el) return
+      if (el.scrollLeft <= 2) {
+        startTransition(() => setActiveIndex(0))
+      } else if (el.scrollLeft >= el.scrollWidth - el.clientWidth - 2) {
+        startTransition(() => setActiveIndex(albums.length - 1))
+      }
+    }
+    handleScroll()
+    container.addEventListener('scroll', handleScroll, { passive: true })
+
+    return () => {
+      observer.disconnect()
+      container.removeEventListener('scroll', handleScroll)
+    }
   }, [albums.length])
 
   if (albums.length === 0) return null
@@ -138,19 +160,31 @@ export default function RecentReleasesCarousel({ albums }: { albums: RecentRelea
         {/* フォーカス中のアルバムの詳細。カルーセル側の状態(activeIndex)をそのまま
          * 参照するだけなので、スクロールに合わせて自動的に切り替わる */}
         <div key={active.id} className="animate-banner-in rounded-lg border border-white/10 bg-white/[0.02] p-4">
-          <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <div>
-              <Link href={`/artists/${active.artistId ?? ''}`} className="text-sm font-medium text-white/80 hover:text-white">
-                {active.artistName}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-3">
+              <Link href={`/artists/${active.artistId ?? ''}`} className="shrink-0">
+                <div className="h-12 w-12 overflow-hidden rounded-full bg-white/5 ring-1 ring-white/10">
+                  {active.artistImageUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={active.artistImageUrl} alt={active.artistName} className="h-full w-full object-cover" />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center text-lg text-white/20">🎤</div>
+                  )}
+                </div>
               </Link>
-              {active.artistId && (
-                <Link
-                  href={`/artists/${active.artistId}`}
-                  className="ml-2 text-xs text-white/40 hover:text-white/70"
-                >
-                  プロフィールを見る →
+              <div>
+                <Link href={`/artists/${active.artistId ?? ''}`} className="text-sm font-medium text-white/80 hover:text-white">
+                  {active.artistName}
                 </Link>
-              )}
+                {active.artistId && (
+                  <Link
+                    href={`/artists/${active.artistId}`}
+                    className="block text-xs text-white/40 hover:text-white/70"
+                  >
+                    プロフィールを見る →
+                  </Link>
+                )}
+              </div>
             </div>
             <p className="text-xs text-white/40">{formatDate(active.releaseDate)}</p>
           </div>

@@ -84,7 +84,7 @@ export default async function AlbumCalendarPage({
   const tomorrow = tomorrowJST()
   const { data: recentReleaseRows } = await supabase
     .from('album')
-    .select('id, title, jacket_url, release_date, album_review, artist:artist_id(id, name)')
+    .select('id, title, jacket_url, release_date, album_review, artist:artist_id(id, name, image_url)')
     .gte('release_date', tomorrow)
     .is('primary_album_id', null)
     .order('release_date', { ascending: true })
@@ -118,6 +118,7 @@ export default async function AlbumCalendarPage({
         releaseDate: a.release_date as string,
         artistId: artist?.id ?? null,
         artistName: artist?.name ?? '不明',
+        artistImageUrl: artist?.image_url ?? null,
         review: a.album_review,
         tracks: tracksByAlbum.get(a.id) ?? [],
       }
