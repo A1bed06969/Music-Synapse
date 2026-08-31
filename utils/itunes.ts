@@ -84,6 +84,24 @@ export function extractArtistIdFromUrl(url: string): string | null {
 }
 
 /**
+ * Apple Musicのアルバム/シングルURLからcollectionId(と、曲を選択した状態で
+ * コピーされたURLならtrackIdも)を抽出する。
+ * 例: https://music.apple.com/jp/album/breakthrough-single/1894582290 -> {collectionId: 1894582290, trackId: null}
+ * 例: https://music.apple.com/jp/album/xxx/1894582290?i=6762537700 -> {collectionId: 1894582290, trackId: 6762537700}
+ * 検索でうまく見つからない(表記ゆれ・無名アーティストが同名の有名曲に検索順位で
+ * 負ける等)場合の手動フォールバック用。
+ */
+export function parseAppleMusicAlbumUrl(url: string): { collectionId: number; trackId: number | null } | null {
+  const collectionMatch = url.match(/\/album\/[^/]+\/(\d+)/)
+  if (!collectionMatch) return null
+  const trackMatch = url.match(/[?&]i=(\d+)/)
+  return {
+    collectionId: Number(collectionMatch[1]),
+    trackId: trackMatch ? Number(trackMatch[1]) : null,
+  }
+}
+
+/**
  * アーティスト情報 + アルバム一覧を1回のlookupで取得
  */
 export async function fetchArtistWithAlbums(artistId: string): Promise<{

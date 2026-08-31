@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { createAdminClient } from '@/utils/Supabase/admin'
-import { searchTracks, fetchTrackById, searchAlbums, fetchAlbumById } from '@/utils/itunes'
+import { searchTracks, fetchTrackById, searchAlbums, fetchAlbumById, fetchTracksForAlbum, parseAppleMusicAlbumUrl } from '@/utils/itunes'
 import { registerTrackFromSearch, registerAlbumFromSearch } from '@/app/admin/import/search/actions'
 import { getStationPeriodType, isAlbumCampaign } from '@/utils/radioStationPeriod'
 
@@ -87,7 +87,7 @@ export async function searchAppleMusicAlbumsForPick(query: string): Promise<Pick
   }))
 }
 
-export type SetCandidateResult = { success: boolean; message: string }
+export type SetCandidateResult = { success: boolean; message: string; item?: PickerItem }
 
 /** 選んだトラックをradio_airplay_pick.candidate_*へ保存する(あくまで候補として。
  * artist/album本体への自動登録はしない、既存の自動マッチと同じ扱い)。 */
@@ -122,7 +122,11 @@ export async function setPickCandidateFromSearch(pickId: string, trackId: string
   }
 
   revalidatePath('/admin/data/media/radio-airplay-pick')
-  return { success: true, message: '保存しました。' }
+  return {
+    success: true,
+    message: '保存しました。',
+    item: { id: String(match.trackId), label: `${match.trackName} — ${match.artistName}`, imageUrl: match.artworkUrl100 },
+  }
 }
 
 /** アルバム単位の選出向け。選んだアルバムをcandidate_collection_*へ保存する。
@@ -159,7 +163,113 @@ export async function setAlbumCandidateFromSearch(pickId: string, collectionId: 
   }
 
   revalidatePath('/admin/data/media/radio-airplay-pick')
-  return { success: true, message: '保存しました。' }
+  return {
+    success: true,
+    message: '保存しました。',
+    item: { id: String(match.collectionId), label: `${match.collectionName} — ${match.artistName}`, imageUrl: match.artworkUrl100 },
+  }
+}
+
+/** 検索で見つからない場合(表記ゆれ・無名アーティストが同名の有名曲に検索順位で
+ * 負ける等)の手動フォールバック。Apple MusicのアルバムURLを直接貼って候補を
+ * 設定する。トラック単位の選出でURLに曲指定(?i=)が無い場合、収録曲が1曲だけ
+ * (シングル)ならその曲を採用し、複数曲ある場合は曲を指定したURLを使うよう
+ * エラーを返す(過検出より過小検出を優先する、このアプリの他の自動照合と同じ方針)。 */
+export async function setPickCandidateFromUrl(pickId: string, url: string, albumMode: boolean): Promise<SetCandidateResult> {
+  const parsed = parseAppleMusicAlbumUrl(url.trim())
+  if (!parsed) {
+    return { success: false, message: 'Apple MusicのアルバムURLとして認識できませんでした(例: https://music.apple.com/jp/album/.../123456789)。' }
+  }
+
+  const supabase = createAdminClient()
+
+  if (albumMode) {
+    let match
+    try {
+      match = await fetchAlbumById(parsed.collectionId)
+    } catch {
+      match = null
+    }
+    if (!match) {
+      return { success: false, message: '指定のURLのアルバムがApple Musicで見つかりませんでした。' }
+    }
+
+    const { error } = await supabase
+      .from('radio_airplay_pick')
+      .update({
+        candidate_track_id: null,
+        candidate_track_name: null,
+        candidate_artist_name: match.artistName,
+        candidate_collection_id: match.collectionId,
+        candidate_collection_name: match.collectionName,
+        candidate_artwork_url: match.artworkUrl100 ?? null,
+      })
+      .eq('id', pickId)
+
+    if (error) {
+      return { success: false, message: `保存に失敗しました: ${error.message}` }
+    }
+
+    revalidatePath('/admin/data/media/radio-airplay-pick')
+    return {
+      success: true,
+      message: '保存しました。',
+      item: { id: String(match.collectionId), label: `${match.collectionName} — ${match.artistName}`, imageUrl: match.artworkUrl100 },
+    }
+  }
+
+  let trackId = parsed.trackId
+  if (!trackId) {
+    let tracks
+    try {
+      tracks = (await fetchTracksForAlbum(parsed.collectionId)).tracks
+    } catch {
+      return { success: false, message: '指定のURLのアルバムがApple Musicで見つかりませんでした。' }
+    }
+    if (tracks.length === 0) {
+      return { success: false, message: '指定のURLから曲情報を取得できませんでした。' }
+    }
+    if (tracks.length > 1) {
+      return {
+        success: false,
+        message: `このURLのアルバムには${tracks.length}曲収録されています。曲を絞り込めないため、Apple Musicで曲を選択した状態でコピーしたURL(末尾に?i=数字が付いたもの)を使ってください。`,
+      }
+    }
+    trackId = tracks[0].trackId
+  }
+
+  let match
+  try {
+    match = await fetchTrackById(trackId)
+  } catch {
+    match = null
+  }
+  if (!match) {
+    return { success: false, message: '指定の曲がApple Musicで見つかりませんでした。' }
+  }
+
+  const { error } = await supabase
+    .from('radio_airplay_pick')
+    .update({
+      candidate_track_id: match.trackId,
+      candidate_track_name: match.trackName,
+      candidate_artist_name: match.artistName,
+      candidate_collection_id: match.collectionId,
+      candidate_collection_name: match.collectionName,
+      candidate_artwork_url: match.artworkUrl100 ?? null,
+    })
+    .eq('id', pickId)
+
+  if (error) {
+    return { success: false, message: `保存に失敗しました: ${error.message}` }
+  }
+
+  revalidatePath('/admin/data/media/radio-airplay-pick')
+  return {
+    success: true,
+    message: '保存しました。',
+    item: { id: String(match.trackId), label: `${match.trackName} — ${match.artistName}`, imageUrl: match.artworkUrl100 },
+  }
 }
 
 /** マッチ済み一覧での誤マッチ訂正用。候補をクリアし未マッチ一覧に戻す。 */

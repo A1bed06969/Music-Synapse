@@ -76,7 +76,7 @@ export default function AlbumFocusCarousel({ albums }: { albums: UpcomingAlbumCa
                 itemRefs.current[i] = el
               }}
               data-index={i}
-              className="relative w-40 shrink-0 snap-center @sm:w-52"
+              className="relative w-36 shrink-0 snap-center @sm:w-48"
               style={{ zIndex: isActive ? 10 : 1 }}
             >
               <Link href={`/albums/${a.id}`} className="group block">
@@ -87,7 +87,7 @@ export default function AlbumFocusCarousel({ albums }: { albums: UpcomingAlbumCa
                  * 重ならないようにする */}
                 <div
                   className="aspect-square origin-center overflow-hidden rounded-lg bg-white/5 shadow-xl shadow-black/60 ring-1 ring-white/10 transition-transform duration-300 ease-out will-change-transform group-hover:ring-white/40"
-                  style={{ transform: isActive ? 'scale(1.25)' : 'scale(0.8)' }}
+                  style={{ transform: isActive ? 'scale(1.15)' : 'scale(0.8)' }}
                 >
                   {a.jacketUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
