@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef } from 'react'
+import { useEffect, useRef } from 'react'
 
 /** レコードを切り替える「シュッ」という短い音と、取り上げる「余韻のある」音を
  * Web Audio APIでその場合成する(外部音源ファイルは使わない)。AudioContextは
@@ -13,10 +13,16 @@ export function useDiggingSound() {
       ctxRef.current = new AudioContext()
     }
     if (ctxRef.current.state === 'suspended') {
-      ctxRef.current.resume()
+      ctxRef.current.resume().catch(() => {})
     }
     return ctxRef.current
   }
+
+  useEffect(() => {
+    return () => {
+      ctxRef.current?.close().catch(() => {})
+    }
+  }, [])
 
   function makeNoiseBuffer(ctx: AudioContext, durationSeconds: number): AudioBuffer {
     const bufferSize = Math.floor(ctx.sampleRate * durationSeconds)

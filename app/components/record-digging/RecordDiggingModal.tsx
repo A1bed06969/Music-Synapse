@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { usePreviewPlayer } from '@/app/components/PreviewPlayerContext'
+import PreviewButton from '@/app/components/PreviewButton'
 import { useSwipeGesture, type SwipeDirection } from './useSwipeGesture'
 import { useDiggingSound } from './useDiggingSound'
 import RecordSleeve from './RecordSleeve'
@@ -75,9 +76,10 @@ export default function RecordDiggingModal({ onClose }: { onClose: () => void })
       .then((data: DiggingRecord[]) => {
         if (cancelled) return
         if (data.length === 0) {
-          // 「新着」が0件なら、次の棚(ジャンル)があれば自動フォールバック
+          // 「新着」が0件なら、棚一覧から除外して次のジャンル棚へ
           if (shelf.key === NEW_ARRIVALS_KEY && shelves.length > 1) {
-            setShelfIndex(1)
+            setShelves((prev) => prev.filter((s) => s.key !== NEW_ARRIVALS_KEY))
+            setShelfIndex(0)
             return
           }
           setState('error')
@@ -115,6 +117,14 @@ export default function RecordDiggingModal({ onClose }: { onClose: () => void })
     return () => clearTimeout(timer)
   }, [])
 
+  useEffect(() => {
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = prevOverflow
+    }
+  }, [])
+
   function handleSwipe(direction: SwipeDirection) {
     setShowHint(false)
     if (state !== 'ready' || deck.length === 0) return
@@ -150,13 +160,27 @@ export default function RecordDiggingModal({ onClose }: { onClose: () => void })
     }
   }
 
+  function handleClose() {
+    setPlayingTrackId(null)
+    onClose()
+  }
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') handleClose()
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const swipeRef = useSwipeGesture(handleSwipe)
 
   const current = deck[deckPosition]
   const upNext = deck.slice(deckPosition + 1, deckPosition + 3)
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-[#120d08]">
+    <div className="fixed inset-0 z-50 flex flex-col bg-[#120d08]" role="dialog" aria-modal="true" aria-label="Junkie Dig">
       {/* オリジナル背景: 暖色照明+木目テクスチャ(SVG feTurbulence)。画像アセット無し */}
       <svg className="pointer-events-none absolute inset-0 h-full w-full opacity-20" aria-hidden>
         <filter id="junkie-dig-wood-grain">
@@ -174,10 +198,7 @@ export default function RecordDiggingModal({ onClose }: { onClose: () => void })
         <span className="text-sm font-semibold tracking-wide text-amber-200">Junkie Dig</span>
         <button
           type="button"
-          onClick={() => {
-            setPlayingTrackId(null)
-            onClose()
-          }}
+          onClick={handleClose}
           aria-label="閉じる"
           className="rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-xs text-white/70 hover:bg-white/10"
         >
@@ -187,7 +208,7 @@ export default function RecordDiggingModal({ onClose }: { onClose: () => void })
 
       {shelves.length > 0 && <GenreShelfTabs shelves={shelves} currentIndex={shelfIndex} />}
 
-      <div ref={swipeRef} className="relative z-10 flex flex-1 items-center justify-center overflow-hidden px-6">
+      <div ref={swipeRef} className="relative z-10 flex flex-1 items-center justify-center overflow-hidden overscroll-contain px-6">
         {state === 'error' && (
           <p className="text-sm text-white/50">読み込みに失敗しました。閉じてもう一度開いてみてください。</p>
         )}
@@ -195,9 +216,17 @@ export default function RecordDiggingModal({ onClose }: { onClose: () => void })
         {state === 'ready' && current && (
           <div className="w-full">
             <RecordSleeve current={current} upNext={upNext} />
-            <div className="mt-6 text-center">
+            <div className="mt-6 flex flex-col items-center gap-3 text-center">
               <p className="text-lg font-bold text-white">{current.title}</p>
               <p className="text-sm text-white/50">{current.artistName}</p>
+              {current.firstTrackId && (
+                <PreviewButton
+                  key={current.firstTrackId}
+                  previewUrl={current.firstTrackPreviewUrl}
+                  trackId={current.firstTrackId}
+                  size="lg"
+                />
+              )}
             </div>
           </div>
         )}

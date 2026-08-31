@@ -4,7 +4,15 @@ import { useEffect, useRef } from 'react'
 
 export type SwipeDirection = 'up' | 'down' | 'left' | 'right'
 
-const SWIPE_THRESHOLD_PX = 80
+export const SWIPE_THRESHOLD_PX = 80
+
+export function resolveDirection(dx: number, dy: number): SwipeDirection | null {
+  const absX = Math.abs(dx)
+  const absY = Math.abs(dy)
+  if (Math.max(absX, absY) < SWIPE_THRESHOLD_PX) return null
+  if (absX > absY) return dx > 0 ? 'right' : 'left'
+  return dy > 0 ? 'down' : 'up'
+}
 
 /** タッチ/マウスドラッグ/矢印キーを統一的にスワイプ方向イベントへ変換する。
  * 返されたrefを対象要素に付けると、その要素上でのタッチ・マウス操作を検知する
@@ -22,14 +30,6 @@ export function useSwipeGesture(onSwipe: (direction: SwipeDirection) => void) {
     let startY = 0
     let tracking = false
     let fired = false
-
-    function resolveDirection(dx: number, dy: number): SwipeDirection | null {
-      const absX = Math.abs(dx)
-      const absY = Math.abs(dy)
-      if (Math.max(absX, absY) < SWIPE_THRESHOLD_PX) return null
-      if (absX > absY) return dx > 0 ? 'right' : 'left'
-      return dy > 0 ? 'down' : 'up'
-    }
 
     function handleMove(clientX: number, clientY: number) {
       if (!tracking || fired) return
@@ -70,6 +70,7 @@ export function useSwipeGesture(onSwipe: (direction: SwipeDirection) => void) {
     }
 
     function onKeyDown(e: KeyboardEvent) {
+      if (e.repeat) return
       if (e.key === 'ArrowUp') onSwipeRef.current('up')
       else if (e.key === 'ArrowDown') onSwipeRef.current('down')
       else if (e.key === 'ArrowLeft') onSwipeRef.current('left')

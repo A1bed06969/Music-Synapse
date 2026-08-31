@@ -26,14 +26,14 @@ export type DiggingRecord = {
 
 // サーバーはUTCで動くため、JSTの「今日からN日前」を単純な日数引き算ではなく
 // UTC基準のDate.UTCで組み立てる(utils/homeCards.tsのtomorrowJSTと同じ考え方)
-function daysAgoJST(days: number): string {
+export function daysAgoJST(days: number): string {
   const todayJST = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10)
   const [y, m, d] = todayJST.split('-').map(Number)
   return new Date(Date.UTC(y, m - 1, d - days)).toISOString().slice(0, 10)
 }
 
 // 今日のJST日付を返す（daysAgoJST(0)と同義だが、意図を明確にするためのヘルパー）
-function todayJST(): string {
+export function todayJST(): string {
   return daysAgoJST(0)
 }
 
@@ -44,79 +44,21 @@ type ShelfAlbumRow = {
   artist_id: string
   artist_name: string
   release_date: string | null
+  first_track_id: string | null
+  first_track_preview_url: string | null
 }
 
-/** 各アルバムの最初の収録曲(disc_number→track_no昇順で先頭)を取得し、
- * DiggingRecordへ組み立てる。preview_urlが無い曲でもfirstTrackIdは設定する
- * (試聴不可の表示に使うのはfirstTrackPreviewUrlの有無で判定するため)。
- * PostgREST の 1000 行制限への対応：albumIds をバッチに分割し、各バッチ内で
- * .range() による行単位のページネーションを行う。 */
-async function attachFirstTracks(supabase: Supabase, rows: ShelfAlbumRow[]): Promise<DiggingRecord[]> {
-  if (rows.length === 0) return []
-
-  const albumIds = rows.map((r) => r.album_id)
-  const firstTrackByAlbum = new Map<string, { id: string; preview_url: string | null }>()
-
-  // Batch albumIds into chunks of ~500 to avoid extremely large .in() clauses
-  const batchSize = 500
-  const pageSize = 1000
-
-  for (let batchStart = 0; batchStart < albumIds.length; batchStart += batchSize) {
-    const batchEnd = Math.min(batchStart + batchSize, albumIds.length)
-    const batchIds = albumIds.slice(batchStart, batchEnd)
-
-    // Paginate within each batch using .range()
-    let offset = 0
-    let hasMore = true
-
-    while (hasMore) {
-      const { data: tracks, error } = await supabase
-        .from('track')
-        .select('id, album_id, track_no, disc_number, preview_url')
-        .in('album_id', batchIds)
-        .order('disc_number', { ascending: true, nullsFirst: true })
-        .order('track_no', { ascending: true, nullsFirst: true })
-        .range(offset, offset + pageSize - 1)
-
-      if (error) {
-        console.error('トラック情報の取得に失敗しました:', error.message)
-        // Degrade gracefully: continue with other batches/pages
-        break
-      }
-
-      if (!tracks || tracks.length === 0) {
-        hasMore = false
-        break
-      }
-
-      for (const t of tracks) {
-        if (!firstTrackByAlbum.has(t.album_id)) {
-          firstTrackByAlbum.set(t.album_id, { id: t.id, preview_url: t.preview_url })
-        }
-      }
-
-      // If we got fewer rows than the page size, we've reached the end
-      if (tracks.length < pageSize) {
-        hasMore = false
-      } else {
-        offset += pageSize
-      }
-    }
+function mapShelfRow(r: ShelfAlbumRow): DiggingRecord {
+  return {
+    id: r.album_id,
+    title: r.title,
+    jacketUrl: r.jacket_url,
+    artistId: r.artist_id,
+    artistName: r.artist_name,
+    releaseDate: r.release_date,
+    firstTrackId: r.first_track_id,
+    firstTrackPreviewUrl: r.first_track_preview_url,
   }
-
-  return rows.map((r) => {
-    const firstTrack = firstTrackByAlbum.get(r.album_id)
-    return {
-      id: r.album_id,
-      title: r.title,
-      jacketUrl: r.jacket_url,
-      artistId: r.artist_id,
-      artistName: r.artist_name,
-      releaseDate: r.release_date,
-      firstTrackId: firstTrack?.id ?? null,
-      firstTrackPreviewUrl: firstTrack?.preview_url ?? null,
-    }
-  })
 }
 
 /** 棚として採用できるジャンル一覧(MIN_SHELF_ALBUMS枚以上のジャケット付き
@@ -138,7 +80,8 @@ export async function fetchEligibleGenreShelves(supabase: Supabase): Promise<Dig
 }
 
 /** 指定した棚に属するレコード一覧を返す。'new-arrivals'はジャンル不問で
- * 直近NEW_ARRIVALS_DAYS日以内にリリースされたアルバムを返す。
+ * 直近NEW_ARRIVALS_DAYS日以内にリリースされたアルバムを返す。各アルバムの
+ * 1曲目はRPC側のLEFT JOIN LATERALで同時に取得するため、別クエリは不要。
  * RPC 結果は 1000 行制限があるため、.range() でページネーションする。 */
 export async function fetchShelfRecords(supabase: Supabase, shelfKey: string): Promise<DiggingRecord[]> {
   const pageSize = 1000
@@ -173,7 +116,7 @@ export async function fetchShelfRecords(supabase: Supabase, shelfKey: string): P
       }
     }
 
-    return attachFirstTracks(supabase, allData)
+    return allData.map(mapShelfRow)
   }
 
   let allData: ShelfAlbumRow[] = []
@@ -202,5 +145,5 @@ export async function fetchShelfRecords(supabase: Supabase, shelfKey: string): P
     }
   }
 
-  return attachFirstTracks(supabase, allData)
+  return allData.map(mapShelfRow)
 }

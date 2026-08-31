@@ -31,14 +31,14 @@ export default function RecordSleeve({
               }}
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={rec.jacketUrl} alt="" className="h-full w-full object-cover" />
+              <img src={rec.jacketUrl} alt="" className="h-full w-full object-cover" draggable={false} />
             </div>
           )
         })}
 
       <div className="relative z-10 aspect-square overflow-hidden rounded-lg bg-white/5 shadow-2xl shadow-black/70 ring-1 ring-white/10">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={current.jacketUrl} alt={current.title} className="h-full w-full object-contain" />
+        <img src={current.jacketUrl} alt={current.title} className="h-full w-full object-contain" draggable={false} />
         {!current.firstTrackPreviewUrl && (
           <span className="absolute bottom-2 right-2 rounded-full bg-black/70 px-2 py-0.5 text-[10px] text-white/60 backdrop-blur">
             配信情報なし
