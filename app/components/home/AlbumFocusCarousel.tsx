@@ -34,30 +34,54 @@ export default function AlbumFocusCarousel({ albums }: { albums: UpcomingAlbumCa
     if (!container) return
     ratiosRef.current = new Array(albums.length).fill(0)
 
+    // 先頭・末尾のカードはpx-[24%]等のパーセント指定と実際のカード幅の兼ね合いで
+    // 「完全な中央」にわずかに届かないことがあり、そのぶん交差率の比較だけでは
+    // 先頭カードが1位を取れないことがある。スクロール位置が両端に達している間は
+    // 比較より優先して先頭/末尾を採用する。IntersectionObserverの初回コール
+    // バックは非同期に発火するため、マウント直後に一度だけ判定しても後から
+    // 上書きされてしまう——観測トリガーが何であれ必ずこの関数を経由させることで、
+    // 判定のたびに境界チェックが効くようにする
+    function computeActiveIndex(): number {
+      if (container!.scrollLeft <= 2) return 0
+      if (container!.scrollLeft >= container!.scrollWidth - container!.clientWidth - 2) return albums.length - 1
+
+      let bestIndex = 0
+      let bestRatio = -1
+      ratiosRef.current.forEach((ratio, i) => {
+        if (ratio > bestRatio) {
+          bestRatio = ratio
+          bestIndex = i
+        }
+      })
+      return bestIndex
+    }
+
     const observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
           const index = Number((entry.target as HTMLElement).dataset.index)
           ratiosRef.current[index] = entry.intersectionRatio
         }
-        let bestIndex = 0
-        let bestRatio = -1
-        ratiosRef.current.forEach((ratio, i) => {
-          if (ratio > bestRatio) {
-            bestRatio = ratio
-            bestIndex = i
-          }
-        })
         // スクロール操作自体をブロックしないよう、活性カードの切り替えは
         // 優先度の低い更新として扱う
-        startTransition(() => setActiveIndex(bestIndex))
+        startTransition(() => setActiveIndex(computeActiveIndex()))
       },
       // 左右20%ずつを除外し、コンテナ中央付近だけを判定対象にすることで
       // 「中央に来たカード」を検出する
       { root: container, threshold: [0, 0.25, 0.5, 0.75, 1], rootMargin: '0px -30% 0px -30%' }
     )
     itemRefs.current.forEach((el) => el && observer.observe(el))
-    return () => observer.disconnect()
+
+    function handleScroll() {
+      startTransition(() => setActiveIndex(computeActiveIndex()))
+    }
+    handleScroll()
+    container.addEventListener('scroll', handleScroll, { passive: true })
+
+    return () => {
+      observer.disconnect()
+      container.removeEventListener('scroll', handleScroll)
+    }
   }, [albums.length])
 
   return (

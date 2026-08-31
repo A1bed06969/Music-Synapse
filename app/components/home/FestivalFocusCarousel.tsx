@@ -40,26 +40,48 @@ export default function FestivalFocusCarousel({
     if (!container) return
     ratiosRef.current = new Array(festivals.length).fill(0)
 
+    // AlbumFocusCarouselと同じ境界チェック(先頭・末尾はパーセントパディングと
+    // カード幅の兼ね合いで交差率の比較だけでは1位を取れないことがあるため、
+    // スクロール位置が両端の間は優先してそちらを採用する。判定のたびに毎回
+    // 評価することで、IntersectionObserverの非同期な初回発火に上書きされない
+    // ようにする)
+    function computeActiveIndex(): number {
+      if (container!.scrollLeft <= 2) return 0
+      if (container!.scrollLeft >= container!.scrollWidth - container!.clientWidth - 2) return festivals.length - 1
+
+      let bestIndex = 0
+      let bestRatio = -1
+      ratiosRef.current.forEach((ratio, i) => {
+        if (ratio > bestRatio) {
+          bestRatio = ratio
+          bestIndex = i
+        }
+      })
+      return bestIndex
+    }
+
     const observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
           const index = Number((entry.target as HTMLElement).dataset.index)
           ratiosRef.current[index] = entry.intersectionRatio
         }
-        let bestIndex = 0
-        let bestRatio = -1
-        ratiosRef.current.forEach((ratio, i) => {
-          if (ratio > bestRatio) {
-            bestRatio = ratio
-            bestIndex = i
-          }
-        })
-        startTransition(() => setActiveIndex(bestIndex))
+        startTransition(() => setActiveIndex(computeActiveIndex()))
       },
       { root: container, threshold: [0, 0.25, 0.5, 0.75, 1], rootMargin: '0px -30% 0px -30%' }
     )
     itemRefs.current.forEach((el) => el && observer.observe(el))
-    return () => observer.disconnect()
+
+    function handleScroll() {
+      startTransition(() => setActiveIndex(computeActiveIndex()))
+    }
+    handleScroll()
+    container.addEventListener('scroll', handleScroll, { passive: true })
+
+    return () => {
+      observer.disconnect()
+      container.removeEventListener('scroll', handleScroll)
+    }
   }, [festivals.length])
 
   return (

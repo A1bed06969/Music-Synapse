@@ -39,39 +39,43 @@ export default function RecentReleasesCarousel({ albums }: { albums: RecentRelea
     if (!container) return
     ratiosRef.current = new Array(albums.length).fill(0)
 
+    // 先頭・末尾のカードはpx-[24%]等のパーセント指定と実際のカード幅の兼ね合いで
+    // 「完全な中央」にわずかに届かないことがあり、そのぶん交差率が本来の1位を
+    // 取れないことがある(実際に「一番最初のアルバムが紹介されない」不具合として
+    // 発生)。スクロール位置が両端に達している間は交差率の比較より優先して
+    // 先頭/末尾を採用する。IntersectionObserverの初回コールバックは非同期に
+    // 発火するため、マウント直後に一度だけ判定しても後から上書きされてしまう
+    // ——観測トリガーが何であれ必ずこの関数を経由させることで、判定のたびに
+    // 境界チェックが効くようにする
+    function computeActiveIndex(): number {
+      if (container!.scrollLeft <= 2) return 0
+      if (container!.scrollLeft >= container!.scrollWidth - container!.clientWidth - 2) return albums.length - 1
+
+      let bestIndex = 0
+      let bestRatio = -1
+      ratiosRef.current.forEach((ratio, i) => {
+        if (ratio > bestRatio) {
+          bestRatio = ratio
+          bestIndex = i
+        }
+      })
+      return bestIndex
+    }
+
     const observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
           const index = Number((entry.target as HTMLElement).dataset.index)
           ratiosRef.current[index] = entry.intersectionRatio
         }
-        let bestIndex = 0
-        let bestRatio = -1
-        ratiosRef.current.forEach((ratio, i) => {
-          if (ratio > bestRatio) {
-            bestRatio = ratio
-            bestIndex = i
-          }
-        })
-        startTransition(() => setActiveIndex(bestIndex))
+        startTransition(() => setActiveIndex(computeActiveIndex()))
       },
       { root: container, threshold: [0, 0.25, 0.5, 0.75, 1], rootMargin: '0px -30% 0px -30%' }
     )
     itemRefs.current.forEach((el) => el && observer.observe(el))
 
-    // 先頭・末尾のカードはpx-[24%]等のパーセント指定と実際のカード幅の兼ね合いで
-    // 「完全な中央」にわずかに届かないことがあり、そのぶん交差率が本来の1位を
-    // 取れず先頭カードの詳細が一度も表示されないことがあった(実際に「一番最初の
-    // アルバムが紹介されない」不具合として発生)。IntersectionObserverの比率
-    // 比較だけに頼らず、スクロール位置が両端に達したら直接先頭/末尾を採用する
     function handleScroll() {
-      const el = containerRef.current
-      if (!el) return
-      if (el.scrollLeft <= 2) {
-        startTransition(() => setActiveIndex(0))
-      } else if (el.scrollLeft >= el.scrollWidth - el.clientWidth - 2) {
-        startTransition(() => setActiveIndex(albums.length - 1))
-      }
+      startTransition(() => setActiveIndex(computeActiveIndex()))
     }
     handleScroll()
     container.addEventListener('scroll', handleScroll, { passive: true })
