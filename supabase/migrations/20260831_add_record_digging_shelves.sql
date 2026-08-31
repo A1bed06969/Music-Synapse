@@ -23,10 +23,11 @@ LANGUAGE sql STABLE AS $$
   FROM album al
   JOIN artist ar ON ar.id = al.artist_id
   JOIN artist_genre ag ON ag.artist_id = al.artist_id
-  WHERE ag.genre_id = target_genre_id AND al.jacket_url IS NOT NULL;
+  WHERE ag.genre_id = target_genre_id AND al.jacket_url IS NOT NULL
+  ORDER BY al.id;
 $$;
 
-CREATE OR REPLACE FUNCTION record_digging_new_arrivals(since_date date)
+CREATE OR REPLACE FUNCTION record_digging_new_arrivals(since_date date, until_date date)
 RETURNS TABLE (
   album_id text, title text, jacket_url text, artist_id text, artist_name text, release_date date
 )
@@ -36,6 +37,6 @@ LANGUAGE sql STABLE AS $$
   JOIN artist ar ON ar.id = al.artist_id
   WHERE al.jacket_url IS NOT NULL
     AND al.release_date >= since_date
-    AND al.release_date <= CURRENT_DATE
+    AND al.release_date <= until_date
   ORDER BY al.release_date DESC;
 $$;
