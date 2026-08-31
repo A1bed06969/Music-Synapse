@@ -94,11 +94,11 @@ export default function RecentReleasesCarousel({ albums }: { albums: RecentRelea
     <section className="mt-8">
       <h2 className="text-sm font-semibold uppercase tracking-wide text-white/50">今週の新譜ピックアップ</h2>
 
-      <div className="mt-4 grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+      <div className="mt-4 grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:items-start">
         <div className="relative">
           <div
             ref={containerRef}
-            className="flex snap-x snap-mandatory items-start gap-6 overflow-x-auto px-[24%] py-4 sm:px-[32%] lg:px-[20%]"
+            className="flex snap-x snap-mandatory items-start gap-6 overflow-x-auto px-[22%] py-4 sm:px-[30%] lg:px-[18%]"
             style={{ scrollbarWidth: 'none' }}
           >
             {albums.map((a, i) => {
@@ -110,13 +110,13 @@ export default function RecentReleasesCarousel({ albums }: { albums: RecentRelea
                     itemRefs.current[i] = el
                   }}
                   data-index={i}
-                  className="relative w-36 shrink-0 snap-center sm:w-44"
+                  className="relative w-44 shrink-0 snap-center sm:w-56"
                   style={{ zIndex: isActive ? 10 : 1 }}
                 >
                   <Link href={`/albums/${a.id}`} className="group block">
                     <div
                       className="aspect-square origin-center overflow-hidden rounded-lg bg-white/5 shadow-xl shadow-black/60 ring-1 ring-white/10 transition-transform duration-300 ease-out will-change-transform group-hover:ring-white/40"
-                      style={{ transform: isActive ? 'scale(1.1)' : 'scale(0.82)' }}
+                      style={{ transform: isActive ? 'scale(1.22)' : 'scale(0.8)' }}
                     >
                       {a.jacketUrl ? (
                         // eslint-disable-next-line @next/next/no-img-element
