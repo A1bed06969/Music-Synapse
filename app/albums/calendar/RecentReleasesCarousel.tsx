@@ -198,9 +198,12 @@ export default function RecentReleasesCarousel({ albums }: { albums: RecentRelea
           </Link>
 
           {active.tracks.length > 0 && (
-            <ol className="mt-3 max-h-48 space-y-0.5 overflow-y-auto text-sm text-white/60">
+            // 9曲を超えると縦スクロールに隠れてしまっていたため、2段組みにして
+            // 10曲目以降は隣の列へ折り返す(それでも収まりきらない大曲数の
+            // アルバムのみ、保険として縦スクロールも残す)
+            <ol className="mt-3 max-h-64 columns-2 gap-x-4 overflow-y-auto text-sm text-white/60">
               {active.tracks.map((t) => (
-                <li key={t.id} className="flex gap-2">
+                <li key={t.id} className="flex gap-2 break-inside-avoid py-0.5">
                   <span className="w-5 shrink-0 text-right text-white/30">{t.trackNo ?? '-'}</span>
                   <span className="min-w-0 truncate">{t.title}</span>
                 </li>
