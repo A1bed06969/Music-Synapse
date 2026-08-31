@@ -47,7 +47,7 @@ export default async function Home() {
           </div>
         </section>
 
-        <section className="mt-14 space-y-6">
+        <section className="mt-14 grid grid-cols-1 gap-6 lg:grid-cols-3 lg:items-start">
           <DiscoverNewMusicBanner albums={albums} />
           <FesLiveFreakBanner festivals={festivals} />
           <MonthlyNextBreakBanner top={powerPlay.top} prefectureData={powerPlay.prefectureData} monthLabel={currentMonthLabel()} />

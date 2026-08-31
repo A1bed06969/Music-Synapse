@@ -24,6 +24,11 @@ export default function AlbumFocusCarousel({ albums }: { albums: UpcomingAlbumCa
   // 全カード分のスコアを保持し、毎回その全体から最大値を選び直すことで解消する。
   const ratiosRef = useRef<number[]>([])
 
+  function scrollToIndex(index: number) {
+    const clamped = Math.max(0, Math.min(albums.length - 1, index))
+    itemRefs.current[clamped]?.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' })
+  }
+
   useEffect(() => {
     const container = containerRef.current
     if (!container) return
@@ -56,51 +61,79 @@ export default function AlbumFocusCarousel({ albums }: { albums: UpcomingAlbumCa
   }, [albums.length])
 
   return (
-    <div
-      ref={containerRef}
-      className="flex w-full snap-x snap-mandatory items-start gap-6 overflow-x-auto px-[24%] py-4 sm:px-[32%]"
-      style={{ scrollbarWidth: 'none' }}
-    >
-      {albums.map((a, i) => {
-        const isActive = i === activeIndex
-        return (
-          <div
-            key={a.id}
-            ref={(el) => {
-              itemRefs.current[i] = el
-            }}
-            data-index={i}
-            className="relative w-40 shrink-0 snap-center sm:w-60"
-            style={{ zIndex: isActive ? 10 : 1 }}
-          >
-            <Link href={`/albums/${a.id}`} className="group block">
-              {/* widthではなくtransform: scaleで拡大する(widthはレイアウトの
-               * 再計算を伴うため、スクロール中に毎フレーム発生するとカクつく。
-               * transformはコンポジタだけで完結するので滑らか)。かわりに、
-               * 最大拡大時にはみ出す分を常時mt-5で吸収し、キャプションと
-               * 重ならないようにする */}
-              <div
-                className="aspect-square origin-center overflow-hidden rounded-lg bg-white/5 shadow-xl shadow-black/60 ring-1 ring-white/10 transition-transform duration-300 ease-out will-change-transform group-hover:ring-white/40"
-                style={{ transform: isActive ? 'scale(1.25)' : 'scale(0.8)' }}
-              >
-                {a.jacketUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={a.jacketUrl} alt={a.title} className="h-full w-full object-contain" />
-                ) : (
-                  <div className="flex h-full w-full items-center justify-center text-[10px] text-white/20">
-                    No Art
-                  </div>
-                )}
-              </div>
-              <div className="mt-6 transition-opacity duration-300" style={{ opacity: isActive ? 1 : 0.45 }}>
-                <p className="truncate text-xs font-medium text-white/90 group-hover:text-white sm:text-sm">{a.title}</p>
-                <p className="truncate text-[11px] text-white/40 sm:text-xs">{a.artistName}</p>
-                <p className="text-[10px] text-white/25">{formatShortDate(a.releaseDate)}</p>
-              </div>
-            </Link>
-          </div>
-        )
-      })}
+    <div className="relative w-full">
+      <div
+        ref={containerRef}
+        className="flex w-full snap-x snap-mandatory items-start gap-6 overflow-x-auto px-[24%] py-4 @sm:px-[32%]"
+        style={{ scrollbarWidth: 'none' }}
+      >
+        {albums.map((a, i) => {
+          const isActive = i === activeIndex
+          return (
+            <div
+              key={a.id}
+              ref={(el) => {
+                itemRefs.current[i] = el
+              }}
+              data-index={i}
+              className="relative w-40 shrink-0 snap-center @sm:w-52"
+              style={{ zIndex: isActive ? 10 : 1 }}
+            >
+              <Link href={`/albums/${a.id}`} className="group block">
+                {/* widthではなくtransform: scaleで拡大する(widthはレイアウトの
+                 * 再計算を伴うため、スクロール中に毎フレーム発生するとカクつく。
+                 * transformはコンポジタだけで完結するので滑らか)。かわりに、
+                 * 最大拡大時にはみ出す分を常時mt-5で吸収し、キャプションと
+                 * 重ならないようにする */}
+                <div
+                  className="aspect-square origin-center overflow-hidden rounded-lg bg-white/5 shadow-xl shadow-black/60 ring-1 ring-white/10 transition-transform duration-300 ease-out will-change-transform group-hover:ring-white/40"
+                  style={{ transform: isActive ? 'scale(1.25)' : 'scale(0.8)' }}
+                >
+                  {a.jacketUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={a.jacketUrl} alt={a.title} className="h-full w-full object-contain" />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center text-[10px] text-white/20">
+                      No Art
+                    </div>
+                  )}
+                </div>
+                <div className="mt-6 transition-opacity duration-300" style={{ opacity: isActive ? 1 : 0.45 }}>
+                  <p className="truncate text-xs font-medium text-white/90 group-hover:text-white @sm:text-sm">{a.title}</p>
+                  <p className="truncate text-[11px] text-white/40 @sm:text-xs">{a.artistName}</p>
+                  <p className="text-[10px] text-white/25">{formatShortDate(a.releaseDate)}</p>
+                </div>
+              </Link>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* トラックパッドの横スワイプが無いPC環境でも操作できるよう、前後ボタンを
+       * 用意する。キャプション分だけ見た目の重心が下にずれるため、ジャケット
+       * 画像の中央あたり(行全体の中央より上寄り)にボタンを合わせる */}
+      <button
+        type="button"
+        onClick={() => scrollToIndex(activeIndex - 1)}
+        disabled={activeIndex === 0}
+        aria-label="前のアルバムへ"
+        className="absolute left-0 top-[34%] z-20 -translate-y-1/2 rounded-full bg-black/60 p-1.5 text-white/90 backdrop-blur transition hover:bg-black/80 disabled:pointer-events-none disabled:opacity-0 @sm:p-2"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+          <path d="M15 18L9 12L15 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+      <button
+        type="button"
+        onClick={() => scrollToIndex(activeIndex + 1)}
+        disabled={activeIndex === albums.length - 1}
+        aria-label="次のアルバムへ"
+        className="absolute right-0 top-[34%] z-20 -translate-y-1/2 rounded-full bg-black/60 p-1.5 text-white/90 backdrop-blur transition hover:bg-black/80 disabled:pointer-events-none disabled:opacity-0 @sm:p-2"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+          <path d="M9 6L15 12L9 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
     </div>
   )
 }

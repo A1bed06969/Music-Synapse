@@ -55,30 +55,34 @@ export default function BannerShell({
   children: ReactNode
 }) {
   return (
+    // @containerでラップし、内側の文字サイズ等をビューポート幅ではなく「このバナー
+    // カード自身の描画幅」基準で決める。PC版は3カラム並列(1カード≒500px前後)に
+    // なるため、ビューポート基準のsm:/md:のままだとデスクトップ=大きいサイズという
+    // 前提が崩れ、狭いカードの中に大きすぎる文字・カルーセルが詰め込まれてしまう。
     <div
-      className="animate-banner-in overflow-hidden rounded-2xl border border-white/10 shadow-[0_8px_40px_rgba(0,0,0,0.35)]"
+      className="@container animate-banner-in overflow-hidden rounded-2xl border border-white/10 shadow-[0_8px_40px_rgba(0,0,0,0.35)]"
       style={{ background: 'linear-gradient(160deg, #101010 0%, #050505 65%)' }}
     >
       {/* タイトルは折り返さず横一列(矢印の向き)に展開し、余った縦幅を下の
        * 画像エリアに回す。件名行と副題/日付行を分け、eyebrowピルもここに集約する */}
-      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-white/5 px-4 pb-4 pt-4 sm:px-6 sm:pb-5 sm:pt-6 md:px-8">
-        <Link href={eyebrowHref} className="group flex min-w-0 items-center gap-2 sm:gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-white/5 px-4 pb-4 pt-4 @sm:px-6 @sm:pb-5 @sm:pt-6">
+        <Link href={eyebrowHref} className="group flex min-w-0 items-center gap-2 @sm:gap-3">
           <span
-            className="shrink-0 text-[11px] font-bold tracking-[0.15em] sm:text-sm sm:tracking-[0.2em]"
+            className="shrink-0 text-[11px] font-bold tracking-[0.15em] @sm:text-sm @sm:tracking-[0.2em]"
             style={{ color: accent }}
           >
             {index}
             <EqualizerIcon accent={accent} />
           </span>
           <h2
-            className={`${anton.className} whitespace-nowrap text-xl leading-none tracking-tight transition group-hover:opacity-80 sm:text-4xl md:text-5xl`}
+            className={`${anton.className} whitespace-nowrap text-xl leading-none tracking-tight transition group-hover:opacity-80 @sm:text-3xl`}
           >
             {titleLines[0]} {titleLines[1]}
           </h2>
         </Link>
         <Link
           href={eyebrowHref}
-          className="shrink-0 rounded-full border px-2.5 py-1 text-[9px] font-medium tracking-wide backdrop-blur transition hover:bg-white/10 sm:px-3 sm:text-[11px]"
+          className="shrink-0 rounded-full border px-2.5 py-1 text-[9px] font-medium tracking-wide backdrop-blur transition hover:bg-white/10 @sm:px-3 @sm:text-[11px]"
           style={{ borderColor: `${accent}55`, color: accent, backgroundColor: `${accent}14` }}
         >
           {eyebrow} →
@@ -86,10 +90,10 @@ export default function BannerShell({
       </div>
       <Link
         href={eyebrowHref}
-        className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-4 pb-3 pt-2 transition hover:opacity-80 sm:px-6 md:px-8"
+        className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-4 pb-3 pt-2 transition hover:opacity-80 @sm:px-6"
       >
-        <p className="truncate text-xs text-white/50 sm:text-sm">{subtitle}</p>
-        <p className="flex shrink-0 items-center gap-1.5 text-[10px] tracking-wide text-white/40 sm:text-xs">
+        <p className="truncate text-xs text-white/50 @sm:text-sm">{subtitle}</p>
+        <p className="flex shrink-0 items-center gap-1.5 text-[10px] tracking-wide text-white/40 @sm:text-xs">
           <CalendarIcon accent={accent} />
           <span className="font-bold tracking-[0.1em]" style={{ color: accent }}>
             {dateEyebrow}
@@ -99,7 +103,7 @@ export default function BannerShell({
         </p>
       </Link>
 
-      <div className="relative flex items-center justify-center px-2 pb-4 pt-2 sm:px-4 sm:pb-6 md:pb-8">{children}</div>
+      <div className="relative flex items-center justify-center px-2 pb-4 pt-2 @sm:px-4 @sm:pb-6">{children}</div>
     </div>
   )
 }

@@ -31,19 +31,21 @@ export default function MonthlyNextBreakBanner({
       {top.length === 0 ? (
         <p className="text-sm text-white/30">{monthLabel}のパワープレイ実績はまだありません。</p>
       ) : (
-        <div className="relative grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
-          {/* 背景要素としての日本地図。主役はランキングなので絶対配置+低い不透明度で右側全体に薄く敷く */}
-          <div className="pointer-events-none absolute inset-0 hidden opacity-70 lg:block">
+        <div className="relative grid grid-cols-1 gap-6 @md:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
+          {/* 背景要素としての日本地図。主役はランキングなので絶対配置+低い不透明度で右側全体に薄く敷く。
+           * PC3カラム化でこのバナー自体の描画幅が狭くなるため、ビューポート基準のlg:ではなく
+           * このカード自身の幅を見るコンテナクエリ(@md)で判定する */}
+          <div className="pointer-events-none absolute inset-0 hidden opacity-70 @md:block">
             <div className="ml-[45%] h-full w-[55%]">
               <JapanPowerPlayMap data={prefectureData} accent={ACCENT} />
             </div>
           </div>
 
-          <div className="relative z-10 flex flex-col gap-5 sm:flex-row">
+          <div className="relative z-10 flex flex-col gap-5 @sm:flex-row">
             {first && (
               <Link
                 href={first.href || (first.artistId ? `/artists/${first.artistId}` : '#')}
-                className="group block w-full shrink-0 sm:w-44"
+                className="group block w-full shrink-0 @sm:w-44"
               >
                 <div className="aspect-square overflow-hidden rounded-xl bg-white/5 shadow-xl shadow-black/50 ring-1 ring-white/10 transition group-hover:ring-white/30">
                   {first.artistImageUrl ? (
@@ -68,7 +70,7 @@ export default function MonthlyNextBreakBanner({
             )}
 
             {rest.length > 0 && (
-              <ul className="flex-1 space-y-3 sm:pt-1">
+              <ul className="flex-1 space-y-3 @sm:pt-1">
                 {rest.map((r, i) => (
                   <li key={r.key}>
                     <Link
