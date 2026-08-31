@@ -47,10 +47,10 @@ export default async function Home() {
           </div>
         </section>
 
-        <section className="mt-14 grid grid-cols-1 gap-6 lg:grid-cols-3 lg:items-start">
+        <section className="mt-14 grid grid-cols-1 gap-6 lg:grid-cols-3">
           <DiscoverNewMusicBanner albums={albums} />
           <FesLiveFreakBanner festivals={festivals} />
-          <MonthlyNextBreakBanner top={powerPlay.top} prefectureData={powerPlay.prefectureData} monthLabel={currentMonthLabel()} />
+          <MonthlyNextBreakBanner top={powerPlay.top} monthLabel={currentMonthLabel()} />
         </section>
 
         <section className="mt-14">
