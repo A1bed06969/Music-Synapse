@@ -12,6 +12,10 @@ import assert from 'node:assert/strict'
 import { resolveDirection, SWIPE_THRESHOLD_PX } from '../app/components/record-digging/useSwipeGesture.ts'
 
 describe('resolveDirection: threshold boundary', () => {
+  test('the threshold constant itself is 80px', () => {
+    assert.equal(SWIPE_THRESHOLD_PX, 80)
+  })
+
   test('just under threshold does not fire', () => {
     assert.equal(resolveDirection(SWIPE_THRESHOLD_PX - 1, 0), null)
     assert.equal(resolveDirection(0, SWIPE_THRESHOLD_PX - 1), null)

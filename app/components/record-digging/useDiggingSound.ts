@@ -18,9 +18,15 @@ export function useDiggingSound() {
     return ctxRef.current
   }
 
+  // playPickup()の余韻(0.3秒)が鳴り切る前にunmountでcloseすると音が
+  // 途切れて聞こえる(上スワイプ直後にモーダルが即アンマウントされるため)。
+  // closeは少し遅らせ、その間に再マウントされてもctxRef自体は各フックインスタンス
+  // 専有なので二重closeの心配はない。
   useEffect(() => {
     return () => {
-      ctxRef.current?.close().catch(() => {})
+      const ctx = ctxRef.current
+      ctxRef.current = null
+      if (ctx) setTimeout(() => ctx.close().catch(() => {}), 500)
     }
   }, [])
 

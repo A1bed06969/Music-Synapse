@@ -49,6 +49,18 @@ describe('daysAgoJST / todayJST', () => {
   test('daysAgoJST is monotonic (more days ago is an earlier or equal date)', () => {
     assert.ok(daysAgoJST(31) <= daysAgoJST(30))
   })
+
+  test('actually applies the +9h JST offset, not just UTC (crosses the day boundary)', () => {
+    // 2026-08-31T15:30:00Z is still 08-31 in UTC, but 09-01 00:30 in JST —
+    // a pure-UTC implementation of todayJST() would return '2026-08-31' here.
+    const realNow = Date.now
+    Date.now = () => new Date('2026-08-31T15:30:00Z').getTime()
+    try {
+      assert.equal(todayJST(), '2026-09-01')
+    } finally {
+      Date.now = realNow
+    }
+  })
 })
 
 describe('fetchEligibleGenreShelves', () => {
