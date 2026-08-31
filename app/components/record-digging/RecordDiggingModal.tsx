@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { usePreviewPlayer } from '@/app/components/PreviewPlayerContext'
 import PreviewButton from '@/app/components/PreviewButton'
@@ -8,7 +8,14 @@ import { useSwipeGesture, type SwipeDirection } from './useSwipeGesture'
 import { useDiggingSound } from './useDiggingSound'
 import RecordSleeve from './RecordSleeve'
 import GenreShelfTabs from './GenreShelfTabs'
+import type { HandGesture } from './RecordDiggingHand'
 import { NEW_ARRIVALS_KEY, type DiggingShelf, type DiggingRecord } from '@/utils/recordDigging'
+
+// 送る(下スワイプ)/つまみ上げる(上スワイプ)モーションの再生時間。
+// globals.cssのanimate-record-send-away/animate-hand-send、
+// animate-record-lift/animate-hand-pickの尺と揃えてある。
+const SEND_ANIMATION_MS = 340
+const PICK_ANIMATION_MS = 380
 
 function shuffle<T>(items: T[]): T[] {
   const arr = items.slice()
@@ -42,6 +49,17 @@ export default function RecordDiggingModal({ onClose }: { onClose: () => void })
   const [deckPosition, setDeckPosition] = useState(0)
   const [state, setState] = useState<LoadState>('loading')
   const [showHint, setShowHint] = useState(true)
+
+  // 送る/つまみ上げるモーション用の状態。exitingは下スワイプで弾かれた直後の
+  // 1枚(送られて消えるアニメーションの間だけ描画を残す)、gesture/pulseKeyは
+  // 手のイラストのモーション制御(pulseKeyは連続で下スワイプされた時にも
+  // 毎回アニメーションを頭から再生させるための強制remountキー)。
+  const [exiting, setExiting] = useState<DiggingRecord | null>(null)
+  const [gesture, setGesture] = useState<HandGesture>('idle')
+  const [pulseKey, setPulseKey] = useState(0)
+  const exitTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const sendGestureTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pickTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // 棚一覧の取得(モーダルを開いた瞬間に1回だけ)
   useEffect(() => {
@@ -128,9 +146,22 @@ export default function RecordDiggingModal({ onClose }: { onClose: () => void })
   function handleSwipe(direction: SwipeDirection) {
     setShowHint(false)
     if (state !== 'ready' || deck.length === 0) return
+    // つまみ上げモーション中(モーダルが閉じて遷移するまでの間)は入力を無視する
+    if (gesture === 'picking') return
 
     if (direction === 'down') {
       playFlip()
+
+      const outgoing = deck[deckPosition]
+      setExiting(outgoing)
+      if (exitTimeoutRef.current) clearTimeout(exitTimeoutRef.current)
+      exitTimeoutRef.current = setTimeout(() => setExiting(null), SEND_ANIMATION_MS)
+
+      setPulseKey((k) => k + 1)
+      setGesture('sending')
+      if (sendGestureTimeoutRef.current) clearTimeout(sendGestureTimeoutRef.current)
+      sendGestureTimeoutRef.current = setTimeout(() => setGesture('idle'), SEND_ANIMATION_MS)
+
       const next = deckPosition + 1
       if (next < deck.length) {
         setDeckPosition(next)
@@ -144,9 +175,14 @@ export default function RecordDiggingModal({ onClose }: { onClose: () => void })
     if (direction === 'up') {
       const current = deck[deckPosition]
       playPickup()
-      setPlayingTrackId(null)
-      onClose()
-      router.push(`/albums/${current.id}`)
+      setGesture('picking')
+      if (pickTimeoutRef.current) clearTimeout(pickTimeoutRef.current)
+      // つまみ上げアニメーションを見せてからモーダルを閉じて遷移する
+      pickTimeoutRef.current = setTimeout(() => {
+        setPlayingTrackId(null)
+        onClose()
+        router.push(`/albums/${current.id}`)
+      }, PICK_ANIMATION_MS)
       return
     }
 
@@ -160,7 +196,18 @@ export default function RecordDiggingModal({ onClose }: { onClose: () => void })
     }
   }
 
+  // アンマウント時に保留中のモーション用タイマーを片付ける
+  useEffect(() => {
+    return () => {
+      if (exitTimeoutRef.current) clearTimeout(exitTimeoutRef.current)
+      if (sendGestureTimeoutRef.current) clearTimeout(sendGestureTimeoutRef.current)
+      if (pickTimeoutRef.current) clearTimeout(pickTimeoutRef.current)
+    }
+  }, [])
+
   function handleClose() {
+    // つまみ上げモーション中に閉じられた場合、保留中の遷移をキャンセルする
+    if (pickTimeoutRef.current) clearTimeout(pickTimeoutRef.current)
     setPlayingTrackId(null)
     onClose()
   }
@@ -177,7 +224,7 @@ export default function RecordDiggingModal({ onClose }: { onClose: () => void })
   const swipeRef = useSwipeGesture(handleSwipe)
 
   const current = deck[deckPosition]
-  const upNext = deck.slice(deckPosition + 1, deckPosition + 3)
+  const upNext = deck.slice(deckPosition + 1, deckPosition + 4)
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-[#120d08]" role="dialog" aria-modal="true" aria-label="Junkie Dig">
@@ -215,7 +262,7 @@ export default function RecordDiggingModal({ onClose }: { onClose: () => void })
         {state === 'loading' && <p className="text-sm text-white/30">棚を探しています...</p>}
         {state === 'ready' && current && (
           <div className="w-full">
-            <RecordSleeve current={current} upNext={upNext} />
+            <RecordSleeve current={current} upNext={upNext} exiting={exiting} gesture={gesture} pulseKey={pulseKey} />
             <div className="mt-6 flex flex-col items-center gap-3 text-center">
               <p className="text-lg font-bold text-white">{current.title}</p>
               <p className="text-sm text-white/50">{current.artistName}</p>

@@ -39,3 +39,72 @@ body {
 .animate-banner-in {
   animation: banner-in 0.5s ease-out both;
 }
+
+/* Junkie Dig: 下スワイプで指がレコードを弾いて送るモーション */
+@keyframes hand-send {
+  0% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+  40% {
+    transform: translate(7px, 11px) rotate(16deg);
+  }
+  100% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+}
+
+.animate-hand-send {
+  animation: hand-send 0.35s ease-out;
+}
+
+/* Junkie Dig: 上スワイプでレコードをつまみ上げて持ち去るモーション */
+@keyframes hand-pick {
+  0% {
+    transform: translate(0, 0) rotate(0deg);
+    opacity: 1;
+  }
+  55% {
+    transform: translate(-5px, -24px) rotate(-11deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-9px, -42px) rotate(-15deg);
+    opacity: 0;
+  }
+}
+
+.animate-hand-pick {
+  animation: hand-pick 0.38s ease-in forwards;
+}
+
+/* Junkie Dig: 下スワイプで弾かれた手前のレコードが奥へ送られて消える */
+@keyframes record-send-away {
+  0% {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(30px) scale(1.06);
+    opacity: 0;
+  }
+}
+
+.animate-record-send-away {
+  animation: record-send-away 0.32s ease-in forwards;
+}
+
+/* Junkie Dig: 上スワイプでレコードがつまみ上げられて画面外へ */
+@keyframes record-lift {
+  0% {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-38px) scale(0.94);
+    opacity: 0;
+  }
+}
+
+.animate-record-lift {
+  animation: record-lift 0.38s ease-in forwards;
+}
