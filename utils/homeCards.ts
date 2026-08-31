@@ -10,7 +10,7 @@ function firstOf<T>(value: T | T[] | null | undefined): T | null {
 
 // サーバーはUTCで動くため、単純にDate.now()+24hしても「JSTでの翌日」には
 // ならない(utils/artistTimeline.tsと同じJST変換パターンを使う)
-function tomorrowJST(): string {
+export function tomorrowJST(): string {
   const todayJST = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10)
   const [y, m, d] = todayJST.split('-').map(Number)
   return new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10)

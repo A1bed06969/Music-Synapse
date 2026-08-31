@@ -1,6 +1,8 @@
 import Link from 'next/link'
 import { createClient } from '@/utils/Supabase/server'
+import { tomorrowJST } from '@/utils/homeCards'
 import CalendarView, { type CalendarAlbum } from './CalendarView'
+import RecentReleasesCarousel, { type RecentReleaseAlbum } from './RecentReleasesCarousel'
 
 function monthRange(month: string) {
   const [y, m] = month.split('-').map(Number)
@@ -75,10 +77,51 @@ export default async function AlbumCalendarPage({
       }
     })
 
-  const { data: pickupRows } = await supabase
-    .from('album_pickup')
-    .select('id, blurb, album:album_id(id, title, jacket_url, artist:artist_id(name))')
-    .order('sort_order', { ascending: true })
+  // 「今週の新譜ピックアップ」: 明日以降にリリースされる新譜(ホームのDiscover New
+  // Musicと同じ定義)をカルーセルで表示し、フォーカス中のアルバムだけ収録曲・
+  // 紹介文まで取得する(全件分のトラックリストを毎回引く必要は無いため、月表示
+  // 用のalbumsクエリとは別に絞り込んで取得する)
+  const tomorrow = tomorrowJST()
+  const { data: recentReleaseRows } = await supabase
+    .from('album')
+    .select('id, title, jacket_url, release_date, album_review, artist:artist_id(id, name)')
+    .gte('release_date', tomorrow)
+    .is('primary_album_id', null)
+    .order('release_date', { ascending: true })
+    .limit(20)
+
+  const recentReleaseAlbumIds = (recentReleaseRows ?? []).map((a) => a.id)
+  const { data: recentReleaseTrackRows } = recentReleaseAlbumIds.length
+    ? await supabase
+        .from('track')
+        .select('id, album_id, track_no, disc_number, title')
+        .in('album_id', recentReleaseAlbumIds)
+        .order('disc_number', { ascending: true, nullsFirst: true })
+        .order('track_no', { ascending: true })
+    : { data: [] }
+
+  const tracksByAlbum = new Map<string, RecentReleaseAlbum['tracks']>()
+  for (const t of recentReleaseTrackRows ?? []) {
+    const list = tracksByAlbum.get(t.album_id) ?? []
+    list.push({ id: t.id, trackNo: t.track_no, title: t.title })
+    tracksByAlbum.set(t.album_id, list)
+  }
+
+  const recentReleases: RecentReleaseAlbum[] = (recentReleaseRows ?? [])
+    .filter((a) => !!a.release_date)
+    .map((a) => {
+      const artist = Array.isArray(a.artist) ? a.artist[0] : a.artist
+      return {
+        id: a.id,
+        title: a.title,
+        jacketUrl: a.jacket_url,
+        releaseDate: a.release_date as string,
+        artistId: artist?.id ?? null,
+        artistName: artist?.name ?? '不明',
+        review: a.album_review,
+        tracks: tracksByAlbum.get(a.id) ?? [],
+      }
+    })
 
   return (
     <div className="mx-auto max-w-[1600px] px-6 py-12">
@@ -94,37 +137,7 @@ export default async function AlbumCalendarPage({
         </Link>
       </div>
 
-      {pickupRows && pickupRows.length > 0 && (
-        <section className="mt-8">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-white/50">今週の新譜ピックアップ</h2>
-          <div className="mt-4 flex gap-4 overflow-x-auto pb-2">
-            {pickupRows.map((p) => {
-              const album = Array.isArray(p.album) ? p.album[0] : p.album
-              const artist = album ? (Array.isArray(album.artist) ? album.artist[0] : album.artist) : null
-              if (!album) return null
-              return (
-                <Link key={p.id} href={`/albums/${album.id}`} className="group block w-40 shrink-0">
-                  <div className="aspect-square overflow-hidden rounded-md bg-white/5">
-                    {album.jacket_url ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={album.jacket_url}
-                        alt={album.title}
-                        className="h-full w-full object-cover transition group-hover:scale-105"
-                      />
-                    ) : (
-                      <div className="flex h-full w-full items-center justify-center text-white/20">No Art</div>
-                    )}
-                  </div>
-                  <p className="mt-2 truncate text-sm font-medium group-hover:opacity-70">{album.title}</p>
-                  <p className="truncate text-xs text-white/50">{artist?.name}</p>
-                  {p.blurb && <p className="mt-1 line-clamp-3 text-xs text-white/40">{p.blurb}</p>}
-                </Link>
-              )
-            })}
-          </div>
-        </section>
-      )}
+      <RecentReleasesCarousel albums={recentReleases} />
 
       <CalendarView
         month={currentMonth}
