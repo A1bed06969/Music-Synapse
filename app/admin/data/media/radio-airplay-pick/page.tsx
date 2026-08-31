@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { createClient } from '@/utils/Supabase/server'
 import RadioPickMatcher from './RadioPickMatcher'
+import MatchedCandidateActions from './MatchedCandidateActions'
 import { clearPickCandidate, registerPickToRotation, unregisterPickFromRotation } from './actions'
 import { isAlbumCampaign } from '@/utils/radioStationPeriod'
 
@@ -118,29 +119,14 @@ export default async function RadioAirplayPickAdminPage({
               </div>
             )}
             {viewState === 'matched' && (
-              <div className="flex items-center gap-3">
-                <div className="flex items-center gap-2 text-xs text-white/60">
-                  {p.candidate_artwork_url && (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={p.candidate_artwork_url} alt="" className="h-8 w-8 shrink-0 rounded object-cover" />
-                  )}
-                  <span className="max-w-[220px] truncate">
-                    {isAlbumCampaign(p.campaign_name) ? p.candidate_collection_name : (p.candidate_track_name ?? p.candidate_collection_name)} — {p.candidate_artist_name}
-                  </span>
-                </div>
-                <form action={registerPickToRotation}>
-                  <input type="hidden" name="pick_id" value={p.id} />
-                  <button type="submit" className="shrink-0 text-xs text-emerald-400/80 hover:text-emerald-400">
-                    登録
-                  </button>
-                </form>
-                <form action={clearPickCandidate}>
-                  <input type="hidden" name="id" value={p.id} />
-                  <button type="submit" className="shrink-0 text-xs text-red-400/70 hover:text-red-400">
-                    解除
-                  </button>
-                </form>
-              </div>
+              <MatchedCandidateActions
+                pickId={p.id}
+                albumMode={isAlbumCampaign(p.campaign_name)}
+                candidateLabel={`${isAlbumCampaign(p.campaign_name) ? p.candidate_collection_name : (p.candidate_track_name ?? p.candidate_collection_name)} — ${p.candidate_artist_name}`}
+                candidateArtworkUrl={p.candidate_artwork_url}
+                registerAction={registerPickToRotation}
+                clearAction={clearPickCandidate}
+              />
             )}
             {viewState === 'registered' && (
               <div className="flex items-center gap-3">
