@@ -11,6 +11,7 @@ import GenreShelfTabs from './GenreShelfTabs'
 import ShelfPicker from './ShelfPicker'
 import RecordDetailPanel from './RecordDetailPanel'
 import CrateFrame from './CrateFrame'
+import SwipeGestureIcon from './SwipeGestureIcon'
 import { NEW_ARRIVALS_KEY, type DiggingShelf, type DiggingRecord } from '@/utils/recordDigging'
 import { Button } from '@/components/ui/button'
 import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown } from 'lucide-react'
@@ -412,6 +413,7 @@ export default function RecordDiggingModal({ onClose }: { onClose: () => void })
       {showHint && state === 'ready' && (
         <div className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center">
           <div className="animate-junkie-dig-hint-in flex flex-col items-center gap-3 rounded-lg border border-amber-400/25 bg-black/65 px-8 py-6 text-center backdrop-blur-sm">
+            <SwipeGestureIcon className="h-24 w-24" />
             <div className="flex items-center gap-2 text-sm text-white/85">
               <ChevronDown size={18} className="text-amber-300" />
               <span>下スワイプで次のレコードへ</span>

@@ -13,7 +13,10 @@ const SLOT = { left: 20.63, top: 9.95, width: 58.74, height: 65.17 }
  * childrenを絶対配置することで「その箱の中に実際に入っている」ように見せる。 */
 export default function CrateFrame({ children }: { children: ReactNode }) {
   return (
-    <div className="relative mx-auto w-[min(27.23rem,90vw)] sm:w-[min(34.04rem,80vw)]" style={{ aspectRatio: CRATE_ASPECT }}>
+    <div
+      className="relative mx-auto w-[min(33rem,92vw,calc(70vh*1.109))] sm:w-[min(40rem,85vw,calc(70vh*1.109))]"
+      style={{ aspectRatio: CRATE_ASPECT }}
+    >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src="/images/record-digging/crate-slot.jpg"
