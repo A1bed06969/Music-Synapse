@@ -2,8 +2,9 @@
 
 import type { CSSProperties } from 'react'
 import type { DiggingRecord } from '@/utils/recordDigging'
-import RecordDiggingHand, { type HandGesture } from './RecordDiggingHand'
 import type { DragState } from './useSwipeGesture'
+
+export type PickupGesture = 'idle' | 'picking'
 
 type Layer = {
   record: DiggingRecord
@@ -34,14 +35,12 @@ export default function RecordSleeve({
   upNext,
   exiting,
   gesture,
-  pulseKey,
   dragState,
 }: {
   current: DiggingRecord
   upNext: DiggingRecord[]
   exiting: DiggingRecord | null
-  gesture: HandGesture
-  pulseKey: number
+  gesture: PickupGesture
   dragState: DragState
 }) {
   const layers: Layer[] = [
@@ -120,19 +119,6 @@ export default function RecordSleeve({
             </div>
           )
         })}
-
-      {/* 手: ジャケットの手前(z-40)に1枚で表示し、右端をつまんで持ち上げている
-       * ように見せる。left/topはジャケット右端寄り・縦方向はやや上寄りの位置。
-       * 手の甲側の一部がジャケットの外(=本来ジャケットの裏に隠れるべき範囲)へ
-       * はみ出すため、ジャケットと同じ範囲のoverflow-hiddenでクリップする。 */}
-      <div className="pointer-events-none absolute inset-0 z-40 overflow-hidden">
-        <div
-          key={gesture === 'sending' ? `sending-${pulseKey}` : gesture}
-          className={`absolute left-[42%] top-[3%] w-[53%] ${gesture === 'sending' ? 'animate-hand-send' : ''} ${gesture === 'picking' ? 'animate-hand-pick' : ''}`}
-        >
-          <RecordDiggingHand />
-        </div>
-      </div>
     </div>
   )
 }

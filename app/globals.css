@@ -84,43 +84,6 @@ body {
   animation: banner-in 0.5s ease-out both;
 }
 
-/* Junkie Dig: 下スワイプで指がレコードを弾いて送るモーション */
-@keyframes hand-send {
-  0% {
-    transform: translate(0, 0) rotate(0deg);
-  }
-  40% {
-    transform: translate(7px, 11px) rotate(16deg);
-  }
-  100% {
-    transform: translate(0, 0) rotate(0deg);
-  }
-}
-
-.animate-hand-send {
-  animation: hand-send 0.35s ease-out;
-}
-
-/* Junkie Dig: 上スワイプでレコードをつまみ上げて持ち去るモーション */
-@keyframes hand-pick {
-  0% {
-    transform: translate(0, 0) rotate(0deg);
-    opacity: 1;
-  }
-  55% {
-    transform: translate(-5px, -24px) rotate(-11deg);
-    opacity: 1;
-  }
-  100% {
-    transform: translate(-9px, -42px) rotate(-15deg);
-    opacity: 0;
-  }
-}
-
-.animate-hand-pick {
-  animation: hand-pick 0.38s ease-in forwards;
-}
-
 /* Junkie Dig: 下スワイプで弾かれた手前のレコードが奥へ送られて消える */
 @keyframes record-send-away {
   0% {
@@ -200,4 +163,20 @@ body {
 
 .animate-junkie-dig-stack-in {
   animation: junkie-dig-stack-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.15s both;
+}
+
+/* Junkie Dig: 開いた直後2秒だけ出す操作説明オーバーレイのフェードイン */
+@keyframes junkie-dig-hint-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-junkie-dig-hint-in {
+  animation: junkie-dig-hint-in 0.3s ease-out both;
 }

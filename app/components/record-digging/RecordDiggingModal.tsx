@@ -6,21 +6,21 @@ import { usePreviewPlayer } from '@/app/components/PreviewPlayerContext'
 import PreviewButton from '@/app/components/PreviewButton'
 import { useSwipeGesture, type SwipeDirection, type DragState } from './useSwipeGesture'
 import { useDiggingSound } from './useDiggingSound'
-import RecordSleeve from './RecordSleeve'
+import RecordSleeve, { type PickupGesture } from './RecordSleeve'
 import GenreShelfTabs from './GenreShelfTabs'
 import ShelfPicker from './ShelfPicker'
 import RecordDetailPanel from './RecordDetailPanel'
 import CrateFrame from './CrateFrame'
-import type { HandGesture } from './RecordDiggingHand'
 import { NEW_ARRIVALS_KEY, type DiggingShelf, type DiggingRecord } from '@/utils/recordDigging'
 import { Button } from '@/components/ui/button'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown } from 'lucide-react'
 
 // 送る(下スワイプ)/つまみ上げる(上スワイプ)モーションの再生時間。
-// globals.cssのanimate-record-send-away/animate-hand-send、
-// animate-record-lift/animate-hand-pickの尺と揃えてある。
+// globals.cssのanimate-record-send-away/animate-record-liftの尺と揃えてある。
 const SEND_ANIMATION_MS = 340
 const PICK_ANIMATION_MS = 380
+// 操作説明オーバーレイを表示する時間
+const HINT_DURATION_MS = 2000
 
 function shuffle<T>(items: T[]): T[] {
   const arr = items.slice()
@@ -68,14 +68,11 @@ export default function RecordDiggingModal({ onClose }: { onClose: () => void })
   const [showHint, setShowHint] = useState(true)
 
   // 送る/つまみ上げるモーション用の状態。exitingは下スワイプで弾かれた直後の
-  // 1枚(送られて消えるアニメーションの間だけ描画を残す)、gesture/pulseKeyは
-  // 手のイラストのモーション制御(pulseKeyは連続で下スワイプされた時にも
-  // 毎回アニメーションを頭から再生させるための強制remountキー)。
+  // 1枚(送られて消えるアニメーションの間だけ描画を残す)、gestureは
+  // つまみ上げアニメーション中(picking)かどうかの制御に使う。
   const [exiting, setExiting] = useState<DiggingRecord | null>(null)
-  const [gesture, setGesture] = useState<HandGesture>('idle')
-  const [pulseKey, setPulseKey] = useState(0)
+  const [gesture, setGesture] = useState<PickupGesture>('idle')
   const exitTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const sendGestureTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pickTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // しきい値に達する前のドラッグ量。手前のジャケットをリアルタイムに指へ
@@ -165,7 +162,7 @@ export default function RecordDiggingModal({ onClose }: { onClose: () => void })
   }, [])
 
   useEffect(() => {
-    const timer = setTimeout(() => setShowHint(false), 4000)
+    const timer = setTimeout(() => setShowHint(false), HINT_DURATION_MS)
     return () => clearTimeout(timer)
   }, [])
 
@@ -190,11 +187,6 @@ export default function RecordDiggingModal({ onClose }: { onClose: () => void })
       setExiting(outgoing)
       if (exitTimeoutRef.current) clearTimeout(exitTimeoutRef.current)
       exitTimeoutRef.current = setTimeout(() => setExiting(null), SEND_ANIMATION_MS)
-
-      setPulseKey((k) => k + 1)
-      setGesture('sending')
-      if (sendGestureTimeoutRef.current) clearTimeout(sendGestureTimeoutRef.current)
-      sendGestureTimeoutRef.current = setTimeout(() => setGesture('idle'), SEND_ANIMATION_MS)
 
       const next = deckPosition + 1
       if (next < deck.length) {
@@ -245,7 +237,6 @@ export default function RecordDiggingModal({ onClose }: { onClose: () => void })
   useEffect(() => {
     return () => {
       if (exitTimeoutRef.current) clearTimeout(exitTimeoutRef.current)
-      if (sendGestureTimeoutRef.current) clearTimeout(sendGestureTimeoutRef.current)
       if (pickTimeoutRef.current) clearTimeout(pickTimeoutRef.current)
     }
   }, [])
@@ -354,7 +345,6 @@ export default function RecordDiggingModal({ onClose }: { onClose: () => void })
                     upNext={upNext}
                     exiting={exiting}
                     gesture={gesture}
-                    pulseKey={pulseKey}
                     dragState={dragState}
                   />
                 </CrateFrame>
@@ -412,11 +402,27 @@ export default function RecordDiggingModal({ onClose }: { onClose: () => void })
 
       {shelves.length > 0 && <ShelfPicker shelves={shelves} currentIndex={shelfIndex} onSelect={handleSelectShelf} />}
 
+      {/* 操作説明: 開いてからHINT_DURATION_MS(2秒)だけ、または最初のスワイプ
+       * まで中央に表示する。手のイラストに代わる操作ガイド。 */}
       {showHint && state === 'ready' && (
-        <div className="pointer-events-none relative z-10 flex justify-center gap-6 pb-2 text-[11px] text-white/40">
-          <span>↓ 次へ</span>
-          <span>↑ 詳細へ</span>
-          {shelves.length > 1 && <span>← → 棚を変える</span>}
+        <div className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center">
+          <div className="animate-junkie-dig-hint-in flex flex-col items-center gap-3 rounded-lg border border-amber-400/25 bg-black/65 px-8 py-6 text-center backdrop-blur-sm">
+            <div className="flex items-center gap-2 text-sm text-white/85">
+              <ChevronDown size={18} className="text-amber-300" />
+              <span>下スワイプで次のレコードへ</span>
+            </div>
+            <div className="flex items-center gap-2 text-sm text-white/85">
+              <ChevronUp size={18} className="text-amber-300" />
+              <span>上スワイプで詳細ページへ</span>
+            </div>
+            {shelves.length > 1 && (
+              <div className="flex items-center gap-2 text-sm text-white/85">
+                <ChevronLeft size={18} className="text-amber-300" />
+                <ChevronRight size={18} className="text-amber-300" />
+                <span>左右スワイプで棚を切り替え</span>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
