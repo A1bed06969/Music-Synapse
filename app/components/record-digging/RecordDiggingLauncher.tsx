@@ -16,7 +16,7 @@ export default function RecordDiggingLauncher() {
         type="button"
         onClick={() => setOpen(true)}
         aria-label="Junkie Dig"
-        className="fixed bottom-5 right-5 z-40 w-56 shrink-0 overflow-hidden rounded-2xl shadow-lg shadow-black/50 transition hover:scale-[1.03]"
+        className="fixed bottom-5 right-5 z-40 w-44 shrink-0 overflow-hidden rounded-2xl shadow-lg shadow-black/50 transition hover:scale-[1.03] sm:w-56"
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
