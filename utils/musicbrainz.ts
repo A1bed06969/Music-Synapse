@@ -28,6 +28,20 @@ async function fetchMusicBrainz(url: string, label: string): Promise<any> {
   throw new Error(`MusicBrainz API error (${label}): retries exhausted`)
 }
 
+export type ArtistOrigin = { countryCode: string | null; areaName: string | null }
+
+/** アーティストのMBIDから出身国を取得する。MusicBrainzのartistルックアップは
+ * inc無しの基本レスポンスでもcountry(ISO 3166-1、例: "US")とarea.name/
+ * begin-area.nameを返すため、既存のfetchArtistDetails(url-rels+genres+
+ * artist-rels)とは別に、この軽いエンドポイントだけを叩く。 */
+export async function fetchArtistOrigin(mbid: string): Promise<ArtistOrigin> {
+  const url = `${MUSICBRAINZ_BASE}/artist/${mbid}?fmt=json`
+  const data = await fetchMusicBrainz(url, 'artist origin')
+  const rawCountryCode: string | undefined = data.country ?? data.area?.['iso-3166-1-codes']?.[0]
+  const areaName: string | null = data['begin-area']?.name ?? data.area?.name ?? null
+  return { countryCode: rawCountryCode ? rawCountryCode.toLowerCase() : null, areaName }
+}
+
 export type MusicBrainzSearchResult = {
   mbid: string
   name: string
