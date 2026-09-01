@@ -161,10 +161,15 @@ export default function RecordDiggingModal({ onClose }: { onClose: () => void })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // 表示開始からではなく、実際にstate==='ready'になった瞬間からHINT_DURATION_MS
+  // 数える。マウント直後から数えていると、通信が遅い端末でデータ取得がその間に
+  // 終わらなかった場合、「ready」に来た時には既にshowHintがfalseになっていて
+  // 説明カードが一度も表示されないまま終わってしまう。
   useEffect(() => {
+    if (state !== 'ready' || !showHint) return
     const timer = setTimeout(() => setShowHint(false), HINT_DURATION_MS)
     return () => clearTimeout(timer)
-  }, [])
+  }, [state, showHint])
 
   useEffect(() => {
     const prevOverflow = document.body.style.overflow
