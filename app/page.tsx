@@ -4,9 +4,11 @@ import { fetchAllNews, formatRelativeTime } from '@/utils/newsParser'
 import CatalogSearchBox from '@/app/components/CatalogSearchBox'
 import { createClient } from '@/utils/Supabase/server'
 import { fetchUpcomingAlbums, fetchUpcomingFestivals, fetchMonthlyPowerPlayTop } from '@/utils/homeCards'
+import { fetchNewArrivalsSummary } from '@/utils/newArrivals'
 import DiscoverNewMusicBanner from '@/app/components/home/DiscoverNewMusicBanner'
 import FesLiveFreakBanner from '@/app/components/home/FesLiveFreakBanner'
 import MonthlyNextBreakBanner from '@/app/components/home/MonthlyNextBreakBanner'
+import NewArrivalsBanner from '@/app/components/home/NewArrivalsBanner'
 
 const NEWS_PREVIEW_COUNT = 8
 const UPCOMING_ALBUM_COUNT = 18
@@ -20,11 +22,12 @@ function currentMonthLabel() {
 
 export default async function Home() {
   const supabase = await createClient()
-  const [{ items: newsItems }, albums, festivals, powerPlay] = await Promise.all([
+  const [{ items: newsItems }, albums, festivals, powerPlay, newArrivals] = await Promise.all([
     fetchAllNews(NEWS_SOURCES),
     fetchUpcomingAlbums(supabase, UPCOMING_ALBUM_COUNT),
     fetchUpcomingFestivals(supabase, UPCOMING_FESTIVAL_COUNT),
     fetchMonthlyPowerPlayTop(supabase, POWER_PLAY_TOP_COUNT),
+    fetchNewArrivalsSummary(supabase),
   ])
   const latestNews = newsItems.slice(0, NEWS_PREVIEW_COUNT)
 
@@ -45,6 +48,10 @@ export default async function Home() {
           <div className="mx-auto mt-8 max-w-xl">
             <CatalogSearchBox variant="overlay" />
           </div>
+        </section>
+
+        <section className="mt-8">
+          <NewArrivalsBanner summary={newArrivals} />
         </section>
 
         <section className="mt-14 grid grid-cols-1 gap-6 lg:grid-cols-3">
