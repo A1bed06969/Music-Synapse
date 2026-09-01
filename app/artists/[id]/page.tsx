@@ -82,6 +82,7 @@ export default async function ArtistDetailPage({
       { data: externalLinks },
       { data: awardEntries },
       { data: membershipRows },
+      { data: rankingSelections },
     ],
     creditQuadrants,
     ownsRelease,
@@ -117,6 +118,13 @@ export default async function ArtistDetailPage({
         )
         .eq('relation_type', 'membership')
         .or(`artist_id_a.eq.${id},artist_id_b.eq.${id}`),
+      // artist_id直指定のranking_entry(タワレコメン等のトラック/アルバム起点とは別、
+      // Fender NEXTのようなアーティストそのものが選出対象のキュレーションコンテンツ)
+      supabase
+        .from('ranking_entry')
+        .select('id, period_date, ranking:ranking_id(id, name, list_type)')
+        .eq('artist_id', id)
+        .order('period_date', { ascending: false }),
     ]),
     buildArtistCreditQuadrants(supabase, id),
     hasOwnRelease(supabase, id),
@@ -188,6 +196,17 @@ export default async function ArtistDetailPage({
       />
     )
   }
+
+  const fenderNextYears = Array.from(
+    new Set(
+      (rankingSelections ?? [])
+        .filter((row) => {
+          const ranking = Array.isArray(row.ranking) ? row.ranking[0] : row.ranking
+          return ranking?.name === 'Fender NEXT'
+        })
+        .map((row) => parseInt(row.period_date.slice(0, 4), 10))
+    )
+  ).sort((a, b) => b - a)
 
   const appearances = (eventAppearances ?? [])
     .map((row) => {
@@ -261,6 +280,14 @@ export default async function ArtistDetailPage({
               >
                 🎤 {band.name} のメンバー
               </Link>
+            ))}
+            {fenderNextYears.map((year) => (
+              <span
+                key={year}
+                className="rounded-full border border-amber-400/40 px-2.5 py-0.5 text-amber-300"
+              >
+                🎸 Fender NEXT {year}
+              </span>
             ))}
           </div>
 
