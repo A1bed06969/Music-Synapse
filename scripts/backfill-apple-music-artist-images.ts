@@ -77,21 +77,38 @@ async function fetchOgImage(appleMusicArtistId: string): Promise<FetchResult> {
   return { ok: true, imageUrl }
 }
 
+// PostgRESTの1リクエストあたり行数上限(既定1000件)を超えるため、
+// ページングして全件取得する(このプロジェクトで繰り返し踏んでいる不具合パターン)
+async function fetchAllTargetArtists(
+  supabase: ReturnType<typeof createAdminClient>
+): Promise<(ArtistRow & { image_url: string | null })[]> {
+  const pageSize = 1000
+  const rows: (ArtistRow & { image_url: string | null })[] = []
+  let offset = 0
+  while (true) {
+    const { data, error } = await supabase
+      .from('artist')
+      .select('id, name, apple_music_artist_id, image_url')
+      .not('apple_music_artist_id', 'is', null)
+      .neq('apple_music_artist_id', '')
+      .order('id', { ascending: true })
+      .range(offset, offset + pageSize - 1)
+    if (error) {
+      console.error('アーティスト取得に失敗しました:', error.message)
+      process.exit(1)
+    }
+    const page = (data ?? []) as (ArtistRow & { image_url: string | null })[]
+    rows.push(...page)
+    if (page.length < pageSize) break
+    offset += pageSize
+  }
+  return rows
+}
+
 async function main() {
   const supabase = createAdminClient()
 
-  const { data: artists, error } = await supabase
-    .from('artist')
-    .select('id, name, apple_music_artist_id, image_url')
-    .not('apple_music_artist_id', 'is', null)
-    .neq('apple_music_artist_id', '')
-
-  if (error) {
-    console.error('アーティスト取得に失敗しました:', error.message)
-    process.exit(1)
-  }
-
-  const rows = (artists ?? []) as (ArtistRow & { image_url: string | null })[]
+  const rows = await fetchAllTargetArtists(supabase)
 
   if (rows.length === 0) {
     console.log('apple_music_artist_idを持つアーティストはいません。')
