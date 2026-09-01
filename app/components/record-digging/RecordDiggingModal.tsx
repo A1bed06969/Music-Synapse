@@ -280,9 +280,21 @@ export default function RecordDiggingModal({ onClose }: { onClose: () => void })
       aria-modal="true"
       aria-label="Junkie Dig"
     >
-      {/* 背景: クレート実写(CrateFrame)自体が箱を表現するため、ページ全面には
-       * 敷かない(全面に敷くとCrateFrameの箱と二重に見えるため)。アンバーの
-       * 光暈と、画面四隅を暗く落とすビネットだけで「棚を覗き込んでいる」枠を作る。 */}
+      {/* 背景: CrateFrame(クレートの実写、ピント合った状態)と同じ元写真を、
+       * 強くぼかし・暗くした状態で全面に敷く。CrateFrame自体をもう一枚重ねると
+       * 二重の箱に見えてしまうため、あくまで「奥の部屋がボケて写り込んでいる」
+       * 被写界深度的な処理にとどめている。scale-110は、ぼかしで画像端の透明
+       * フチが見えてしまうのを画面外へ逃がすため。 */}
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/images/record-digging/record-box.jpg"
+          alt=""
+          className="h-full w-full scale-110 object-cover blur-2xl"
+          draggable={false}
+        />
+        <div className="absolute inset-0 bg-[#0e0a06]/55" />
+      </div>
       <div
         className="pointer-events-none absolute inset-0"
         style={{ background: 'radial-gradient(ellipse at 50% 22%, rgba(240,151,90,0.16), transparent 62%)' }}
