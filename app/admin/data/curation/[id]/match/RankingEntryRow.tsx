@@ -4,7 +4,7 @@ import { useState, useTransition } from 'react'
 import Link from 'next/link'
 import AlbumCandidatePicker from '../../../discguides/confirm/AlbumCandidatePicker'
 import SearchableSelect from '../../../SearchableSelect'
-import { linkRankingEntryCandidate, searchAppleMusicAlbumsForCuration } from './actions'
+import { linkRankingEntryCandidate, linkRankingEntryByAppleMusicUrl, searchAppleMusicAlbumsForCuration } from './actions'
 
 type Candidate = { id: string; title: string; artist_name: string; similarity?: number; artwork_url?: string }
 
@@ -31,6 +31,7 @@ export default function RankingEntryRow({
   const [savedAlbumId, setSavedAlbumId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
+  const [urlInput, setUrlInput] = useState('')
 
   if (savedAlbumId) {
     return (
@@ -94,6 +95,38 @@ export default function RankingEntryRow({
             })
           }}
         />
+      </div>
+      <div className="mt-3 max-w-md">
+        <p className="mb-1 text-xs text-white/30">
+          または、Apple MusicアプリでアルバムページのURLをコピーして貼り付け:
+        </p>
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={urlInput}
+            onChange={(e) => setUrlInput(e.target.value)}
+            placeholder="https://music.apple.com/jp/album/..."
+            className="w-full rounded-md border border-white/15 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-white/25 focus:border-white/30 focus:outline-none"
+          />
+          <button
+            type="button"
+            disabled={!urlInput.trim() || isPending}
+            onClick={() => {
+              setError(null)
+              startTransition(async () => {
+                const result = await linkRankingEntryByAppleMusicUrl(rankingId, entryId, oldAlbumId, oldArtistId, urlInput)
+                if (result.success) {
+                  setSavedAlbumId(result.albumId ?? null)
+                } else {
+                  setError(result.message)
+                }
+              })
+            }}
+            className="shrink-0 rounded bg-white/10 px-3 py-2 text-xs font-semibold text-white hover:bg-white/20 disabled:opacity-40"
+          >
+            登録
+          </button>
+        </div>
       </div>
       {oldAlbumId && (
         <div className="mt-2 flex flex-wrap gap-3">

@@ -136,20 +136,40 @@ export default async function CurationPage({
       </form>
 
       {rankingEntries && rankingEntries.length > 0 && (
-        <ul className="mt-4 space-y-1 text-sm text-white/60">
-          {rankingEntries.map((row) => {
-            const ranking = Array.isArray(row.ranking) ? row.ranking[0] : row.ranking
-            const track = Array.isArray(row.track) ? row.track[0] : row.track
-            const album = Array.isArray(row.album) ? row.album[0] : row.album
-            const artist = Array.isArray(row.artist) ? row.artist[0] : row.artist
-            const target = track?.title ?? album?.title ?? artist?.name
-            return (
-              <li key={row.id}>
-                {ranking?.name} {row.rank != null ? `#${row.rank}` : ''} — {target}
-              </li>
-            )
-          })}
-        </ul>
+        <div className="mt-4 space-y-3">
+          {(() => {
+            // 全企画のエントリを一列に並べると件数が多い企画に埋もれて「どのアーティストが
+            // どの企画か分からない」状態になるため、企画ごとにグルーピングして表示する。
+            const groups = new Map<string, { name: string; rows: typeof rankingEntries }>()
+            for (const row of rankingEntries) {
+              const ranking = Array.isArray(row.ranking) ? row.ranking[0] : row.ranking
+              const key = ranking?.name ?? '(不明)'
+              if (!groups.has(key)) groups.set(key, { name: key, rows: [] })
+              groups.get(key)!.rows.push(row)
+            }
+            return Array.from(groups.values()).map((group) => (
+              <details key={group.name} className="rounded-md border border-white/10 p-3">
+                <summary className="cursor-pointer text-sm font-medium text-white/80">
+                  {group.name} <span className="text-xs text-white/30">({group.rows.length}件)</span>
+                </summary>
+                <ul className="mt-2 space-y-1 text-sm text-white/60">
+                  {group.rows.map((row) => {
+                    const track = Array.isArray(row.track) ? row.track[0] : row.track
+                    const album = Array.isArray(row.album) ? row.album[0] : row.album
+                    const artist = Array.isArray(row.artist) ? row.artist[0] : row.artist
+                    const target = track?.title ?? album?.title ?? artist?.name
+                    return (
+                      <li key={row.id}>
+                        {row.rank != null ? `#${row.rank} ` : ''}
+                        {target}
+                      </li>
+                    )
+                  })}
+                </ul>
+              </details>
+            ))
+          })()}
+        </div>
       )}
     </div>
   )

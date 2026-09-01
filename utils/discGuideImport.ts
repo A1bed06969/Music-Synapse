@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { searchAlbums, type ItunesAlbum } from './itunes.ts';
+import { searchAlbums, searchArtist, fetchArtistWithAlbums, type ItunesAlbum } from './itunes.ts';
 
 export type AlbumExtract = {
   title: string;
@@ -69,9 +69,33 @@ async function searchAppleMusicCandidates(
   for (const r of [...combinedResults, ...artistOnlyResults]) {
     merged.set(r.collectionId, r);
   }
-  const results = Array.from(merged.values());
 
   const normalizedTitle = normalizeForMatch(title);
+
+  // entity=albumの検索エンドポイントは人気順寄りの再現率で、リリース数の多い
+  // アーティストだと目的のアルバムが上位に出てこず候補0件になることがある
+  // (実例: Robert DeLongの"Just Movement" — アーティスト名検索の上位25件にすら
+  // 含まれないが、アーティストIDのフルディスコグラフィ取得(lookup)には存在する)。
+  // タイトルの強い一致がまだ見つかっていない場合のみ、アーティストを特定して
+  // フルディスコグラフィ(最大200件)から探す一段構えのフォールバックを行う
+  // (呼び出し回数を抑えるため、強い一致が既にあるときは行わない)。
+  const hasStrongTitleMatch = Array.from(merged.values()).some(
+    (r) => normalizedTitle && normalizeForMatch(r.collectionName) === normalizedTitle
+  );
+  if (!hasStrongTitleMatch) {
+    const artistMatches = await searchArtist(artistName).catch(() => []);
+    for (const am of artistMatches.slice(0, 2)) {
+      const { albums } = await fetchArtistWithAlbums(String(am.artistId)).catch(() => ({
+        artist: null,
+        albums: [] as ItunesAlbum[],
+      }));
+      for (const album of albums) {
+        merged.set(album.collectionId, album);
+      }
+    }
+  }
+
+  const results = Array.from(merged.values());
 
   return results.map((r) => {
     const normalizedCandidateTitle = normalizeForMatch(r.collectionName);

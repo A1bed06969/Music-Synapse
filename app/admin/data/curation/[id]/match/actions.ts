@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/utils/Supabase/admin'
-import { fetchAlbumById, searchAlbums } from '@/utils/itunes'
+import { fetchAlbumById, searchAlbums, parseAppleMusicAlbumUrl } from '@/utils/itunes'
 import { registerAlbumFromSearch } from '@/app/admin/import/search/actions'
 
 export type LinkResult = { success: boolean; message: string; albumId?: string }
@@ -113,4 +113,21 @@ export async function linkRankingEntryCandidate(
   revalidatePath(`/media/features/${rankingId}`)
 
   return { success: true, message: '登録しました。', albumId: newAlbumId }
+}
+
+/** 自動検索・手動検索のどちらでも見つからない場合向けに、Apple MusicアプリからコピーしたアルバムURLを
+ * 直接貼り付けて解決できるようにする。URLからcollectionIdを取り出せれば、既存の
+ * itunes:候補選択と同じ経路(linkRankingEntryCandidate)でそのまま登録する。 */
+export async function linkRankingEntryByAppleMusicUrl(
+  rankingId: string,
+  entryId: number,
+  oldAlbumId: string | null,
+  oldArtistId: string | null,
+  url: string
+): Promise<LinkResult> {
+  const parsed = parseAppleMusicAlbumUrl(url.trim())
+  if (!parsed) {
+    return { success: false, message: 'Apple MusicのアルバムURLとして認識できませんでした。' }
+  }
+  return linkRankingEntryCandidate(rankingId, entryId, oldAlbumId, oldArtistId, `itunes:${parsed.collectionId}`)
 }
