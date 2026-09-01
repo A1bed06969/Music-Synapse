@@ -5,7 +5,7 @@ type Supabase = SupabaseClient<any, any, any>
 export const MIN_SHELF_ALBUMS = 8
 export const NEW_ARRIVALS_DAYS = 30
 export const NEW_ARRIVALS_KEY = 'new-arrivals'
-export const NEW_ARRIVALS_LABEL = '新着'
+export const NEW_ARRIVALS_LABEL = 'New Arrival'
 
 export type DiggingShelf = {
   key: string

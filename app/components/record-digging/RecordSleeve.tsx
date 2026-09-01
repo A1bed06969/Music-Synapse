@@ -122,12 +122,16 @@ export default function RecordSleeve({
         })}
 
       {/* 手: ジャケットの手前(z-40)に1枚で表示し、右端をつまんで持ち上げている
-       * ように見せる。left/topはジャケット右端寄り・縦方向はやや上寄りの位置。 */}
-      <div
-        key={gesture === 'sending' ? `sending-${pulseKey}` : gesture}
-        className={`pointer-events-none absolute left-[73%] top-[3%] z-40 w-[53%] ${gesture === 'sending' ? 'animate-hand-send' : ''} ${gesture === 'picking' ? 'animate-hand-pick' : ''}`}
-      >
-        <RecordDiggingHand />
+       * ように見せる。left/topはジャケット右端寄り・縦方向はやや上寄りの位置。
+       * 手の甲側の一部がジャケットの外(=本来ジャケットの裏に隠れるべき範囲)へ
+       * はみ出すため、ジャケットと同じ範囲のoverflow-hiddenでクリップする。 */}
+      <div className="pointer-events-none absolute inset-0 z-40 overflow-hidden">
+        <div
+          key={gesture === 'sending' ? `sending-${pulseKey}` : gesture}
+          className={`absolute left-[42%] top-[3%] w-[53%] ${gesture === 'sending' ? 'animate-hand-send' : ''} ${gesture === 'picking' ? 'animate-hand-pick' : ''}`}
+        >
+          <RecordDiggingHand />
+        </div>
       </div>
     </div>
   )
