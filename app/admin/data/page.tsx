@@ -1,8 +1,10 @@
+import Link from 'next/link'
 import { createClient } from '@/utils/Supabase/server'
 import { fetchAllRows } from '@/utils/fetchAllRows'
 import SearchableSelect from './SearchableSelect'
 import AdminArtistSearchList from './AdminArtistSearchList'
 import { searchArtists, mergeArtist } from './actions'
+import { ADMIN_TOOL_GROUPS } from '../adminTools'
 
 export default async function AdminDataPage({
   searchParams,
@@ -17,10 +19,8 @@ export default async function AdminDataPage({
 
   return (
     <div className="mx-auto max-w-[1600px] px-6 py-12">
-      <h1 className="text-2xl font-bold">手動データ登録</h1>
-      <p className="mt-2 text-sm text-white/50">
-        ジャンル・相関図・レーベルなど、自動同期できない編集データを登録します。各機能は左のメニューから。
-      </p>
+      <h1 className="text-2xl font-bold">管理画面</h1>
+      <p className="mt-2 text-sm text-white/50">できることの一覧です。使いたい機能のカードをクリックしてください。</p>
 
       {success && (
         <div className="mt-6 rounded-md border border-green-500/30 bg-green-500/5 px-4 py-3 text-sm">{success}</div>
@@ -29,8 +29,32 @@ export default async function AdminDataPage({
         <div className="mt-6 rounded-md border border-red-500/30 bg-red-500/5 px-4 py-3 text-sm">{error}</div>
       )}
 
-      <section className="mt-8">
-        <h2 className="text-lg font-semibold">アーティスト</h2>
+      <div className="mt-8 flex flex-col gap-8">
+        {ADMIN_TOOL_GROUPS.map((group) => (
+          <section key={group.label}>
+            <h2 className="text-[11px] font-semibold uppercase tracking-wide text-white/30">{group.label}</h2>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {group.tools
+                // このページ自身(アーティスト検索・編集/統合)は下の該当セクションに実体があるため、
+                // 自分自身へのカードは表示しない
+                .filter((tool) => tool.href !== '/admin/data')
+                .map((tool) => (
+                  <Link
+                    key={tool.href}
+                    href={tool.href}
+                    className="rounded-md border border-white/10 p-4 transition hover:border-white/25 hover:bg-white/5"
+                  >
+                    <p className="text-sm font-semibold text-white/90">{tool.label}</p>
+                    <p className="mt-1 text-xs leading-relaxed text-white/45">{tool.description}</p>
+                  </Link>
+                ))}
+            </div>
+          </section>
+        ))}
+      </div>
+
+      <section className="mt-10 border-t border-white/10 pt-8">
+        <h2 className="text-lg font-semibold">アーティスト検索・編集</h2>
         <p className="mt-2 text-xs text-white/40">
           プロフィール項目(bio・URL・配信状況等)の編集はこちらから。新規登録はiTunes一括登録のみ対応。
         </p>
