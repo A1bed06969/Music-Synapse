@@ -58,8 +58,19 @@ export type NewTrackItem = { id: string; title: string; artistName: string; albu
 export type NewEventItem = { id: string; artistId: string; artistName: string; eventName: string }
 export type NewCurationItem = { id: number; rankingName: string; targetLabel: string }
 
+export type NewArrivalsCounts = {
+  artist: number
+  album: number
+  track: number
+  event: number
+  curation: number
+}
+
 export type NewArrivalsDetail = {
   boundary: string
+  /** カテゴリごとの正確な総数(PostgRESTの1行取得上限に左右されない、count:'exact'によるもの) */
+  counts: NewArrivalsCounts
+  /** 一覧表示用。DETAIL_LIST_LIMIT件までに絞っている(countsとは別物)。 */
   artists: NewArtistItem[]
   albums: NewAlbumItem[]
   tracks: NewTrackItem[]
@@ -67,41 +78,67 @@ export type NewArrivalsDetail = {
   curationEntries: NewCurationItem[]
 }
 
-/** 詳細ページ用。各カテゴリの中身を新しい順にすべて取得する。 */
+// 一覧に表示する件数の上限。1000件超のカテゴリでも一覧は絞ってよいとのことなので、
+// 表示用リストはこの件数までに留める(正確な総数はcountsで別途取得する)。
+const DETAIL_LIST_LIMIT = 300
+
+/** 詳細ページ用。各カテゴリの正確な総数と、新しい順の一覧(最大DETAIL_LIST_LIMIT件)を取得する。 */
 export async function fetchNewArrivalsDetail(supabase: Supabase): Promise<NewArrivalsDetail> {
   const boundary = mostRecentEightAmJST()
 
-  const [artistRes, albumRes, trackRes, eventRes, curationRes] = await Promise.all([
-    supabase
-      .from('artist')
-      .select('id, name, image_url')
-      .gte('created_at', boundary)
-      .order('created_at', { ascending: false }),
-    supabase
-      .from('album')
-      .select('id, title, jacket_url, artist:artist_id(name)')
-      .gte('created_at', boundary)
-      .order('created_at', { ascending: false }),
-    supabase
-      .from('track')
-      .select('id, title, artist:artist_id(name), album:album_id(title, artist:artist_id(name))')
-      .gte('created_at', boundary)
-      .order('created_at', { ascending: false }),
-    supabase
-      .from('event_appearance_artist')
-      .select(
-        'id, artist:artist_id(id, name), event_appearance:event_appearance_id(event_edition:event_edition_id(event:event_id(name, name_ja)))'
-      )
-      .gte('created_at', boundary)
-      .order('created_at', { ascending: false }),
-    supabase
-      .from('ranking_entry')
-      .select(
-        'id, ranking:ranking_id(name), track:track_id(title), album:album_id(title), artist:artist_id(name)'
-      )
-      .gte('created_at', boundary)
-      .order('created_at', { ascending: false }),
-  ])
+  const [artistCountRes, albumCountRes, trackCountRes, eventCountRes, curationCountRes, artistRes, albumRes, trackRes, eventRes, curationRes] =
+    await Promise.all([
+      supabase.from('artist').select('id', { count: 'exact', head: true }).gte('created_at', boundary),
+      supabase.from('album').select('id', { count: 'exact', head: true }).gte('created_at', boundary),
+      supabase.from('track').select('id', { count: 'exact', head: true }).gte('created_at', boundary),
+      supabase
+        .from('event_appearance_artist')
+        .select('id', { count: 'exact', head: true })
+        .gte('created_at', boundary),
+      supabase.from('ranking_entry').select('id', { count: 'exact', head: true }).gte('created_at', boundary),
+      supabase
+        .from('artist')
+        .select('id, name, image_url')
+        .gte('created_at', boundary)
+        .order('created_at', { ascending: false })
+        .limit(DETAIL_LIST_LIMIT),
+      supabase
+        .from('album')
+        .select('id, title, jacket_url, artist:artist_id(name)')
+        .gte('created_at', boundary)
+        .order('created_at', { ascending: false })
+        .limit(DETAIL_LIST_LIMIT),
+      supabase
+        .from('track')
+        .select('id, title, artist:artist_id(name), album:album_id(title, artist:artist_id(name))')
+        .gte('created_at', boundary)
+        .order('created_at', { ascending: false })
+        .limit(DETAIL_LIST_LIMIT),
+      supabase
+        .from('event_appearance_artist')
+        .select(
+          'id, artist:artist_id(id, name), event_appearance:event_appearance_id(event_edition:event_edition_id(event:event_id(name, name_ja)))'
+        )
+        .gte('created_at', boundary)
+        .order('created_at', { ascending: false })
+        .limit(DETAIL_LIST_LIMIT),
+      supabase
+        .from('ranking_entry')
+        .select(
+          'id, ranking:ranking_id(name), track:track_id(title), album:album_id(title), artist:artist_id(name)'
+        )
+        .gte('created_at', boundary)
+        .order('created_at', { ascending: false })
+        .limit(DETAIL_LIST_LIMIT),
+    ])
+
+  const counts: NewArrivalsCounts = {
+    artist: artistCountRes.count ?? 0,
+    album: albumCountRes.count ?? 0,
+    track: trackCountRes.count ?? 0,
+    event: eventCountRes.count ?? 0,
+    curation: curationCountRes.count ?? 0,
+  }
 
   const artists: NewArtistItem[] = (artistRes.data ?? []).map((a) => ({
     id: a.id,
@@ -156,5 +193,5 @@ export async function fetchNewArrivalsDetail(supabase: Supabase): Promise<NewArr
     }
   })
 
-  return { boundary, artists, albums, tracks, events, curationEntries }
+  return { boundary, counts, artists, albums, tracks, events, curationEntries }
 }

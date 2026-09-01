@@ -26,20 +26,24 @@ export default async function NewArrivalsPage({
   const tab: Tab = isTab(rawTab) ? rawTab : 'all'
 
   const supabase = await createClient()
-  const { boundary, artists, albums, tracks, events, curationEntries } = await fetchNewArrivalsDetail(supabase)
+  const { boundary, counts, artists, albums, tracks, events, curationEntries } = await fetchNewArrivalsDetail(supabase)
 
-  const total = artists.length + albums.length + tracks.length + events.length + curationEntries.length
+  const total = counts.artist + counts.album + counts.track + counts.event + counts.curation
 
   const tabDefs: { key: Tab; label: string; count: number }[] = [
     { key: 'all', label: '全て', count: total },
-    { key: 'artist', label: 'アーティスト', count: artists.length },
-    { key: 'album', label: 'アルバム', count: albums.length },
-    { key: 'track', label: 'トラック', count: tracks.length },
-    { key: 'festival', label: 'フェス', count: events.length },
-    { key: 'curation', label: 'キュレーション', count: curationEntries.length },
+    { key: 'artist', label: 'アーティスト', count: counts.artist },
+    { key: 'album', label: 'アルバム', count: counts.album },
+    { key: 'track', label: 'トラック', count: counts.track },
+    { key: 'festival', label: 'フェス', count: counts.event },
+    { key: 'curation', label: 'キュレーション', count: counts.curation },
   ]
 
   const showAll = tab === 'all'
+
+  function truncatedNote(count: number, shown: number): string | null {
+    return count > shown ? `(新しい順に${shown}件のみ表示。全${count}件)` : null
+  }
 
   return (
     <div className="mx-auto max-w-[1600px] px-6 py-12">
@@ -76,7 +80,14 @@ export default async function NewArrivalsPage({
       <div className="mt-8 flex flex-col gap-6">
         {(showAll || tab === 'artist') && artists.length > 0 && (
           <section className="rounded-xl border border-white/10 p-6">
-            <h2 className="text-lg font-semibold">アーティスト({artists.length})</h2>
+            <h2 className="text-lg font-semibold">
+              アーティスト({counts.artist})
+              {truncatedNote(counts.artist, artists.length) && (
+                <span className="ml-2 text-xs font-normal text-white/30">
+                  {truncatedNote(counts.artist, artists.length)}
+                </span>
+              )}
+            </h2>
             <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4 lg:grid-cols-6">
               {artists.map((a) => (
                 <Link key={a.id} href={`/artists/${a.id}`} className="group block">
@@ -101,7 +112,14 @@ export default async function NewArrivalsPage({
 
         {(showAll || tab === 'album') && albums.length > 0 && (
           <section className="rounded-xl border border-white/10 p-6">
-            <h2 className="text-lg font-semibold">アルバム({albums.length})</h2>
+            <h2 className="text-lg font-semibold">
+              アルバム({counts.album})
+              {truncatedNote(counts.album, albums.length) && (
+                <span className="ml-2 text-xs font-normal text-white/30">
+                  {truncatedNote(counts.album, albums.length)}
+                </span>
+              )}
+            </h2>
             <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4 lg:grid-cols-6">
               {albums.map((a) => (
                 <Link key={a.id} href={`/albums/${a.id}`} className="group block">
@@ -127,7 +145,14 @@ export default async function NewArrivalsPage({
 
         {(showAll || tab === 'track') && tracks.length > 0 && (
           <section className="rounded-xl border border-white/10 p-6">
-            <h2 className="text-lg font-semibold">トラック({tracks.length})</h2>
+            <h2 className="text-lg font-semibold">
+              トラック({counts.track})
+              {truncatedNote(counts.track, tracks.length) && (
+                <span className="ml-2 text-xs font-normal text-white/30">
+                  {truncatedNote(counts.track, tracks.length)}
+                </span>
+              )}
+            </h2>
             <ul className="mt-4 space-y-1">
               {tracks.map((t) => (
                 <li key={t.id}>
@@ -146,7 +171,14 @@ export default async function NewArrivalsPage({
 
         {(showAll || tab === 'festival') && events.length > 0 && (
           <section className="rounded-xl border border-white/10 p-6">
-            <h2 className="text-lg font-semibold">フェス({events.length})</h2>
+            <h2 className="text-lg font-semibold">
+              フェス({counts.event})
+              {truncatedNote(counts.event, events.length) && (
+                <span className="ml-2 text-xs font-normal text-white/30">
+                  {truncatedNote(counts.event, events.length)}
+                </span>
+              )}
+            </h2>
             <ul className="mt-4 space-y-1">
               {events.map((e) => (
                 <li key={e.id}>
@@ -162,7 +194,14 @@ export default async function NewArrivalsPage({
 
         {(showAll || tab === 'curation') && curationEntries.length > 0 && (
           <section className="rounded-xl border border-white/10 p-6">
-            <h2 className="text-lg font-semibold">キュレーション({curationEntries.length})</h2>
+            <h2 className="text-lg font-semibold">
+              キュレーション({counts.curation})
+              {truncatedNote(counts.curation, curationEntries.length) && (
+                <span className="ml-2 text-xs font-normal text-white/30">
+                  {truncatedNote(counts.curation, curationEntries.length)}
+                </span>
+              )}
+            </h2>
             <ul className="mt-4 space-y-1">
               {curationEntries.map((c) => (
                 <li key={c.id} className="text-sm">
