@@ -121,11 +121,21 @@ export default function RecordSleeve({
           )
         })}
 
+      {/* 指・手の甲: 手前のジャケット(front, z-20)より低いzに置き、ジャケットの
+       * 奥へ回り込んで隠れているように見せる */}
       <div
-        key={gesture === 'sending' ? `sending-${pulseKey}` : gesture}
-        className={`pointer-events-none absolute -right-[6%] -top-[15%] z-40 w-[53%] ${gesture === 'sending' ? 'animate-hand-send' : ''} ${gesture === 'picking' ? 'animate-hand-pick' : ''}`}
+        key={`fingers-${gesture === 'sending' ? `sending-${pulseKey}` : gesture}`}
+        className={`pointer-events-none absolute -left-[6%] -top-[15%] z-[15] w-[53%] ${gesture === 'sending' ? 'animate-hand-send' : ''} ${gesture === 'picking' ? 'animate-hand-pick' : ''}`}
       >
-        <RecordDiggingHand />
+        <RecordDiggingHand part="fingers" />
+      </div>
+
+      {/* 親指: ジャケットの手前に出し、表面をつまんでいるように見せる */}
+      <div
+        key={`thumb-${gesture === 'sending' ? `sending-${pulseKey}` : gesture}`}
+        className={`pointer-events-none absolute -left-[6%] -top-[15%] z-40 w-[53%] ${gesture === 'sending' ? 'animate-hand-send' : ''} ${gesture === 'picking' ? 'animate-hand-pick' : ''}`}
+      >
+        <RecordDiggingHand part="thumb" />
       </div>
     </div>
   )

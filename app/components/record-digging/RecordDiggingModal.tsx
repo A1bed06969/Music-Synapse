@@ -280,14 +280,9 @@ export default function RecordDiggingModal({ onClose }: { onClose: () => void })
       aria-modal="true"
       aria-label="Junkie Dig"
     >
-      {/* 背景: レコード箱の実写(public/images/record-digging/record-box.jpg)を
-       * 全面に敷き、可読性のため上に暗いスクリムを重ねる。その上にアンバーの
-       * 光暈と、画面四隅を暗く落とすビネットで「棚を覗き込んでいる」枠を作る。 */}
-      <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/images/record-digging/record-box.jpg" alt="" className="h-full w-full object-cover" draggable={false} />
-        <div className="absolute inset-0 bg-[#0e0a06]/50" />
-      </div>
+      {/* 背景: クレート実写(CrateFrame)自体が箱を表現するため、ページ全面には
+       * 敷かない(全面に敷くとCrateFrameの箱と二重に見えるため)。アンバーの
+       * 光暈と、画面四隅を暗く落とすビネットだけで「棚を覗き込んでいる」枠を作る。 */}
       <div
         className="pointer-events-none absolute inset-0"
         style={{ background: 'radial-gradient(ellipse at 50% 22%, rgba(240,151,90,0.16), transparent 62%)' }}
