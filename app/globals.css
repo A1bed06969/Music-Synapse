@@ -1,13 +1,57 @@
 @import "tailwindcss";
+@import "tw-animate-css";
 
+/* shadcn/uiのトークン。このアプリは常時ダークテーマ(ライト/ダーク切り替えは
+ * 無い)なので、:rootにダーク配色をそのまま定義している。アクセントはサイト
+ * 既存の琥珀色(amber系)に合わせた。 */
 :root {
   --background: #0a0a0a;
   --foreground: #ededed;
+
+  --radius: 0.625rem;
+  --card: oklch(0.16 0 0);
+  --card-foreground: oklch(0.94 0 0);
+  --popover: oklch(0.16 0 0);
+  --popover-foreground: oklch(0.94 0 0);
+  --primary: oklch(0.72 0.15 70);
+  --primary-foreground: oklch(0.15 0.02 70);
+  --secondary: oklch(0.24 0 0);
+  --secondary-foreground: oklch(0.94 0 0);
+  --muted: oklch(0.22 0 0);
+  --muted-foreground: oklch(0.65 0 0);
+  --accent: oklch(0.24 0 0);
+  --accent-foreground: oklch(0.94 0 0);
+  --destructive: oklch(0.6 0.22 25);
+  --destructive-foreground: oklch(0.97 0 0);
+  --border: oklch(1 0 0 / 12%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.72 0.15 70 / 50%);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
@@ -107,4 +151,53 @@ body {
 
 .animate-record-lift {
   animation: record-lift 0.38s ease-in forwards;
+}
+
+/* Junkie Dig: しきい値未満でドラッグを離した時、指に追従していたジャケットが
+   元の位置へ戻る「スプリングバック」。わずかなオーバーシュートで軽いバネ感を出す。 */
+.transition-spring {
+  transition:
+    transform 0.32s cubic-bezier(0.34, 1.56, 0.64, 1),
+    opacity 0.28s ease-out;
+}
+
+/* Junkie Dig: 奥の1枚が手前に送られてくる/棚が切り替わる際の位置移動に使う、
+   plainなease-outより気持ち弾みのある減速カーブ。 */
+.transition-layer {
+  transition:
+    transform 0.3s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Junkie Dig: モーダルを開いた瞬間の導入(画面が暗くなる)。開くたびに1回だけ
+   (棚を切り替えるたびには再生しない)。 */
+@keyframes junkie-dig-scrim-in {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+.animate-junkie-dig-scrim-in {
+  animation: junkie-dig-scrim-in 0.35s ease-out both;
+}
+
+/* Junkie Dig: 3枚のジャケットが棚の奥から浮かび上がってくる導入。scrim-inの
+   後を追う形で少し遅らせて始まる。こちらも初回オープン時のみ(棚を切り替えた
+   時の再マウントでは再生しない、呼び出し側でクラスの付与自体を制御する)。 */
+@keyframes junkie-dig-stack-in {
+  0% {
+    opacity: 0;
+    transform: translateY(28px) scale(0.94);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-junkie-dig-stack-in {
+  animation: junkie-dig-stack-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.15s both;
 }

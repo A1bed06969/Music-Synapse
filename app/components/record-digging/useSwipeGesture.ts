@@ -6,6 +6,8 @@ export type SwipeDirection = 'up' | 'down' | 'left' | 'right'
 
 export const SWIPE_THRESHOLD_PX = 80
 
+export type DragState = { dx: number; dy: number; dragging: boolean }
+
 export function resolveDirection(dx: number, dy: number): SwipeDirection | null {
   const absX = Math.abs(dx)
   const absY = Math.abs(dy)
@@ -16,11 +18,19 @@ export function resolveDirection(dx: number, dy: number): SwipeDirection | null 
 
 /** タッチ/マウスドラッグ/矢印キーを統一的にスワイプ方向イベントへ変換する。
  * 返されたrefを対象要素に付けると、その要素上でのタッチ・マウス操作を検知する
- * (矢印キーはdocument全体で検知する)。1ジェスチャーにつきonSwipeは最大1回だけ発火する。 */
-export function useSwipeGesture(onSwipe: (direction: SwipeDirection) => void) {
+ * (矢印キーはdocument全体で検知する)。1ジェスチャーにつきonSwipeは最大1回だけ発火する。
+ *
+ * onDragChangeを渡すと、しきい値に達する前のドラッグ量もリアルタイムで
+ * 受け取れる(呼び出し側で「指に追従するジャケット」の見た目を作るため)。
+ * しきい値超えでonSwipeが発火する瞬間、またはしきい値未満で指を離した瞬間に
+ * dragging:falseで{dx:0, dy:0}を通知するので、呼び出し側はそこにCSS
+ * トランジションを付けるだけで「元の位置へスプリングバック」する見た目になる。 */
+export function useSwipeGesture(onSwipe: (direction: SwipeDirection) => void, onDragChange?: (state: DragState) => void) {
   const ref = useRef<HTMLDivElement>(null)
   const onSwipeRef = useRef(onSwipe)
   onSwipeRef.current = onSwipe
+  const onDragChangeRef = useRef(onDragChange)
+  onDragChangeRef.current = onDragChange
 
   useEffect(() => {
     const el = ref.current
@@ -33,12 +43,24 @@ export function useSwipeGesture(onSwipe: (direction: SwipeDirection) => void) {
 
     function handleMove(clientX: number, clientY: number) {
       if (!tracking || fired) return
-      const direction = resolveDirection(clientX - startX, clientY - startY)
+      const dx = clientX - startX
+      const dy = clientY - startY
+      onDragChangeRef.current?.({ dx, dy, dragging: true })
+
+      const direction = resolveDirection(dx, dy)
       if (direction) {
         fired = true
         tracking = false
+        onDragChangeRef.current?.({ dx: 0, dy: 0, dragging: false })
         onSwipeRef.current(direction)
       }
+    }
+
+    function endDrag() {
+      if (tracking && !fired) {
+        onDragChangeRef.current?.({ dx: 0, dy: 0, dragging: false })
+      }
+      tracking = false
     }
 
     function onTouchStart(e: TouchEvent) {
@@ -53,7 +75,7 @@ export function useSwipeGesture(onSwipe: (direction: SwipeDirection) => void) {
       handleMove(t.clientX, t.clientY)
     }
     function onTouchEnd() {
-      tracking = false
+      endDrag()
     }
 
     function onMouseDown(e: MouseEvent) {
@@ -66,7 +88,7 @@ export function useSwipeGesture(onSwipe: (direction: SwipeDirection) => void) {
       handleMove(e.clientX, e.clientY)
     }
     function onMouseUp() {
-      tracking = false
+      endDrag()
     }
 
     function onKeyDown(e: KeyboardEvent) {

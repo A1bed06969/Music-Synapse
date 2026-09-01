@@ -63,6 +63,22 @@ describe('daysAgoJST / todayJST', () => {
   })
 })
 
+// fetchEligibleGenreShelvesは新着棚のサンプルジャケットも
+// supabase.from('album')...maybeSingle()で取得するため、.rpc()だけでなく
+// そのチェーンも最低限モックする(実際に呼ばれるメソッドだけ)。
+function fakeAlbumFromChain(sampleJacketUrl: string | null) {
+  const chain = {
+    select: () => chain,
+    not: () => chain,
+    gte: () => chain,
+    lte: () => chain,
+    order: () => chain,
+    limit: () => chain,
+    maybeSingle: () => Promise.resolve({ data: sampleJacketUrl ? { jacket_url: sampleJacketUrl } : null, error: null }),
+  }
+  return chain
+}
+
 describe('fetchEligibleGenreShelves', () => {
   test('passes MIN_SHELF_ALBUMS as min_albums to the RPC, and prepends the 新着 shelf', async () => {
     let capturedFn = ''
@@ -72,18 +88,31 @@ describe('fetchEligibleGenreShelves', () => {
         capturedFn = fn
         capturedArgs = args
         return Promise.resolve({
-          data: [{ genre_id: 'g1', genre_name: 'Techno' }],
+          data: [{ genre_id: 'g1', genre_name: 'Techno', album_count: 12, sample_jacket_url: 'https://example.com/g1.jpg' }],
           error: null,
         })
       },
+      from: () => fakeAlbumFromChain('https://example.com/new.jpg'),
     }
 
     const shelves = await fetchEligibleGenreShelves(fakeSupabase as any)
 
     assert.equal(capturedFn, 'record_digging_eligible_genres')
     assert.deepEqual(capturedArgs, { min_albums: MIN_SHELF_ALBUMS })
-    assert.deepEqual(shelves[0], { key: NEW_ARRIVALS_KEY, label: NEW_ARRIVALS_LABEL, isGenre: false })
-    assert.deepEqual(shelves[1], { key: 'g1', label: 'Techno', isGenre: true })
+    assert.deepEqual(shelves[0], {
+      key: NEW_ARRIVALS_KEY,
+      label: NEW_ARRIVALS_LABEL,
+      isGenre: false,
+      albumCount: null,
+      sampleJacketUrl: 'https://example.com/new.jpg',
+    })
+    assert.deepEqual(shelves[1], {
+      key: 'g1',
+      label: 'Techno',
+      isGenre: true,
+      albumCount: 12,
+      sampleJacketUrl: 'https://example.com/g1.jpg',
+    })
   })
 
   test('falls back to just the 新着 shelf when the RPC errors', async () => {
@@ -91,10 +120,13 @@ describe('fetchEligibleGenreShelves', () => {
       rpc() {
         return Promise.resolve({ data: null, error: { message: 'boom' } })
       },
+      from: () => fakeAlbumFromChain(null),
     }
 
     const shelves = await fetchEligibleGenreShelves(fakeSupabase as any)
 
-    assert.deepEqual(shelves, [{ key: NEW_ARRIVALS_KEY, label: NEW_ARRIVALS_LABEL, isGenre: false }])
+    assert.deepEqual(shelves, [
+      { key: NEW_ARRIVALS_KEY, label: NEW_ARRIVALS_LABEL, isGenre: false, albumCount: null, sampleJacketUrl: null },
+    ])
   })
 })

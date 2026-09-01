@@ -11,6 +11,8 @@ export type DiggingShelf = {
   key: string
   label: string
   isGenre: boolean
+  albumCount: number | null
+  sampleJacketUrl: string | null
 }
 
 export type DiggingRecord = {
@@ -22,6 +24,21 @@ export type DiggingRecord = {
   releaseDate: string | null
   firstTrackId: string | null
   firstTrackPreviewUrl: string | null
+}
+
+export type ArtistExternalLink = { id: string; link_type: string; url: string }
+
+export type RecordDetail = {
+  labelName: string | null
+  catalogNumber: string | null
+  artistName: string
+  officialSiteUrl: string | null
+  snsXUrl: string | null
+  snsInstagramUrl: string | null
+  appleMusicArtistId: string | null
+  spotifyArtistId: string | null
+  discogsUrl: string | null
+  externalLinks: ArtistExternalLink[]
 }
 
 // サーバーはUTCで動くため、JSTの「今日からN日前」を単純な日数引き算ではなく
@@ -61,22 +78,98 @@ function mapShelfRow(r: ShelfAlbumRow): DiggingRecord {
   }
 }
 
-/** 棚として採用できるジャンル一覧(MIN_SHELF_ALBUMS枚以上のジャケット付き
- * アルバムを持つジャンルのみ)を、先頭に「新着」を付けて返す。 */
-export async function fetchEligibleGenreShelves(supabase: Supabase): Promise<DiggingShelf[]> {
-  const { data, error } = await supabase.rpc('record_digging_eligible_genres', { min_albums: MIN_SHELF_ALBUMS })
+/** 「CHOOSE YOUR SHELF」ピッカー用に、新着棚の代表ジャケット1枚を軽量に取得する
+ * (record_digging_new_arrivals RPCをフル呼び出しせず、直近1件だけ引く)。 */
+async function fetchNewArrivalsSampleJacket(supabase: Supabase): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('album')
+    .select('jacket_url')
+    .not('jacket_url', 'is', null)
+    .gte('release_date', daysAgoJST(NEW_ARRIVALS_DAYS))
+    .lte('release_date', todayJST())
+    .order('release_date', { ascending: false })
+    .limit(1)
+    .maybeSingle()
   if (error) {
-    console.error('棚候補ジャンルの取得に失敗しました:', error.message)
-    return [{ key: NEW_ARRIVALS_KEY, label: NEW_ARRIVALS_LABEL, isGenre: false }]
+    console.error('新着棚のサンプルジャケット取得に失敗しました:', error.message)
+    return null
+  }
+  return data?.jacket_url ?? null
+}
+
+/** 棚として採用できるジャンル一覧(MIN_SHELF_ALBUMS枚以上のジャケット付き
+ * アルバムを持つジャンルのみ)を、先頭に「新着」を付けて返す。棚選択UIで
+ * 実カタログのジャケットをサムネイル表示するため、各棚の代表ジャケットも
+ * 合わせて返す。 */
+export async function fetchEligibleGenreShelves(supabase: Supabase): Promise<DiggingShelf[]> {
+  const [{ data, error }, newArrivalsSample] = await Promise.all([
+    supabase.rpc('record_digging_eligible_genres', { min_albums: MIN_SHELF_ALBUMS }),
+    fetchNewArrivalsSampleJacket(supabase),
+  ])
+
+  const newArrivalsShelf: DiggingShelf = {
+    key: NEW_ARRIVALS_KEY,
+    label: NEW_ARRIVALS_LABEL,
+    isGenre: false,
+    albumCount: null,
+    sampleJacketUrl: newArrivalsSample,
   }
 
-  const genreShelves: DiggingShelf[] = (data ?? []).map((row: { genre_id: string; genre_name: string }) => ({
-    key: row.genre_id,
-    label: row.genre_name,
-    isGenre: true,
-  }))
+  if (error) {
+    console.error('棚候補ジャンルの取得に失敗しました:', error.message)
+    return [newArrivalsShelf]
+  }
 
-  return [{ key: NEW_ARRIVALS_KEY, label: NEW_ARRIVALS_LABEL, isGenre: false }, ...genreShelves]
+  const genreShelves: DiggingShelf[] = (data ?? []).map(
+    (row: { genre_id: string; genre_name: string; album_count: number; sample_jacket_url: string | null }) => ({
+      key: row.genre_id,
+      label: row.genre_name,
+      isGenre: true,
+      albumCount: row.album_count,
+      sampleJacketUrl: row.sample_jacket_url,
+    })
+  )
+
+  return [newArrivalsShelf, ...genreShelves]
+}
+
+/** モーダル右パネル(現在再生中の詳細)向けに、レーベル/カタログ番号と
+ * アーティストの外部リンク群をまとめて取得する。棚のスワイプ本体には不要な
+ * 情報のため、現在のレコードが変わった時だけ個別に取得する(棚ロード時に
+ * 全件分をまとめて取ると重くなるため)。 */
+export async function fetchRecordDetail(supabase: Supabase, albumId: string, artistId: string): Promise<RecordDetail | null> {
+  const [albumResult, artistResult, linksResult] = await Promise.all([
+    supabase.from('album').select('catalog_number, label:label_id(name)').eq('id', albumId).maybeSingle(),
+    supabase
+      .from('artist')
+      .select('name, official_site_url, sns_x_url, sns_instagram_url, apple_music_artist_id, spotify_artist_id')
+      .eq('id', artistId)
+      .maybeSingle(),
+    supabase.from('artist_external_link').select('id, link_type, url').eq('artist_id', artistId),
+  ])
+
+  if (artistResult.error || !artistResult.data) {
+    console.error('レコード詳細(アーティスト情報)の取得に失敗しました:', artistResult.error?.message)
+    return null
+  }
+
+  const label = albumResult.data?.label as { name: string } | { name: string }[] | null
+  const labelName = Array.isArray(label) ? (label[0]?.name ?? null) : (label?.name ?? null)
+  const externalLinks: ArtistExternalLink[] = linksResult.data ?? []
+  const discogsUrl = externalLinks.find((l) => l.link_type === 'discogs')?.url ?? null
+
+  return {
+    labelName,
+    catalogNumber: albumResult.data?.catalog_number ?? null,
+    artistName: artistResult.data.name,
+    officialSiteUrl: artistResult.data.official_site_url,
+    snsXUrl: artistResult.data.sns_x_url,
+    snsInstagramUrl: artistResult.data.sns_instagram_url,
+    appleMusicArtistId: artistResult.data.apple_music_artist_id,
+    spotifyArtistId: artistResult.data.spotify_artist_id,
+    discogsUrl,
+    externalLinks,
+  }
 }
 
 /** 指定した棚に属するレコード一覧を返す。'new-arrivals'はジャンル不問で

@@ -1,15 +1,20 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { usePreviewPlayer } from '@/app/components/PreviewPlayerContext'
 import PreviewButton from '@/app/components/PreviewButton'
-import { useSwipeGesture, type SwipeDirection } from './useSwipeGesture'
+import { useSwipeGesture, type SwipeDirection, type DragState } from './useSwipeGesture'
 import { useDiggingSound } from './useDiggingSound'
 import RecordSleeve from './RecordSleeve'
 import GenreShelfTabs from './GenreShelfTabs'
+import ShelfPicker from './ShelfPicker'
+import RecordDetailPanel from './RecordDetailPanel'
+import CrateFrame from './CrateFrame'
 import type { HandGesture } from './RecordDiggingHand'
 import { NEW_ARRIVALS_KEY, type DiggingShelf, type DiggingRecord } from '@/utils/recordDigging'
+import { Button } from '@/components/ui/button'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 
 // 送る(下スワイプ)/つまみ上げる(上スワイプ)モーションの再生時間。
 // globals.cssのanimate-record-send-away/animate-hand-send、
@@ -38,6 +43,18 @@ function reshuffleDeck(items: DiggingRecord[], prevLastId: string | null): Diggi
 
 type LoadState = 'loading' | 'ready' | 'error'
 
+/** ジャケットスタックの「奥から浮かび上がる」導入アニメーションを、このDOM
+ * ノードが実際にマウントされた瞬間だけ判定して固定する。useState の遅延
+ *初期化子は、このコンポーネントインスタンスがマウントされた最初の1回しか
+ * 評価されないため、以降ドラッグや棚切り替えで親が何度再レンダーされても
+ * (このノード自体が再マウントされない限り)結果がぶれない。もしuseEffect +
+ * 親のstateで毎レンダー判定すると、アニメーション再生中の再レンダー(例えば
+ * ドラッグ)でクラスが外れてアニメーションが途中で切れてしまう。 */
+function JacketStackEntrance({ children, skip }: { children: ReactNode; skip: boolean }) {
+  const [playEntrance] = useState(() => !skip)
+  return <div className={`w-full ${playEntrance ? 'animate-junkie-dig-stack-in' : ''}`}>{children}</div>
+}
+
 export default function RecordDiggingModal({ onClose }: { onClose: () => void }) {
   const router = useRouter()
   const { setPlayingTrackId } = usePreviewPlayer()
@@ -60,6 +77,19 @@ export default function RecordDiggingModal({ onClose }: { onClose: () => void })
   const exitTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const sendGestureTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pickTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // しきい値に達する前のドラッグ量。手前のジャケットをリアルタイムに指へ
+  // 追従させ、離した時にしきい値未満ならスプリングバックさせる。
+  const [dragState, setDragState] = useState<DragState>({ dx: 0, dy: 0, dragging: false })
+
+  // ジャケットの「奥から浮かび上がる」導入アニメーションは、モーダルを開いた
+  // 直後の初回表示だけに出す(棚を切り替えるたびに再生すると煩わしいため)。
+  // 初回readyに到達した後はtrueに固定し、以降のready再到達(棚切り替え)では
+  // アニメーションクラスを付けない。
+  const [hasEntered, setHasEntered] = useState(false)
+  useEffect(() => {
+    if (state === 'ready' && !hasEntered) setHasEntered(true)
+  }, [state, hasEntered])
 
   // 棚一覧の取得(モーダルを開いた瞬間に1回だけ)
   useEffect(() => {
@@ -188,12 +218,23 @@ export default function RecordDiggingModal({ onClose }: { onClose: () => void })
 
     if (shelves.length <= 1) return
 
+    if (direction === 'left') goToRelativeShelf(-1)
+    else if (direction === 'right') goToRelativeShelf(1)
+  }
+
+  /** 左右スワイプ・PREV/NEXTボタン共通の、隣の棚への移動。 */
+  function goToRelativeShelf(step: -1 | 1) {
+    if (shelves.length <= 1 || gesture === 'picking') return
     playFlip()
-    if (direction === 'left') {
-      setShelfIndex((i) => (i - 1 + shelves.length) % shelves.length)
-    } else if (direction === 'right') {
-      setShelfIndex((i) => (i + 1) % shelves.length)
-    }
+    setShelfIndex((i) => (i + step + shelves.length) % shelves.length)
+  }
+
+  /** 棚選択レール(ShelfPicker)からのタップによるジャンプ。左右スワイプの
+   * 1つずつの移動とは違い、一覧から直接その棚へ飛ぶ。 */
+  function handleSelectShelf(index: number) {
+    if (index === shelfIndex || gesture === 'picking') return
+    playFlip()
+    setShelfIndex(index)
   }
 
   // アンマウント時に保留中のモーション用タイマーを片付ける
@@ -221,24 +262,54 @@ export default function RecordDiggingModal({ onClose }: { onClose: () => void })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const swipeRef = useSwipeGesture(handleSwipe)
+  const swipeRef = useSwipeGesture(handleSwipe, setDragState)
 
   const current = deck[deckPosition]
   const upNext = deck.slice(deckPosition + 1, deckPosition + 4)
 
+  const currentShelf = shelves[shelfIndex]
+
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-[#120d08]" role="dialog" aria-modal="true" aria-label="Junkie Dig">
-      {/* オリジナル背景: 暖色照明+木目テクスチャ(SVG feTurbulence)。画像アセット無し */}
-      <svg className="pointer-events-none absolute inset-0 h-full w-full opacity-20" aria-hidden>
+    <div
+      className="animate-junkie-dig-scrim-in fixed inset-0 z-50 flex flex-col bg-[#0e0a06]"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Junkie Dig"
+    >
+      {/* オリジナル背景: 木箱の棚を見下ろしているような多層構成。画像アセット無し。
+       * 1) 色付けした木目ノイズ(feColorMatrixで直接褐色に着色、彩度ゼロ+暖色オーバーレイの
+       *    2枚重ねだと「グレーノイズに暖色ライトを当てた」だけに見えていたため一体化)
+       * 2) 奥の棚板を思わせる、ぼかした水平の帯を数本重ねて奥行きを暗示
+       * 3) 画面四隅を暗く落とすビネットで「棚を覗き込んでいる」枠を作る */}
+      <svg className="pointer-events-none absolute inset-0 h-full w-full opacity-45" aria-hidden>
         <filter id="junkie-dig-wood-grain">
-          <feTurbulence type="fractalNoise" baseFrequency="0.012 0.15" numOctaves={3} seed={7} />
-          <feColorMatrix type="saturate" values="0" />
+          <feTurbulence type="fractalNoise" baseFrequency="0.012 0.18" numOctaves={4} seed={7} />
+          <feColorMatrix
+            type="matrix"
+            values="0.35 0 0 0 0.10
+                    0.20 0 0 0 0.05
+                    0.08 0 0 0 0.01
+                    0    0 0 1 0"
+          />
         </filter>
         <rect width="100%" height="100%" filter="url(#junkie-dig-wood-grain)" />
       </svg>
+      <div className="pointer-events-none absolute inset-0 opacity-70">
+        {[12, 28, 46, 64, 82].map((top) => (
+          <div
+            key={top}
+            className="absolute inset-x-0 h-16 blur-2xl"
+            style={{ top: `${top}%`, background: 'linear-gradient(180deg, rgba(0,0,0,0), rgba(30,18,10,0.55), rgba(0,0,0,0))' }}
+          />
+        ))}
+      </div>
       <div
         className="pointer-events-none absolute inset-0"
-        style={{ background: 'radial-gradient(ellipse at 50% 20%, rgba(240,151,90,0.18), transparent 60%)' }}
+        style={{ background: 'radial-gradient(ellipse at 50% 22%, rgba(240,151,90,0.16), transparent 62%)' }}
+      />
+      <div
+        className="pointer-events-none absolute inset-0"
+        style={{ boxShadow: 'inset 0 0 min(22vw,220px) rgba(0,0,0,0.75)' }}
       />
 
       <div className="relative z-10 flex items-center justify-between p-4">
@@ -255,17 +326,84 @@ export default function RecordDiggingModal({ onClose }: { onClose: () => void })
 
       {shelves.length > 0 && <GenreShelfTabs shelves={shelves} currentIndex={shelfIndex} />}
 
-      <div ref={swipeRef} className="relative z-10 flex flex-1 items-center justify-center overflow-hidden overscroll-contain px-6">
-        {state === 'error' && (
-          <p className="text-sm text-white/50">読み込みに失敗しました。閉じてもう一度開いてみてください。</p>
-        )}
-        {state === 'loading' && <p className="text-sm text-white/30">棚を探しています...</p>}
+      <div className="relative z-10 flex flex-1 flex-col overflow-hidden lg:flex-row lg:items-center lg:gap-8 lg:px-10">
+        <div
+          ref={swipeRef}
+          className="relative flex flex-1 items-center justify-center overflow-hidden overscroll-contain px-6 lg:px-0"
+        >
+          {state === 'error' && (
+            <p className="text-sm text-white/50">読み込みに失敗しました。閉じてもう一度開いてみてください。</p>
+          )}
+          {state === 'loading' && <p className="text-sm text-white/30">棚を探しています...</p>}
+          {state === 'ready' && current && (
+            <>
+              {shelves.length > 1 && (
+                <div className="pointer-events-none absolute inset-y-0 left-1 z-30 flex items-center sm:left-4">
+                  <div className="pointer-events-auto flex flex-col items-center gap-1.5">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon-lg"
+                      className="rounded-full border-amber-400/30 bg-black/30 backdrop-blur hover:bg-black/50"
+                      onClick={() => goToRelativeShelf(-1)}
+                      aria-label="前の棚へ"
+                    >
+                      <ChevronLeft className="text-amber-200" />
+                    </Button>
+                    <span className="hidden text-[9px] tracking-wide text-white/30 sm:block">PREV SHELF</span>
+                  </div>
+                </div>
+              )}
+
+              <JacketStackEntrance skip={hasEntered}>
+                <CrateFrame>
+                  <RecordSleeve
+                    current={current}
+                    upNext={upNext}
+                    exiting={exiting}
+                    gesture={gesture}
+                    pulseKey={pulseKey}
+                    dragState={dragState}
+                  />
+                </CrateFrame>
+                <div className="mt-8 flex flex-col items-center gap-3 text-center lg:hidden">
+                  <p className="text-lg font-bold text-white">{current.title}</p>
+                  <p className="text-sm text-white/50">{current.artistName}</p>
+                  {current.firstTrackId && (
+                    <PreviewButton
+                      key={current.firstTrackId}
+                      previewUrl={current.firstTrackPreviewUrl}
+                      trackId={current.firstTrackId}
+                      size="lg"
+                    />
+                  )}
+                </div>
+              </JacketStackEntrance>
+
+              {shelves.length > 1 && (
+                <div className="pointer-events-none absolute inset-y-0 right-1 z-30 flex items-center sm:right-4">
+                  <div className="pointer-events-auto flex flex-col items-center gap-1.5">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon-lg"
+                      className="rounded-full border-amber-400/30 bg-black/30 backdrop-blur hover:bg-black/50"
+                      onClick={() => goToRelativeShelf(1)}
+                      aria-label="次の棚へ"
+                    >
+                      <ChevronRight className="text-amber-200" />
+                    </Button>
+                    <span className="hidden text-[9px] tracking-wide text-white/30 sm:block">NEXT SHELF</span>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
         {state === 'ready' && current && (
-          <div className="w-full">
-            <RecordSleeve current={current} upNext={upNext} exiting={exiting} gesture={gesture} pulseKey={pulseKey} />
-            <div className="mt-6 flex flex-col items-center gap-3 text-center">
-              <p className="text-lg font-bold text-white">{current.title}</p>
-              <p className="text-sm text-white/50">{current.artistName}</p>
+          <div className="hidden w-80 shrink-0 lg:block">
+            <div className="mb-4 flex justify-center">
               {current.firstTrackId && (
                 <PreviewButton
                   key={current.firstTrackId}
@@ -275,12 +413,15 @@ export default function RecordDiggingModal({ onClose }: { onClose: () => void })
                 />
               )}
             </div>
+            <RecordDetailPanel current={current} shelf={currentShelf} />
           </div>
         )}
       </div>
 
+      {shelves.length > 0 && <ShelfPicker shelves={shelves} currentIndex={shelfIndex} onSelect={handleSelectShelf} />}
+
       {showHint && state === 'ready' && (
-        <div className="pointer-events-none relative z-10 flex justify-center gap-6 pb-6 text-[11px] text-white/40">
+        <div className="pointer-events-none relative z-10 flex justify-center gap-6 pb-2 text-[11px] text-white/40">
           <span>↓ 次へ</span>
           <span>↑ 詳細へ</span>
           {shelves.length > 1 && <span>← → 棚を変える</span>}

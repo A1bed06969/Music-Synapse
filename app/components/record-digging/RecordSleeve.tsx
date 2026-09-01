@@ -3,6 +3,7 @@
 import type { CSSProperties } from 'react'
 import type { DiggingRecord } from '@/utils/recordDigging'
 import RecordDiggingHand, { type HandGesture } from './RecordDiggingHand'
+import type { DragState } from './useSwipeGesture'
 
 type Layer = {
   record: DiggingRecord
@@ -20,21 +21,28 @@ const PEEK_OPACITY = [0.55, 0.32, 0.15]
  * exiting/currentを含め全レイヤーを同じ配列・同じrecord.idキーで1回のmapに
  * まとめて描画しているのが肝で、下スワイプでdeckPositionが進むと「奥にいた
  * 1枚」が同じDOMノードのまま「手前」の位置スタイルへ切り替わり、
- * transition-allでその移動が自動的にアニメーションする(Reactのキー一致に
+ * transition-layerでその移動が自動的にアニメーションする(Reactのキー一致に
  * 乗せたFLIPアニメーション)。exiting/picking時だけ専用のkeyframeクラスに
- * 差し替えて「送られる」「つまみ上げられる」動きを出す。 */
+ * 差し替えて「送られる」「つまみ上げられる」動きを出す。
+ *
+ * dragStateは、しきい値に達する前のドラッグ量。手前(front)のレイヤーだけに
+ * リアルタイムで反映し、指でレコードを押しているような追従を作る。ドラッグ中は
+ * transition-noneで遅延なく追従させ、離した瞬間(dragging:falseに戻る)だけ
+ * transition-springでスプリングバックさせる。 */
 export default function RecordSleeve({
   current,
   upNext,
   exiting,
   gesture,
   pulseKey,
+  dragState,
 }: {
   current: DiggingRecord
   upNext: DiggingRecord[]
   exiting: DiggingRecord | null
   gesture: HandGesture
   pulseKey: number
+  dragState: DragState
 }) {
   const layers: Layer[] = [
     ...(exiting ? [{ record: exiting, role: 'exiting', depth: 0 } satisfies Layer] : []),
@@ -49,6 +57,10 @@ export default function RecordSleeve({
         .reverse()
         .map(({ record, role, depth }) => {
           const isFront = role === 'front'
+          const dragTransform = isFront
+            ? `translate(${dragState.dx}px, ${dragState.dy}px) rotate(${(dragState.dx * 0.04).toFixed(2)}deg)`
+            : 'scale(1)'
+
           const style: CSSProperties =
             role === 'peek'
               ? {
@@ -61,7 +73,7 @@ export default function RecordSleeve({
               : {
                   top: 0,
                   bottom: 0,
-                  transform: 'scale(1)',
+                  transform: isFront ? dragTransform : 'scale(1)',
                   opacity: 1,
                   zIndex: role === 'exiting' ? 30 : 20,
                 }
@@ -71,12 +83,16 @@ export default function RecordSleeve({
               ? 'animate-record-send-away'
               : role === 'picking'
                 ? 'animate-record-lift'
-                : 'transition-all duration-300 ease-out'
+                : isFront
+                  ? dragState.dragging
+                    ? 'transition-none'
+                    : 'transition-spring'
+                  : 'transition-layer'
 
           return (
             <div
               key={record.id}
-              className={`absolute inset-x-0 overflow-hidden rounded-lg bg-white/5 shadow-2xl shadow-black/70 ${role === 'front' || role === 'picking' ? 'ring-1 ring-white/10' : ''} ${animationClass}`}
+              className={`absolute inset-x-0 overflow-hidden rounded-[3px] bg-white/5 shadow-2xl shadow-black/80 ${role === 'front' || role === 'picking' ? 'ring-1 ring-black/40' : ''} ${animationClass}`}
               style={style}
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -86,6 +102,16 @@ export default function RecordSleeve({
                 className={`h-full w-full ${isFront ? 'object-contain' : 'object-cover'}`}
                 draggable={false}
               />
+              {/* ビニール袋の反射を思わせる、斜めに走る薄いハイライト */}
+              {(role === 'front' || role === 'picking') && (
+                <div
+                  className="pointer-events-none absolute inset-0"
+                  style={{
+                    background:
+                      'linear-gradient(115deg, transparent 30%, rgba(255,255,255,0.10) 46%, rgba(255,255,255,0.03) 52%, transparent 68%)',
+                  }}
+                />
+              )}
               {isFront && !record.firstTrackPreviewUrl && (
                 <span className="absolute bottom-2 right-2 rounded-full bg-black/70 px-2 py-0.5 text-[10px] text-white/60 backdrop-blur">
                   配信情報なし

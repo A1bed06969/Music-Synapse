@@ -19,12 +19,10 @@ export default function GenreShelfTabs({
   const next = shelves[(currentIndex + 1) % shelves.length]
 
   return (
-    <div className="relative z-10 flex items-center justify-center gap-3 px-4 text-center">
-      {showNeighbors && <span className="truncate text-xs text-white/25">{prev.label}</span>}
-      <span className="rounded-full border border-amber-400/40 bg-amber-400/10 px-4 py-1.5 text-sm font-semibold tracking-wide text-amber-200">
-        {current.label}
-      </span>
-      {showNeighbors && <span className="truncate text-xs text-white/25">{next.label}</span>}
+    <div className="relative z-10 flex items-center justify-center gap-4 px-4 pb-3 text-center">
+      {showNeighbors && <span className="truncate text-xs tracking-wide text-white/20">{prev.label}</span>}
+      <span className="text-sm font-semibold uppercase tracking-[0.25em] text-amber-200">{current.label}</span>
+      {showNeighbors && <span className="truncate text-xs tracking-wide text-white/20">{next.label}</span>}
     </div>
   )
 }
