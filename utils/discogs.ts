@@ -34,6 +34,26 @@ async function fetchDiscogs(url: string, label: string): Promise<any> {
   return res.json()
 }
 
+export type DiscogsArtistSearchResult = {
+  discogsId: number
+  name: string
+}
+
+/**
+ * アーティスト名でDiscogsを検索し、候補を返す(上位5件)。
+ * 同名・類似名の別人がヒットすることがあるため、呼び出し側で必ず確認を挟むこと
+ * (scripts/backfill-artist-discogs-ids.tsでは完全一致1件のみ自動採用)。
+ */
+export async function searchArtist(name: string): Promise<DiscogsArtistSearchResult[]> {
+  const params = new URLSearchParams({ type: 'artist', q: name })
+  const data = await fetchDiscogs(`${DISCOGS_BASE}/database/search?${params}`, 'artist search')
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (data.results ?? []).slice(0, 5).map((r: any) => ({
+    discogsId: r.id,
+    name: r.title,
+  }))
+}
+
 export type DiscogsReleaseSearchResult = {
   discogsId: number
   title: string
