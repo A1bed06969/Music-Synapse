@@ -1,54 +1,32 @@
 import type { ReactNode } from 'react'
 
+// クレート実写(public/images/record-digging/crate-slot.jpg)は元画像を
+// 1115x1005にクロップしたもの。その中の空きスロット(ジャケットを重ねる部分)
+// はx:[230,885] y:[100,755](655x655の正方形)だったため、その比率をここに
+// 定数化している。childrenはこのスロットの位置・サイズにぴったり重なるよう
+// 絶対配置する。
+const CRATE_ASPECT = 1115 / 1005
+const SLOT = { left: 20.63, top: 9.95, width: 58.74, height: 65.17 }
+
 /** ジャケットスタックを木箱のクレートの中に置いているように見せる装飾フレーム。
- * 左右の壁を台形(clip-path)で描いてパースを暗示し、奥の背板・手前のリップ、
- * 板の継ぎ目を思わせる横線を重ねる。画像アセットは使わず、すべてCSSグラデー
- * ション+clip-pathで構成している。 */
+ * クレート実写を背景に敷き、その空きスロット部分にちょうど重なる位置へ
+ * childrenを絶対配置することで「その箱の中に実際に入っている」ように見せる。 */
 export default function CrateFrame({ children }: { children: ReactNode }) {
   return (
-    <div className="relative mx-auto w-64 sm:w-80">
-      {/* 奥の背板 */}
-      <div
-        className="absolute -top-3 left-1/2 h-4 w-[112%] -translate-x-1/2 rounded-t-[2px]"
-        style={{ background: 'linear-gradient(180deg, #4a2f1a, #241608)' }}
+    <div className="relative mx-auto w-[min(27.23rem,90vw)] sm:w-[min(34.04rem,80vw)]" style={{ aspectRatio: CRATE_ASPECT }}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src="/images/record-digging/crate-slot.jpg"
+        alt=""
+        className="absolute inset-0 h-full w-full rounded-sm object-cover"
+        draggable={false}
       />
-
-      {/* 左壁 */}
       <div
-        className="absolute -left-9 top-1 bottom-1 w-11"
-        style={{
-          background: 'linear-gradient(100deg, #40290f 0%, #2a1a0a 60%, #180f06 100%)',
-          clipPath: 'polygon(100% 0%, 100% 100%, 0% 100%, 32% 6%)',
-        }}
+        className="absolute z-10"
+        style={{ left: `${SLOT.left}%`, top: `${SLOT.top}%`, width: `${SLOT.width}%`, height: `${SLOT.height}%` }}
       >
-        {[22, 44, 66, 88].map((top) => (
-          <div key={top} className="absolute inset-x-0 h-px bg-black/45" style={{ top: `${top}%` }} />
-        ))}
-        <div className="absolute inset-y-0 right-0 w-3 bg-gradient-to-l from-black/50 to-transparent" />
+        {children}
       </div>
-
-      {/* 右壁(左右対称) */}
-      <div
-        className="absolute -right-9 top-1 bottom-1 w-11"
-        style={{
-          background: 'linear-gradient(260deg, #40290f 0%, #2a1a0a 60%, #180f06 100%)',
-          clipPath: 'polygon(0% 0%, 0% 100%, 100% 100%, 68% 6%)',
-        }}
-      >
-        {[22, 44, 66, 88].map((top) => (
-          <div key={top} className="absolute inset-x-0 h-px bg-black/45" style={{ top: `${top}%` }} />
-        ))}
-        <div className="absolute inset-y-0 left-0 w-3 bg-gradient-to-r from-black/50 to-transparent" />
-      </div>
-
-      {/* 手前のリップ(木口のハイライト付き) */}
-      <div
-        className="absolute -bottom-5 left-1/2 h-5 w-[110%] -translate-x-1/2 rounded-b-[2px]"
-        style={{ background: 'linear-gradient(180deg, #5a3a1e, #241608)', boxShadow: '0 10px 20px rgba(0,0,0,0.55)' }}
-      />
-      <div className="absolute -bottom-5 left-1/2 h-[2px] w-[110%] -translate-x-1/2 bg-amber-100/20" />
-
-      <div className="relative z-10">{children}</div>
     </div>
   )
 }

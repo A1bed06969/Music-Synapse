@@ -57,7 +57,7 @@ function JacketStackEntrance({ children, skip }: { children: ReactNode; skip: bo
 
 export default function RecordDiggingModal({ onClose }: { onClose: () => void }) {
   const router = useRouter()
-  const { setPlayingTrackId } = usePreviewPlayer()
+  const { play: playPreview, stop: stopPreview } = usePreviewPlayer()
   const { playFlip, playPickup } = useDiggingSound()
 
   const [shelves, setShelves] = useState<DiggingShelf[]>([])
@@ -150,13 +150,17 @@ export default function RecordDiggingModal({ onClose }: { onClose: () => void })
   useEffect(() => {
     if (state !== 'ready' || deck.length === 0) return
     const current = deck[deckPosition]
-    setPlayingTrackId(current.firstTrackPreviewUrl && current.firstTrackId ? current.firstTrackId : null)
+    if (current.firstTrackId && current.firstTrackPreviewUrl) {
+      playPreview(current.firstTrackId, current.firstTrackPreviewUrl)
+    } else {
+      stopPreview()
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deck, deckPosition, state])
 
   // モーダルを閉じたら再生停止
   useEffect(() => {
-    return () => setPlayingTrackId(null)
+    return () => stopPreview()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -209,7 +213,7 @@ export default function RecordDiggingModal({ onClose }: { onClose: () => void })
       if (pickTimeoutRef.current) clearTimeout(pickTimeoutRef.current)
       // つまみ上げアニメーションを見せてからモーダルを閉じて遷移する
       pickTimeoutRef.current = setTimeout(() => {
-        setPlayingTrackId(null)
+        stopPreview()
         onClose()
         router.push(`/albums/${current.id}`)
       }, PICK_ANIMATION_MS)
@@ -249,7 +253,7 @@ export default function RecordDiggingModal({ onClose }: { onClose: () => void })
   function handleClose() {
     // つまみ上げモーション中に閉じられた場合、保留中の遷移をキャンセルする
     if (pickTimeoutRef.current) clearTimeout(pickTimeoutRef.current)
-    setPlayingTrackId(null)
+    stopPreview()
     onClose()
   }
 
@@ -276,32 +280,13 @@ export default function RecordDiggingModal({ onClose }: { onClose: () => void })
       aria-modal="true"
       aria-label="Junkie Dig"
     >
-      {/* オリジナル背景: 木箱の棚を見下ろしているような多層構成。画像アセット無し。
-       * 1) 色付けした木目ノイズ(feColorMatrixで直接褐色に着色、彩度ゼロ+暖色オーバーレイの
-       *    2枚重ねだと「グレーノイズに暖色ライトを当てた」だけに見えていたため一体化)
-       * 2) 奥の棚板を思わせる、ぼかした水平の帯を数本重ねて奥行きを暗示
-       * 3) 画面四隅を暗く落とすビネットで「棚を覗き込んでいる」枠を作る */}
-      <svg className="pointer-events-none absolute inset-0 h-full w-full opacity-45" aria-hidden>
-        <filter id="junkie-dig-wood-grain">
-          <feTurbulence type="fractalNoise" baseFrequency="0.012 0.18" numOctaves={4} seed={7} />
-          <feColorMatrix
-            type="matrix"
-            values="0.35 0 0 0 0.10
-                    0.20 0 0 0 0.05
-                    0.08 0 0 0 0.01
-                    0    0 0 1 0"
-          />
-        </filter>
-        <rect width="100%" height="100%" filter="url(#junkie-dig-wood-grain)" />
-      </svg>
-      <div className="pointer-events-none absolute inset-0 opacity-70">
-        {[12, 28, 46, 64, 82].map((top) => (
-          <div
-            key={top}
-            className="absolute inset-x-0 h-16 blur-2xl"
-            style={{ top: `${top}%`, background: 'linear-gradient(180deg, rgba(0,0,0,0), rgba(30,18,10,0.55), rgba(0,0,0,0))' }}
-          />
-        ))}
+      {/* 背景: レコード箱の実写(public/images/record-digging/record-box.jpg)を
+       * 全面に敷き、可読性のため上に暗いスクリムを重ねる。その上にアンバーの
+       * 光暈と、画面四隅を暗く落とすビネットで「棚を覗き込んでいる」枠を作る。 */}
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/images/record-digging/record-box.jpg" alt="" className="h-full w-full object-cover" draggable={false} />
+        <div className="absolute inset-0 bg-[#0e0a06]/50" />
       </div>
       <div
         className="pointer-events-none absolute inset-0"

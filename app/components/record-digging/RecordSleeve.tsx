@@ -51,7 +51,7 @@ export default function RecordSleeve({
   ]
 
   return (
-    <div className="relative mx-auto aspect-square w-64 sm:w-80">
+    <div className="relative h-full w-full">
       {layers
         .slice()
         .reverse()
@@ -123,7 +123,7 @@ export default function RecordSleeve({
 
       <div
         key={gesture === 'sending' ? `sending-${pulseKey}` : gesture}
-        className={`pointer-events-none absolute -left-6 -top-5 z-40 w-24 ${gesture === 'sending' ? 'animate-hand-send' : ''} ${gesture === 'picking' ? 'animate-hand-pick' : ''}`}
+        className={`pointer-events-none absolute -right-[6%] -top-[15%] z-40 w-[53%] ${gesture === 'sending' ? 'animate-hand-send' : ''} ${gesture === 'picking' ? 'animate-hand-pick' : ''}`}
       >
         <RecordDiggingHand />
       </div>
