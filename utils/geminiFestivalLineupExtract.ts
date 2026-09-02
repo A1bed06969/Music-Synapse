@@ -51,9 +51,16 @@ export function extractOgImage(html: string): string | null {
  *
  * フェスの出演者一覧は、テキストではなくロゴ画像の並び(<img alt="アーティスト名">)
  * で組まれているサイトが実際にあり(例: numbershot.jp)、alt属性を先に本文へ
- * 展開しておかないとタグ除去で丸ごと消えて抽出0件になる。 */
+ * 展開しておかないとタグ除去で丸ごと消えて抽出0件になる。
+ *
+ * HTMLコメント(<!-- ... -->)は、中身のタグだけがタグ除去の対象になり
+ * コメント内の文字列(過去のアーカイブ情報を無効化しただけのマークアップ等)が
+ * 通常の本文と区別できずそのまま残ってしまう。TOKYO FMのスカレコページで、
+ * コメントアウトされた2023年のバックナンバーが「現在の推薦曲」として誤抽出
+ * された実例があったため、他のタグ除去より先にコメントごと丸ごと除去する。 */
 export function stripHtmlToText(html: string, maxLength = 15000): string {
-  const withoutScripts = html.replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<style[\s\S]*?<\/style>/gi, '')
+  const withoutComments = html.replace(/<!--[\s\S]*?-->/g, '')
+  const withoutScripts = withoutComments.replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<style[\s\S]*?<\/style>/gi, '')
   const withImgAltExpanded = withoutScripts.replace(/<img\b[^>]*\balt=["']([^"']*)["'][^>]*>/gi, ' $1 ')
   const text = withImgAltExpanded
     .replace(/<br\s*\/?>/gi, '\n')
