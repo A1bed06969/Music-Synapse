@@ -54,7 +54,10 @@ const STATION_URLS: Record<string, string> = {
   'エフエム岐阜': 'https://www.fmgifu.com/blog/index_0_4_0.html',
   'エフエム愛知': 'https://fma.co.jp/f/prg/alreco/',
   'エフエム石川': 'https://hellofive.jp/pickup/',
-  '三重エフエム放送': 'https://fmmie.jp/music/powerplay/',
+  // 当初/music/powerplay/を登録していたが、そちらは更新が止まっている
+  // (古い情報のまま)ことが判明。実際の最新情報はホームページの
+  // 「POWERPLAY」セクションに掲載されているため、こちらに差し替え。
+  '三重エフエム放送': 'https://fmmie.jp/',
   '富山エフエム放送': 'https://www.fmtoyama.co.jp/mpp/',
   '長野エフエム放送': 'https://www.fmnagano.co.jp/pp',
 
