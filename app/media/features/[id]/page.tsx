@@ -151,8 +151,14 @@ export default async function MediaFeatureDetailPage({
       ) : isSelection ? (
         hasMultipleYears ? (
           tilesByYear.map((group) => (
-            <section key={group.year} className="mt-10 first:mt-6">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-white/50">{group.year}</h2>
+            <section key={group.year} className="mt-14 first:mt-6">
+              <div className="flex items-center gap-4">
+                <h2 className="text-2xl font-bold text-white">
+                  {group.year}
+                  <span className="ml-1 text-sm font-medium text-white/40">年</span>
+                </h2>
+                <span className="h-px flex-1 bg-white/15" />
+              </div>
               <TileGrid tiles={group.tiles} />
             </section>
           ))
