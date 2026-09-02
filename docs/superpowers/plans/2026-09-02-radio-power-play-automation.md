@@ -2,22 +2,22 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 65局以上のラジオ局PP(パワープレイ/ヘビーローテーション)ページから、局のサイト構造を問わずGeminiで選曲を自動抽出し、既存の人力確認フロー(`radio_airplay_pick`)へ流し込む仕組みを、毎週自動実行のVercel Cronで動かす。
+**Goal:** 65局以上のラジオ局PP(パワープレイ/ヘビーローテーション)ページから、局のサイト構造を問わずGeminiで選曲を自動抽出し、既存の人力確認フロー(`radio_airplay_pick`)へ流し込む仕組みを、管理画面のボタン1つで実行できるようにする。
 
-**Architecture:** `media.power_play_url`列に各局のPPページURLを持たせ、汎用LLM抽出ユーティリティ(`utils/geminiRadioPickExtract.ts`)が任意のURLから選曲候補を取り出す。新設のcronルートが全局を巡回し、今月分の重複を除いた新規候補だけをiTunes候補付きで`radio_airplay_pick`にinsertする。カタログへの本登録は既存の管理画面(`/admin/data/media/radio-airplay-pick`)の人力確認フローに完全に委ねる。
+**Architecture:** `media.power_play_url`列に各局のPPページURLを持たせ、汎用LLM抽出ユーティリティ(`utils/geminiRadioPickExtract.ts`)が任意のURLから選曲候補を取り出す。新設のAPIルート(管理画面のボタンから呼ばれる)が全局を巡回し、今月分の重複を除いた新規候補だけをiTunes候補付きで`radio_airplay_pick`にinsertする。カタログへの本登録は既存の管理画面(`/admin/data/media/radio-airplay-pick`)の人力確認フローに完全に委ねる。自動実行(cron)は行わない(セキュリティ上の理由でユーザーが却下、Task 5参照)。
 
-**Tech Stack:** Next.js App Router (Node 24ネイティブTypeScript実行)、Supabase (Postgres)、`@google/genai`(gemini-3.1-flash-lite)、Vercel Cron、Node組み込みテストランナー(`node --test`)。
+**Tech Stack:** Next.js App Router (Node 24ネイティブTypeScript実行)、Supabase (Postgres)、`@google/genai`(gemini-3.1-flash-lite)、Node組み込みテストランナー(`node --test`)。
 
 **Spec:** `docs/superpowers/specs/2026-09-02-radio-power-play-automation-design.md`
 
 ## Global Constraints
 
-- 抽出結果の本登録(カタログ反映)は必ず人力確認を経由する。cronルートは`radio_airplay_pick`へのinsertまでしか行わない(既存方針、変更禁止)。
+- 抽出結果の本登録(カタログ反映)は必ず人力確認を経由する。収集APIルートは`radio_airplay_pick`へのinsertまでしか行わない(既存方針、変更禁止)。
 - 1局の取得・抽出失敗が他局の処理を止めてはならない(try/catchで局ごとに独立させる)。
 - iTunes検索(`searchTracks`)の403/429検知時は60秒のクールダウンを挟む(`scripts/backfill-radio-pick-itunes-candidates.ts`と同じ方針)。
-- 同一局・同一アーティスト・同一曲名の組み合わせは、今月内に既存行があれば再insertしない(重複防止)。
-- Node 24のネイティブTypeScript実行を使うテストファイルでは、相対importに拡張子`.ts`を明記し、`@/`エイリアスは使わない(`__tests__/disc-guide-import.integration.test.ts`と同じ規約)。
-- サイト全体を保護する`proxy.ts`のBasic認証は、`/api/cron/`配下だけ除外する(Vercel Cronは`Bearer $CRON_SECRET`を送るため、`Basic`以外を拒否する現行のBasic認証を通過できない)。この除外に伴い、cronルート自身の`CRON_SECRET`検証は必須(唯一の防御になるため省略不可)。
+- 同一局・同一アーティスト・同一曲名の組み合わせは、今月内に既存行があれば再insertしない(重複防止。ボタンを何度押しても安全)。
+- Node 24のネイティブTypeScript実行を使うテストファイルでは、相対importに拡張子`.ts`を明記し、`@/`エイリアスは使わない(`__tests__/disc-guide-import.integration.test.ts`と同じ規約)。相対importで結ばれた2つの非テストファイルが両方ともテストのimportグラフから到達可能な場合も、同様に`.ts`拡張子が必要(Task 2/3で実証済み、詳細はTask 2/3のセクション参照)。`@/`エイリアスのimportはNext.jsのバンドラ解決のため対象外。
+- 自動実行(cron)は行わない。管理画面のボタン(既存のサイト全体Basic認証の内側)から手動で呼ぶAPIルートとして実装する。`proxy.ts`・`vercel.json`は変更しない。
 
 ---
 
@@ -586,75 +586,35 @@ git commit -m "feat: seed power_play_url for the 3 pilot radio stations"
 
 ---
 
-### Task 5: cronルートと認証除外
+### Task 5: 手動収集ページ(管理画面ボタン)
+
+**方針変更(2026-09-02)**: 当初はVercel Cronによる自動実行を予定していたが、実装に入る過程で「Cronからのリクエストを通すにはサイト全体のBasic認証(`proxy.ts`)から`/api/cron/`を除外する必要がある」ことが判明し、ユーザーがこれをセキュリティ上の懸念として明確に却下した。加えてVercel本番環境変数への`CRON_SECRET`登録という、このワークツリー外の副作用も避けたい。そのため**自動実行はやめ、管理画面のボタン1つで手動実行する方式**に変更する。管理画面は既にサイト全体のBasic認証の内側にあるため、`proxy.ts`・`vercel.json`には一切手を加えない。既存の管理画面パターン(`app/admin/data/discguides/DiscGuideDriveImport.tsx`)と同じ「クライアントコンポーネントからAPIルートをfetchし、結果をその場に表示する」構成を踏襲する。
 
 **Files:**
-- Modify: `proxy.ts`
-- Create: `app/api/cron/radio-power-play/route.ts`
-- Create: `vercel.json`
-- Test: `__tests__/radio-power-play-cron.integration.test.ts`
-- Modify: `.env.local`(`CRON_SECRET`を追加)
+- Create: `app/api/admin/radio-power-play-collect/route.ts`
+- Create: `app/admin/data/media/radio-power-play-collect/page.tsx`
+- Create: `app/admin/data/media/radio-power-play-collect/CollectButton.tsx`
+- Modify: `app/admin/adminTools.ts`
+- Test: `__tests__/radio-power-play-collect.integration.test.ts`
 
 **Interfaces:**
 - Consumes:
   - `extractRadioPicksFromUrl(stationName: string, url: string): Promise<RadioPickCandidate[]>`(Task 3)
   - `findItunesCandidate(artistName: string, trackTitle: string): Promise<ItunesTrackMatch | null>` / `isRateLimitError(err: unknown): boolean`(Task 2)
   - `media.power_play_url`(Task 1・Task 4でシード済み)
-- Produces: `GET /api/cron/radio-power-play`(`Authorization: Bearer $CRON_SECRET`必須)。レスポンス形式: `{ stations: number, totalInserted: number, results: { station: string, extracted: number, inserted: number, error?: string }[] }`
+- Produces: `POST /api/admin/radio-power-play-collect`(既存のサイト全体Basic認証で保護される。追加の認証チェックは行わない)。レスポンス形式: `{ stations: number, totalInserted: number, results: { station: string, extracted: number, inserted: number, error?: string }[] }`
 
-- [ ] **Step 1: `.env.local`にCRON_SECRETを追加する**
-
-ランダムな文字列を生成して追記する(値は出力・表示しない):
-
-```bash
-echo "CRON_SECRET=$(openssl rand -hex 32)" >> .env.local
-```
-
-- [ ] **Step 2: `proxy.ts`の認証除外を実装する**
-
-`proxy.ts`を以下のように変更する:
+- [ ] **Step 1: APIルートを実装する**
 
 ```ts
-import { NextResponse } from 'next/server'
-import type { NextRequest } from 'next/server'
-
-// サイト全体をBasic認証で保護する。管理画面(/admin以下)はデータを自由に
-// 書き換えられる(ログイン機構が無い前提のため)、公開ページも含めて
-// サイト全体を非公開にする。
-// 例外: /api/cron/配下はVercel Cronからの呼び出し専用で、Vercelは
-// Authorization: Bearer $CRON_SECRET を送る(Basic認証ではない)ため、
-// このミドルウェアでは素通りさせ、ルート自身のCRON_SECRET検証に委ねる。
-export function proxy(request: NextRequest) {
-  const authHeader = request.headers.get('authorization')
-
-  if (authHeader?.startsWith('Basic ')) {
-    const base64Credentials = authHeader.slice('Basic '.length)
-    const [user, password] = Buffer.from(base64Credentials, 'base64').toString('utf-8').split(':')
-    if (user === process.env.BASIC_AUTH_USER && password === process.env.BASIC_AUTH_PASSWORD) {
-      return NextResponse.next()
-    }
-  }
-
-  return new NextResponse('Authentication required.', {
-    status: 401,
-    headers: { 'WWW-Authenticate': 'Basic realm="Music Synapse"' },
-  })
-}
-
-export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|api/cron/).*)'],
-}
-```
-
-- [ ] **Step 3: cronルートを実装する**
-
-```ts
-// app/api/cron/radio-power-play/route.ts
+// app/api/admin/radio-power-play-collect/route.ts
 //
-// Vercel Cronから毎週呼ばれ、media.power_play_urlが設定済みの全局について
-// パワープレイ/ヘビーローテーションをGeminiで抽出し、今月分の重複を除いた
-// 新規候補をradio_airplay_pickへ登録する(カタログへの本登録は行わない。
-// 既存の人力確認フロー/admin/data/media/radio-airplay-pickに委ねる)。
+// 管理画面の「今すぐ全局を収集する」ボタンから呼ばれる。media.power_play_urlが
+// 設定済みの全局について、パワープレイ/ヘビーローテーションをGeminiで抽出し、
+// 今月分の重複を除いた新規候補をradio_airplay_pickへ登録する(カタログへの
+// 本登録は行わない。既存の人力確認フロー/admin/data/media/radio-airplay-pickに
+// 委ねる)。サイト全体を保護するBasic認証(proxy.ts)の内側にあるため、
+// このルート自体に追加の認証チェックは不要。
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/utils/Supabase/admin'
 import { extractRadioPicksFromUrl } from '@/utils/geminiRadioPickExtract'
@@ -673,12 +633,7 @@ function firstDayOfCurrentMonthISO(): string {
 
 type StationResult = { station: string; extracted: number; inserted: number; error?: string }
 
-export async function GET(request: Request) {
-  const authHeader = request.headers.get('authorization')
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
-  }
-
+export async function POST() {
   const supabase = createAdminClient()
 
   const { data: stations, error: stationsError } = await supabase
@@ -751,29 +706,150 @@ export async function GET(request: Request) {
 }
 ```
 
-- [ ] **Step 4: `vercel.json`を作成する**
+- [ ] **Step 2: 収集ボタンのクライアントコンポーネントを実装する**
 
-```json
-{
-  "crons": [
-    { "path": "/api/cron/radio-power-play", "schedule": "0 21 * * 1" }
-  ]
+```tsx
+// app/admin/data/media/radio-power-play-collect/CollectButton.tsx
+//
+// app/admin/data/discguides/DiscGuideDriveImport.tsxと同じパターン:
+// クライアント側からAPIルートをfetchし、結果をその場に表示する
+// (サーバーアクションではなくAPIルートにしているのは、このルートを
+// __tests__/radio-power-play-collect.integration.test.tsから直接
+// HTTPで叩いて検証できるようにするため)。
+'use client'
+
+import { useState } from 'react'
+
+type StationResult = { station: string; extracted: number; inserted: number; error?: string }
+type CollectResponse = { stations: number; totalInserted: number; results: StationResult[] }
+
+type State =
+  | { status: 'idle' }
+  | { status: 'running' }
+  | { status: 'done'; data: CollectResponse }
+  | { status: 'error'; message: string }
+
+export default function CollectButton() {
+  const [state, setState] = useState<State>({ status: 'idle' })
+
+  const handleClick = async () => {
+    setState({ status: 'running' })
+    try {
+      const res = await fetch('/api/admin/radio-power-play-collect', { method: 'POST' })
+      const body = await res.json()
+      if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`)
+      setState({ status: 'done', data: body })
+    } catch (err) {
+      setState({ status: 'error', message: (err as Error).message })
+    }
+  }
+
+  const isBusy = state.status === 'running'
+
+  return (
+    <div className="mt-4">
+      <button
+        type="button"
+        onClick={handleClick}
+        disabled={isBusy}
+        className="rounded bg-blue-600 px-4 py-2 text-sm hover:bg-blue-700 disabled:opacity-50"
+      >
+        {isBusy ? '収集中...(数分かかる場合があります)' : '今すぐ全局を収集する'}
+      </button>
+
+      {state.status === 'error' && <p className="mt-2 text-xs text-red-400">エラー: {state.message}</p>}
+
+      {state.status === 'done' && (
+        <div className="mt-3 text-xs">
+          <p className="text-green-400">
+            {state.data.stations}局を処理し、新規{state.data.totalInserted}件を登録しました。
+          </p>
+          <ul className="mt-2 space-y-1 text-white/50">
+            {state.data.results.map((r) => (
+              <li key={r.station}>
+                {r.station}: 抽出{r.extracted}件 / 新規{r.inserted}件
+                {r.error && <span className="text-red-400"> — エラー: {r.error}</span>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  )
 }
 ```
 
-(UTC月曜21:00 = JST火曜6:00に毎週実行)
+- [ ] **Step 3: ページを実装する**
+
+```tsx
+// app/admin/data/media/radio-power-play-collect/page.tsx
+import Link from 'next/link'
+import { createClient } from '@/utils/Supabase/server'
+import CollectButton from './CollectButton'
+
+export default async function RadioPowerPlayCollectPage() {
+  const supabase = await createClient()
+  const { data: stations } = await supabase
+    .from('media')
+    .select('name, power_play_url')
+    .eq('media_type', 'radio')
+    .not('power_play_url', 'is', null)
+    .order('name')
+
+  return (
+    <div className="mx-auto max-w-[900px] px-6 py-12">
+      <Link href="/admin/data/media" className="text-xs text-white/40 hover:text-white/70">
+        ← メディア&オンエアに戻る
+      </Link>
+
+      <h1 className="mt-4 text-2xl font-bold">ラジオ局PP自動収集</h1>
+      <p className="mt-2 text-sm text-white/50">
+        URLが登録済みの局について、パワープレイ/ヘビーローテーションをGeminiでまとめて抽出し、
+        新規に見つかった選曲を「HRPP 手動マッチング」画面の候補として登録します。ボタンは何度押しても
+        安全です(今月内に既に登録済みの選曲は重複登録されません)。
+      </p>
+
+      <p className="mt-6 text-xs font-semibold uppercase tracking-wide text-white/30">
+        対象局({stations?.length ?? 0}局)
+      </p>
+      <ul className="mt-2 space-y-1 text-xs text-white/50">
+        {(stations ?? []).map((s) => (
+          <li key={s.name}>{s.name}</li>
+        ))}
+        {(stations?.length ?? 0) === 0 && <li>URLが登録済みの局がまだありません。</li>}
+      </ul>
+
+      <CollectButton />
+    </div>
+  )
+}
+```
+
+- [ ] **Step 4: 管理画面ツール一覧に追加する**
+
+`app/admin/adminTools.ts`の「メディア&オンエア」グループに、`radio-airplay-pick`のエントリの直後へ以下を追加する:
+
+```ts
+      {
+        href: '/admin/data/media/radio-power-play-collect',
+        label: 'ラジオ局PP自動収集',
+        description: 'URL登録済みの全局のパワープレイ/ヘビーローテーションをGeminiでまとめて抽出し、候補として登録する。',
+      },
+```
 
 - [ ] **Step 5: 結合テストを書く**
 
-`__tests__/radio-power-play-cron.integration.test.ts`:
+`__tests__/radio-power-play-collect.integration.test.ts`:
 
 ```ts
-// __tests__/radio-power-play-cron.integration.test.ts
+// __tests__/radio-power-play-collect.integration.test.ts
 //
-// ラジオPP自動収集cronルートの結合テスト。実際のGemini/iTunes呼び出しを含む
+// ラジオPP自動収集APIルートの結合テスト。実際のGemini/iTunes呼び出しを含む
 // (モックしない、このプロジェクトの既存結合テストと同じ方針)。
 // 前提: dev server (`npm run dev`) が起動していること。起動していない場合は
-// failではなくskipする。CRON_SECRET / GEMINI_API_KEYが.env.localに必要。
+// failではなくskipする。サイト全体がBasic認証配下にあるためAuthorization
+// ヘッダを付ける(__tests__/disc-guide-import.integration.test.tsと同じ
+// パターン)。GEMINI_API_KEYが.env.localに必要。
 //
 // 実行: npm test
 
@@ -782,36 +858,40 @@ import assert from 'node:assert/strict'
 
 const BASE_URL = process.env.TEST_BASE_URL ?? 'http://127.0.0.1:3000'
 
+function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
+  const user = process.env.BASIC_AUTH_USER ?? ''
+  const pass = process.env.BASIC_AUTH_PASSWORD ?? ''
+  const token = Buffer.from(`${user}:${pass}`).toString('base64')
+  return { Authorization: `Basic ${token}`, ...extra }
+}
+
 async function isServerUp(): Promise<boolean> {
   try {
-    const res = await fetch(`${BASE_URL}/api/cron/radio-power-play`, { signal: AbortSignal.timeout(5000) })
-    return res.status !== undefined
+    const res = await fetch(`${BASE_URL}/admin/data/media/radio-power-play-collect`, {
+      headers: authHeaders(),
+      signal: AbortSignal.timeout(5000),
+    })
+    return res.status !== 404
   } catch {
     return false
   }
 }
 
-describe('GET /api/cron/radio-power-play', () => {
-  test('rejects requests without the correct CRON_SECRET (and proves Basic auth was bypassed)', async (t) => {
+describe('POST /api/admin/radio-power-play-collect', () => {
+  test('rejects requests without Basic auth (site-wide proxy.ts still protects this route)', async (t) => {
     if (!(await isServerUp())) return t.skip('dev server not running')
 
-    const res = await fetch(`${BASE_URL}/api/cron/radio-power-play`)
+    const res = await fetch(`${BASE_URL}/api/admin/radio-power-play-collect`, { method: 'POST' })
     assert.equal(res.status, 401)
-    // proxy.tsのBasic認証ブロックなら "Authentication required." というプレーン
-    // テキストが返る。JSONで{error:'unauthorized'}が返っていれば、ミドルウェアを
-    // 通過してルート自身のCRON_SECRET検証に到達したことが確認できる。
-    assert.match(res.headers.get('content-type') ?? '', /application\/json/)
-    const body = await res.json()
-    assert.equal(body.error, 'unauthorized')
   })
 
-  test('runs the collection for seeded pilot stations with a valid CRON_SECRET', async (t) => {
+  test('runs the collection for seeded pilot stations with valid Basic auth', async (t) => {
     if (!(await isServerUp())) return t.skip('dev server not running')
-    if (!process.env.CRON_SECRET) return t.skip('CRON_SECRET not set')
     if (!process.env.GEMINI_API_KEY) return t.skip('GEMINI_API_KEY not set')
 
-    const res = await fetch(`${BASE_URL}/api/cron/radio-power-play`, {
-      headers: { Authorization: `Bearer ${process.env.CRON_SECRET}` },
+    const res = await fetch(`${BASE_URL}/api/admin/radio-power-play-collect`, {
+      method: 'POST',
+      headers: authHeaders(),
     })
     const text = await res.text()
     assert.equal(res.status, 200, text)
@@ -832,28 +912,32 @@ describe('GET /api/cron/radio-power-play', () => {
 ```bash
 npm run dev &
 sleep 3
-npm test -- __tests__/radio-power-play-cron.integration.test.ts
+npm test -- __tests__/radio-power-play-collect.integration.test.ts
 ```
 
-Expected: PASS(2 tests)。1つ目のテストが「Basic認証を通過してルート自身の401に到達した」ことを検証しており、これが`proxy.ts`のmatcher変更が正しく効いていることの証明になる。
+Expected: PASS(2 tests)。1つ目のテストは、このルートが(何も変更していない)既存のBasic認証で確実に保護され続けていることの確認になる。
 
 - [ ] **Step 7: 型チェックとlint**
 
-Run: `npx tsc --noEmit && npx eslint proxy.ts app/api/cron/radio-power-play/route.ts`
+Run: `npx tsc --noEmit && npx eslint app/api/admin/radio-power-play-collect/route.ts app/admin/data/media/radio-power-play-collect/page.tsx app/admin/data/media/radio-power-play-collect/CollectButton.tsx app/admin/adminTools.ts`
 Expected: エラーなし
 
-- [ ] **Step 8: Vercel環境変数に`CRON_SECRET`を設定する**
+- [ ] **Step 8: devサーバーでブラウザ相当の動作確認をする**
 
-`.env.local`の`CRON_SECRET`と同じ値を、Vercelプロジェクトの環境変数(Production)に追加する(`npx vercel env add CRON_SECRET production`、値は`.env.local`の値を使い、コミット履歴やチャットには出力しない)。
+`curl`で`/admin/data/media/radio-power-play-collect`にBasic認証付きでアクセスし、対象局一覧とボタンが描画されたHTMLが返ることを確認する:
+
+```bash
+curl -s -o /dev/null -w "%{http_code}\n" -u "$BASIC_AUTH_USER:$BASIC_AUTH_PASSWORD" http://localhost:3000/admin/data/media/radio-power-play-collect
+```
+
+Expected: `200`
 
 - [ ] **Step 9: Commit**
 
 ```bash
-git add proxy.ts "app/api/cron/radio-power-play/route.ts" vercel.json __tests__/radio-power-play-cron.integration.test.ts
-git commit -m "feat: add weekly cron route to collect radio power-play picks"
+git add app/api/admin/radio-power-play-collect/route.ts app/admin/data/media/radio-power-play-collect/page.tsx app/admin/data/media/radio-power-play-collect/CollectButton.tsx app/admin/adminTools.ts __tests__/radio-power-play-collect.integration.test.ts
+git commit -m "feat: add manual admin button to collect radio power-play picks"
 ```
-
-`.env.local`はgit管理外(既存の`.gitignore`)のためcommit対象に含めない。
 
 ---
 
