@@ -12,10 +12,93 @@ import { createAdminClient } from '@/utils/Supabase/admin'
 // 局名(mediaテーブルのnameと完全一致させる) → パワープレイ/ヘビーローテーション
 // ページのURL。判明した局から追記していく(utils/radioScrape.tsの3局は
 // 既に動作実績のあるURLをそのまま転記した)。
+//
+// 重複局に関する注記(2026-09-02、Web検索によるURL調査で判明):
+// mediaテーブルには同じ実在局が別名で複数行登録されているケースが他にもあった
+// (「エフエム・ノースウェーブ」問題と同種)。履歴のある方(radio_rotation件数が
+// 多い方)を正としてそちらにURLを設定し、履歴の少ない方(重複行)には設定しない
+// (新規収集が重複行の方に蓄積されるのを防ぐため)。
+//   - 「福井エフエム放送」(6件)を正とし、「FM福井」(1件、今回のテストで
+//     作られた分のみ)は対象から外した。utils/radioScrape.tsの正規表現パイロット
+//     は「FM福井」というstationName文字列をハードコードしているが、これは
+//     mediaテーブルとは独立した別の文字列なので影響しない。
+//   - 「東北放送」(5件)を正とし、「TBC東北放送」(3件)は対象から外した。
+//   - 「ABS秋田放送」と「秋田放送」も同一の重複関係にあるが、どちらもPPページ
+//     自体が見つからなかったため今回は対象外。
+// これらの重複行そのものの整理(統合)は別途「メディア統合」機能で対応する予定
+// (このスクリプトはURLを設定するだけで、mediaテーブルの重複行自体は解消しない)。
+//
+// 見つからなかった局(JRN/NRN系のクロスネット局など、パワープレイ的な
+// ページを持たない局が多い): RSKラジオ、東海ラジオ、静岡放送、九州朝日放送、
+// 南日本放送、熊本放送、STV札幌テレビ、ABS秋田放送、秋田放送、エフエム福島、
+// エフエム青森、TBSラジオ、アール・エフ・ラジオ日本、エフエム東京、FM802、
+// 北陸放送
 const STATION_URLS: Record<string, string> = {
   'J-WAVE': 'https://www.j-wave.co.jp/special/sonartrax/',
-  'FM福井': 'https://www.fmfukui.jp/heavyrotation/',
+  '福井エフエム放送': 'https://www.fmfukui.jp/heavyrotation/',
   'エフエム・ノースウエーブ': 'https://www.fmnorth.co.jp/megaplay/',
+
+  // 中国・四国
+  'エフエム山口': 'https://www.fmy.co.jp/pushone/',
+  'エフエム山陰': 'https://www.fm-sanin.co.jp/powerplay',
+  'エフエム徳島': 'https://www.fm807.jp/powerplay/',
+  'エフエム愛媛': 'https://www.joeufm.co.jp/heavy/',
+  'エフエム香川': 'https://www.fmkagawa.co.jp/prime_tune',
+  'エフエム高知': 'https://www.fmkochi.com/topics/415/',
+  '岡山エフエム放送': 'https://www.fm-okayama.co.jp/slap_shot/new/index.html',
+  '広島エフエム放送': 'https://hfm.jp/program/power-push/',
+
+  // 中部・北陸
+  'CBCラジオ': 'https://radichubu.jp/campaignsong/',
+  'エフエムラジオ新潟': 'https://www.fmniigata.com/power_play',
+  'エフエム岐阜': 'https://www.fmgifu.com/blog/index_0_4_0.html',
+  'エフエム愛知': 'https://fma.co.jp/f/prg/alreco/',
+  'エフエム石川': 'https://hellofive.jp/pickup/',
+  '三重エフエム放送': 'https://fmmie.jp/music/powerplay/',
+  '富山エフエム放送': 'https://www.fmtoyama.co.jp/mpp/',
+  '長野エフエム放送': 'https://www.fmnagano.co.jp/pp',
+
+  // 九州・沖縄
+  'CROSS FM': 'https://www.crossfm.co.jp/contents/w_main.php?oya_id=3',
+  'LOVE FM': 'https://lovefm.co.jp/cool_cuts',
+  'エフエム佐賀': 'https://www.fmsaga.co.jp/powerplay/',
+  'エフエム大分': 'https://www.fmoita.co.jp/powerplay/',
+  'エフエム宮崎': 'https://joyfm.co.jp/powerplay/',
+  'エフエム熊本': 'https://fmk.fm/powerwave/',
+  'エフエム福岡': 'https://www.fmfukuoka.co.jp/powerplay/',
+  'エフエム長崎': 'https://www.fmnagasaki.co.jp/smilecuts/',
+  'エフエム鹿児島': 'https://www.myufm.jp/song/',
+
+  // 北海道・東北
+  'STVラジオ': 'https://www.stv.jp/radio/music/suisen/index.html',
+  '東北放送': 'https://www.tbc-sendai.co.jp/02radio/power/',
+  'エフエム仙台': 'https://www.datefm.co.jp/megaplay/',
+  'エフエム北海道': 'https://www.air-g.co.jp/powerplay/',
+  'エフエム山形': 'https://rfm.co.jp/mhp',
+  'エフエム岩手': 'https://www.fmii.co.jp/reps/',
+  // 月ごとにURL自体が変わる形式(/monthly-selection/YYYY-M/)。月が変わったら
+  // scripts/backfill-radio-station-urls.tsのこの値を更新する必要がある。
+  'エフエム秋田': 'https://www.fm-akita.co.jp/monthly-selection/2026-9/',
+  '北海道放送': 'https://www.hbc.co.jp/radio/information/list-recom.html',
+
+  // 関東
+  'LuckyFM茨城放送': 'https://lucky-ibaraki.com/powerplay/',
+  'エフエムナックファイブ': 'https://www.nack5.co.jp/power-play/',
+  'エフエム富士': 'https://www.fmfuji.jp/soundf.php',
+  'エフエム栃木': 'https://www.berry.co.jp/b-hot/',
+  'エフエム群馬': 'https://www.fmgunma.com/powerplay/',
+  // JSレンダリングのため、素のfetchでは内容が取得できず抽出0件になる可能性が
+  // 高い(utils/geminiFestivalLineupExtract.tsの既知の制約と同じ)。URLとしては
+  // 正しいので登録だけしておく。
+  'ベイエフエム': 'https://www.bayfm.co.jp/power/',
+  '山梨放送': 'https://www.ybs.jp/hits/',
+
+  // 関西
+  'FM大阪': 'https://www.fmosaka.net/_tags/%E2%98%85POWER_PLAY',
+  'エフエム京都': 'https://fm-kyoto.jp/info_cat/power-play/',
+  'エフエム滋賀': 'https://www.e-radio.co.jp/hotstuff/',
+  'ラジオ関西': 'https://jocr.jp/mpsong/',
+  '兵庫エフエム放送': 'https://kiss-fm.co.jp/hotraxx/',
 }
 
 async function main() {
