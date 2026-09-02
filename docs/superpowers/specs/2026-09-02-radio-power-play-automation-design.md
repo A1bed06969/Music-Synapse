@@ -90,6 +90,8 @@ export async function GET(request: Request) {
 
 このプロジェクトにはcronルート・`CRON_SECRET`のような認証パターンがまだ存在しないため、Vercel公式のCron保護方式(`Authorization: Bearer $CRON_SECRET`、Vercel Cronからのリクエストには自動的にこのヘッダーが付与される)を新規に採用する。実装時にVercelプロジェクトの環境変数へ`CRON_SECRET`を追加する作業が必要(値はランダムな文字列を生成して設定する)。
 
+**重要な前提の修正(plan作成時に判明)**: `proxy.ts`がサイト全体(全APIルート含む)をBasic認証で保護しており、`Basic `以外のAuthorizationヘッダーは無条件に401を返す。Vercel Cronは`Bearer $CRON_SECRET`ヘッダーを送るため、このミドルウェアを素通りできず、cronルートに到達する前に必ず401でブロックされてしまう。そのため`proxy.ts`の`config.matcher`から`/api/cron/`配下を除外する変更が必須になる。Basic認証を外す分、ルート自体の`CRON_SECRET`検証が唯一の防御になるため、この検証は必須(オプションではない)。
+
 処理内容:
 1. `media`から`power_play_url is not null`の局を全件取得
 2. 各局について`extractRadioPicksFromUrl`を呼び、成功した候補を受け取る
