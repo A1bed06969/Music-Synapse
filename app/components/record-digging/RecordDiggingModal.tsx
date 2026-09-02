@@ -280,14 +280,15 @@ export default function RecordDiggingModal({ onClose }: { onClose: () => void })
       {/* 背景: CrateFrame(クレートの実写、ピント合った状態)と同じ元写真を、
        * 強くぼかし・暗くした状態で全面に敷く。CrateFrame自体をもう一枚重ねると
        * 二重の箱に見えてしまうため、あくまで「奥の部屋がボケて写り込んでいる」
-       * 被写界深度的な処理にとどめている。scale-110は、ぼかしで画像端の透明
-       * フチが見えてしまうのを画面外へ逃がすため。 */}
+       * 被写界深度的な処理にとどめている。scale-150は、ぼかしで画像端の透明
+       * フチが見えてしまうのを画面外へ逃がすため(scale-110では縦長のスマホ
+       * 画面だと上端の余白が足りず、上部だけ背景が透けて見える不具合があった)。 */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src="/images/record-digging/record-box.jpg"
+          src="/images/record-digging/record-box-bg.jpg"
           alt=""
-          className="h-full w-full scale-110 object-cover blur-2xl"
+          className="h-full w-full scale-150 object-cover blur-2xl"
           draggable={false}
         />
         <div className="absolute inset-0 bg-[#0e0a06]/55" />
