@@ -25,6 +25,16 @@ export async function saveFactCheckCorrection(pickId: string, artistName: string
   revalidatePath('/admin/data/media/radio-fact-check')
 }
 
+/** 局サイトが今月分ではなく別の月の選曲を返してきた等、その月の候補として
+ * そもそも成立しない行を一覧から取り除く(アーティスト名・曲名の修正では
+ * 直せないケース向け)。まだ本登録前の候補データのみが対象の画面のため、
+ * 単純に候補行を削除するだけでよい。 */
+export async function deleteFactCheckPick(pickId: string): Promise<void> {
+  const supabase = createAdminClient()
+  await supabase.from('radio_airplay_pick').delete().eq('id', pickId)
+  revalidatePath('/admin/data/media/radio-fact-check')
+}
+
 /** 自動抽出が0件だった局(または元々手動専用の局)向けに、局サイトを直接見て
  * 確認した選曲をその場で新規登録する。人力で確認した上での入力のため、
  * fact_checked_correctはtrueで保存する。 */

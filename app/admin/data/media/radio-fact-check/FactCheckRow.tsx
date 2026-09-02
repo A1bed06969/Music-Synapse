@@ -4,7 +4,9 @@ import { useState, useTransition } from 'react'
 
 /** ファクトチェック一覧の1行分。TRUEにチェックすると即座に「抽出は正しかった」を
  * 記録する。FALSEにチェックするとその場でアーティスト名・曲名を編集できるように
- * なり、「保存」で正しい値に修正しつつ「抽出は間違っていた」を記録する。 */
+ * なり、「保存」で正しい値に修正しつつ「抽出は間違っていた」を記録する。局サイトが
+ * 別の月の選曲を返してきた等、修正では直せない行は「削除」でこの月の候補から
+ * 取り除ける。 */
 export default function FactCheckRow({
   pickId,
   artistName,
@@ -12,6 +14,7 @@ export default function FactCheckRow({
   factCheckedCorrect,
   markCorrectAction,
   saveCorrectionAction,
+  deleteAction,
 }: {
   pickId: string
   artistName: string
@@ -19,14 +22,18 @@ export default function FactCheckRow({
   factCheckedCorrect: boolean | null
   markCorrectAction: (pickId: string) => Promise<void>
   saveCorrectionAction: (pickId: string, artistName: string, trackTitle: string) => Promise<void>
+  deleteAction: (pickId: string) => Promise<void>
 }) {
   const [editing, setEditing] = useState(false)
   const [artistDraft, setArtistDraft] = useState(artistName)
   const [titleDraft, setTitleDraft] = useState(trackTitle)
+  const [deleted, setDeleted] = useState(false)
   const [isPending, startTransition] = useTransition()
 
   const inputClass =
     'min-w-0 flex-1 rounded-md border border-white/15 bg-white/5 px-2 py-1 text-sm text-white focus:border-white/30 focus:outline-none'
+
+  if (deleted) return null
 
   if (editing) {
     return (
@@ -67,6 +74,19 @@ export default function FactCheckRow({
         >
           キャンセル
         </button>
+        <button
+          type="button"
+          disabled={isPending}
+          onClick={() =>
+            startTransition(async () => {
+              setDeleted(true)
+              await deleteAction(pickId)
+            })
+          }
+          className="shrink-0 text-xs text-white/30 hover:text-red-400 disabled:opacity-40"
+        >
+          削除(別の月の選曲など)
+        </button>
       </li>
     )
   }
@@ -97,6 +117,19 @@ export default function FactCheckRow({
           />
           FALSE
         </label>
+        <button
+          type="button"
+          disabled={isPending}
+          onClick={() =>
+            startTransition(async () => {
+              setDeleted(true)
+              await deleteAction(pickId)
+            })
+          }
+          className="text-white/30 hover:text-red-400 disabled:opacity-40"
+        >
+          削除
+        </button>
       </div>
     </li>
   )

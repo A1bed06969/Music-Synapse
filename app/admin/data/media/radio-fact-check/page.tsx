@@ -9,7 +9,7 @@ import Link from 'next/link'
 import { createClient } from '@/utils/Supabase/server'
 import FactCheckRow from './FactCheckRow'
 import AddPickRow from './AddPickRow'
-import { markFactCheckCorrect, saveFactCheckCorrection, addManualPick } from './actions'
+import { markFactCheckCorrect, saveFactCheckCorrection, deleteFactCheckPick, addManualPick } from './actions'
 
 type PickRow = {
   id: string
@@ -145,6 +145,7 @@ export default async function RadioFactCheckPage({
                         factCheckedCorrect={p.fact_checked_correct}
                         markCorrectAction={markFactCheckCorrect}
                         saveCorrectionAction={saveFactCheckCorrection}
+                        deleteAction={deleteFactCheckPick}
                       />
                     ))}
                   </ul>
