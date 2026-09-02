@@ -15,16 +15,20 @@ type Album = {
 }
 
 type SortMode = 'kana' | 'release'
-type StatusFilter = 'all' | 'available' | 'apple_only' | 'none'
+type StatusFilter = 'all' | 'streaming' | 'unreleased'
+
+// album.streaming_statusは'all'/'apple_only'/'none'/'unreleased'/nullを取りうるが、
+// 実データでは'all'/'apple_only'はほぼ使われておらず(通常の配信中アルバムは
+// 明示的にタグ付けせずnullのまま)、'none'(配信終了・非公開等)と'unreleased'
+// (権利者都合で元々非解禁)だけが特別扱いされる(アーティスト個別ページのバッジ
+// 等、他の画面でも同じ扱い)。そのため「配信中」はこの2つに該当しないもの全部、
+// 「未解禁」はこの2つ、という判定にする。
+const UNRELEASED_VALUES = ['none', 'unreleased']
 
 const STATUS_FILTERS: { value: StatusFilter; label: string }[] = [
   { value: 'all', label: 'すべて' },
-  { value: 'available', label: `${STREAMING_STATUS_LABEL.all.icon} ${STREAMING_STATUS_LABEL.all.label}` },
-  {
-    value: 'apple_only',
-    label: `${STREAMING_STATUS_LABEL.apple_only.icon} ${STREAMING_STATUS_LABEL.apple_only.label}`,
-  },
-  { value: 'none', label: `${STREAMING_STATUS_LABEL.none.icon} ${STREAMING_STATUS_LABEL.none.label}` },
+  { value: 'streaming', label: `${STREAMING_STATUS_LABEL.all.icon} 配信中` },
+  { value: 'unreleased', label: `${STREAMING_STATUS_LABEL.none.icon} 未解禁` },
 ]
 
 export default function AlbumBrowseClient({
@@ -47,9 +51,10 @@ export default function AlbumBrowseClient({
         (a.title_kana ?? '').toLowerCase().includes(q) ||
         (a.artistName ?? '').toLowerCase().includes(q)
     )
-    if (statusFilter !== 'all') {
-      const target = statusFilter === 'available' ? 'all' : statusFilter
-      result = result.filter((a) => a.streamingStatus === target)
+    if (statusFilter === 'streaming') {
+      result = result.filter((a) => !UNRELEASED_VALUES.includes(a.streamingStatus ?? ''))
+    } else if (statusFilter === 'unreleased') {
+      result = result.filter((a) => UNRELEASED_VALUES.includes(a.streamingStatus ?? ''))
     }
     if (sortMode === 'release') {
       result = [...result].sort((a, b) => (b.releaseDate ?? '').localeCompare(a.releaseDate ?? ''))
