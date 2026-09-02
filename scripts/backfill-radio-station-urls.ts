@@ -99,6 +99,9 @@ const STATION_URLS: Record<string, string> = {
   'エフエム滋賀': 'https://www.e-radio.co.jp/hotstuff/',
   'ラジオ関西': 'https://jocr.jp/mpsong/',
   '兵庫エフエム放送': 'https://kiss-fm.co.jp/hotraxx/',
+  // ユーザー提供のURL。以前の調査ではbot対策で確認不能とされていたが、実際には
+  // 取得・抽出できることを確認済み。
+  'FM802': 'https://funky802.com/site/heavy',
 }
 
 async function main() {
