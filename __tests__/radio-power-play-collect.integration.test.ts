@@ -13,7 +13,7 @@
 //
 // 実行: npm test
 
-import { test, describe, before, after } from 'node:test'
+import { test, describe, after } from 'node:test'
 import assert from 'node:assert/strict'
 import { createAdminClient } from '../utils/Supabase/admin.ts'
 
@@ -55,13 +55,16 @@ describe('POST /api/admin/radio-power-play-collect', () => {
     assert.equal(res.status, 401)
   })
 
-  test('runs the collection for seeded pilot stations with valid Basic auth', async (t) => {
+  test('runs one batch of the collection with valid Basic auth', async (t) => {
     if (!(await isServerUp())) return t.skip('dev server not running')
     if (!process.env.GEMINI_API_KEY) return t.skip('GEMINI_API_KEY not set')
 
     const beforeTimestamp = new Date().toISOString()
 
-    const res = await fetch(`${BASE_URL}/api/admin/radio-power-play-collect`, {
+    // limit=2に絞って結合テストとしての実行時間・Gemini呼び出し回数を抑える
+    // (局数が50を超えるため、全件処理はこのテストの役割ではない。全件を通しで
+    // 検証したい場合は管理画面のボタンを実際に押して確認する)。
+    const res = await fetch(`${BASE_URL}/api/admin/radio-power-play-collect?limit=2`, {
       method: 'POST',
       headers: authHeaders(),
     })
@@ -79,11 +82,15 @@ describe('POST /api/admin/radio-power-play-collect', () => {
       createdPickIds.push(...createdRows.map((r) => r.id))
     }
 
-    assert.ok(body.stations >= 3, `expected at least the 3 seeded pilot stations, got ${body.stations}`)
-    const stationNames = body.results.map((r: { station: string }) => r.station)
-    assert.ok(stationNames.includes('FM福井'), 'expected FM福井 to be among the processed stations')
+    assert.ok(body.stations >= 3, `expected at least a few registered stations, got ${body.stations}`)
+    assert.equal(body.processed, 2, 'expected exactly the requested batch size to be processed')
+    assert.equal(body.results.length, 2)
+    // 局数がlimitより多い前提(実際52局超)なので、続きがあることを示す
+    // nextOffsetが設定されているはず
+    assert.equal(body.nextOffset, 2)
 
-    const fmFukui = body.results.find((r: { station: string }) => r.station === 'FM福井')
-    assert.equal(fmFukui.error, undefined, `FM福井 extraction should not error: ${fmFukui.error}`)
+    for (const r of body.results) {
+      assert.equal(r.error, undefined, `${r.station} extraction should not error: ${r.error}`)
+    }
   })
 })

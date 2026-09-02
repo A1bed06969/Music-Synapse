@@ -70,8 +70,12 @@ type GeminiEntry = {
   campaignName?: unknown
 }
 
-const MAX_ATTEMPTS = 2
-const RETRY_DELAY_MS = 2_000
+// gemini-3.1-flash-liteの無料枠は1分あたり15リクエストまでで、局数が多い
+// このユースケースでは連続実行で頻繁に429(RESOURCE_EXHAUSTED)に達する。
+// APIのエラーメッセージ自体が「8秒後に再試行してください」等を返してくるため、
+// 2秒程度の待機では短すぎる(実際に52局の一括収集で大量の429を確認した)。
+const MAX_ATTEMPTS = 3
+const RETRY_DELAY_MS = 12_000
 
 function isRetryableStatus(status: unknown): boolean {
   return status === 503 || status === 429

@@ -6,12 +6,20 @@
 // 本登録は行わない。既存の人力確認フロー/admin/data/media/radio-airplay-pickに
 // 委ねる)。サイト全体を保護するBasic認証(proxy.ts)の内側にあるため、
 // このルート自体に追加の認証チェックは不要。
+//
+// 局数(2026-09時点で50局超)が多く、Gemini(gemini-3.1-flash-lite)無料枠の
+// 1分15リクエスト制限に収まるよう局間に間隔を空けると、全局を1リクエストで
+// 処理しきる前にVercelのmaxDuration(300秒)へ達してしまう実例を確認した。
+// そのためoffset/limitでバッチ処理できるようにし、クライアント側
+// (CollectButton.tsx)が全局終わるまで繰り返し呼び出す設計にしている。
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/utils/Supabase/admin'
 import { extractRadioPicksFromUrl } from '@/utils/geminiRadioPickExtract'
 import { findItunesCandidate, isRateLimitError } from '@/utils/radioPickMatching'
 
 export const maxDuration = 300
+
+const DEFAULT_BATCH_SIZE = 10
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -24,25 +32,41 @@ function firstDayOfCurrentMonthISO(): string {
 
 type StationResult = { station: string; extracted: number; inserted: number; error?: string }
 
-export async function POST() {
+export async function POST(request: Request) {
+  const { searchParams } = new URL(request.url)
+  const offset = Math.max(0, Number(searchParams.get('offset') ?? '0') || 0)
+  const limit = Math.max(1, Number(searchParams.get('limit') ?? String(DEFAULT_BATCH_SIZE)) || DEFAULT_BATCH_SIZE)
+
   const supabase = createAdminClient()
 
-  const { data: stations, error: stationsError } = await supabase
+  const { data: allStations, error: stationsError } = await supabase
     .from('media')
     .select('name, area, prefecture, power_play_url')
     .eq('media_type', 'radio')
     .not('power_play_url', 'is', null)
+    .order('name')
 
   if (stationsError) {
     return NextResponse.json({ error: stationsError.message }, { status: 500 })
   }
+
+  const total = (allStations ?? []).length
+  const batch = (allStations ?? []).slice(offset, offset + limit)
 
   const monthStart = firstDayOfCurrentMonthISO()
   const todayDate = new Date().toISOString().slice(0, 10)
   const results: StationResult[] = []
   let totalInserted = 0
 
-  for (const station of stations ?? []) {
+  // Gemini(gemini-3.1-flash-lite)無料枠の1分15リクエスト制限に収まるよう、
+  // 局間に間隔を空ける(待機なしで52局を連続実行し429が多発した実例あり)。
+  const GEMINI_PACING_MS = 4_500
+  let isFirstStation = true
+
+  for (const station of batch) {
+    if (!isFirstStation) await sleep(GEMINI_PACING_MS)
+    isFirstStation = false
+
     try {
       const candidates = await extractRadioPicksFromUrl(station.name, station.power_play_url as string)
       let inserted = 0
@@ -93,5 +117,7 @@ export async function POST() {
     }
   }
 
-  return NextResponse.json({ stations: (stations ?? []).length, totalInserted, results })
+  const nextOffset = offset + batch.length < total ? offset + batch.length : null
+
+  return NextResponse.json({ stations: total, processed: batch.length, nextOffset, totalInserted, results })
 }
