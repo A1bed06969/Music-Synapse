@@ -36,6 +36,13 @@ export default async function RadioPowerPlayCollectPage() {
       </ul>
 
       <CollectButton />
+
+      <Link
+        href="/admin/data/media/radio-fact-check"
+        className="mt-6 inline-block text-xs text-white/40 hover:text-white/70"
+      >
+        収集結果をファクトチェックする →
+      </Link>
     </div>
   )
 }
