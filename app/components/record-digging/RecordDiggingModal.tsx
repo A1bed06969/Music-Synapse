@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { usePreviewPlayer } from '@/app/components/PreviewPlayerContext'
 import PreviewButton from '@/app/components/PreviewButton'
@@ -11,6 +11,7 @@ import GenreShelfTabs from './GenreShelfTabs'
 import ShelfPicker from './ShelfPicker'
 import RecordDetailPanel from './RecordDetailPanel'
 import CrateFrame from './CrateFrame'
+import { useCrateSlotRect } from './useCrateSlotRect'
 import SwipeGestureIcon from './SwipeGestureIcon'
 import { NEW_ARRIVALS_KEY, type DiggingShelf, type DiggingRecord } from '@/utils/recordDigging'
 import { Button } from '@/components/ui/button'
@@ -44,16 +45,21 @@ function reshuffleDeck(items: DiggingRecord[], prevLastId: string | null): Diggi
 
 type LoadState = 'loading' | 'ready' | 'error'
 
-/** ジャケットスタックの「奥から浮かび上がる」導入アニメーションを、このDOM
- * ノードが実際にマウントされた瞬間だけ判定して固定する。useState の遅延
- *初期化子は、このコンポーネントインスタンスがマウントされた最初の1回しか
- * 評価されないため、以降ドラッグや棚切り替えで親が何度再レンダーされても
- * (このノード自体が再マウントされない限り)結果がぶれない。もしuseEffect +
- * 親のstateで毎レンダー判定すると、アニメーション再生中の再レンダー(例えば
- * ドラッグ)でクラスが外れてアニメーションが途中で切れてしまう。 */
-function JacketStackEntrance({ children, skip }: { children: ReactNode; skip: boolean }) {
+/** ジャケットスタックの「奥から浮かび上がる」導入アニメーションを、この
+ * コンポーネントインスタンスが実際にマウントされた瞬間だけ判定して固定する。
+ * useState の遅延初期化子はマウント最初の1回しか評価されないため、以降
+ * ドラッグや棚切り替えで親が何度再レンダーされても(再マウントしない限り)
+ * 結果がぶれない。もしuseEffect + 親のstateで毎レンダー判定すると、アニメー
+ * ション再生中の再レンダー(例えばドラッグ)でクラスが外れて途中で切れてしまう。
+ *
+ * CrateFrame(ジャケット)とタイトル/アーティスト表示はどちらもposition:fixed
+ * (ビューポート基準の絶対配置)のため、共通の親要素にtransformを掛けて一括
+ * アニメーションさせることができない(transformを持つ祖先はfixed子要素の
+ * containing blockになってしまい、座標計算が狂う)。そのためこのフックが返す
+ * 真偽値を、各要素のclassNameに個別に適用する。 */
+function usePlayEntranceOnce(skip: boolean): boolean {
   const [playEntrance] = useState(() => !skip)
-  return <div className={`w-full ${playEntrance ? 'animate-junkie-dig-stack-in' : ''}`}>{children}</div>
+  return playEntrance
 }
 
 export default function RecordDiggingModal({ onClose }: { onClose: () => void }) {
@@ -76,6 +82,16 @@ export default function RecordDiggingModal({ onClose }: { onClose: () => void })
   const exitTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pickTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // アルバム詳細ページへの遷移中、遷移が完了するまでモーダルを開いたままにする
+  // ためのフラグ。isPendingがtrueになった実績(wasPendingRef)を経てfalseに戻った
+  // 瞬間が「新しいページの描画が完了した瞬間」なので、そこで初めてonCloseする。
+  // 遷移開始直後は(startTransitionの効果がまだ反映される前の1レンダーの間)
+  // isPendingがfalseのままなので、これを見ずに navigating && !isPending だけで
+  // 判定すると遷移開始直後に誤って即closeしてしまう。
+  const [navigating, setNavigating] = useState(false)
+  const [isPending, startTransition] = useTransition()
+  const wasPendingRef = useRef(false)
+
   // しきい値に達する前のドラッグ量。手前のジャケットをリアルタイムに指へ
   // 追従させ、離した時にしきい値未満ならスプリングバックさせる。
   const [dragState, setDragState] = useState<DragState>({ dx: 0, dy: 0, dragging: false })
@@ -88,6 +104,11 @@ export default function RecordDiggingModal({ onClose }: { onClose: () => void })
   useEffect(() => {
     if (state === 'ready' && !hasEntered) setHasEntered(true)
   }, [state, hasEntered])
+  const playEntrance = usePlayEntranceOnce(hasEntered)
+
+  // 背景写真(record-box-bg.jpg)内でジャケットが収まる位置。ビューポート
+  // サイズが変わるたびに再計算される。
+  const slotRect = useCrateSlotRect()
 
   // 棚一覧の取得(モーダルを開いた瞬間に1回だけ)
   useEffect(() => {
@@ -212,8 +233,10 @@ export default function RecordDiggingModal({ onClose }: { onClose: () => void })
       // つまみ上げアニメーションを見せてからモーダルを閉じて遷移する
       pickTimeoutRef.current = setTimeout(() => {
         stopPreview()
-        onClose()
-        router.push(`/albums/${current.id}`)
+        setNavigating(true)
+        startTransition(() => {
+          router.push(`/albums/${current.id}`)
+        })
       }, PICK_ANIMATION_MS)
       return
     }
@@ -247,6 +270,18 @@ export default function RecordDiggingModal({ onClose }: { onClose: () => void })
     }
   }, [])
 
+  // router.push()完了前にonClose()するとモーダルが先に消え、遷移先ページの
+  // 描画が終わるまでの一瞬、モーダルの下に隠れていた元のページが見えてしまう。
+  // それを防ぐため、遷移(isPending)が一度trueになりfalseに戻る=遷移先ページの
+  // 描画が完了した瞬間まで待ってからonCloseする。
+  useEffect(() => {
+    if (isPending) wasPendingRef.current = true
+    if (navigating && wasPendingRef.current && !isPending) {
+      onClose()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [navigating, isPending])
+
   function handleClose() {
     // つまみ上げモーション中に閉じられた場合、保留中の遷移をキャンセルする
     if (pickTimeoutRef.current) clearTimeout(pickTimeoutRef.current)
@@ -277,8 +312,11 @@ export default function RecordDiggingModal({ onClose }: { onClose: () => void })
       aria-modal="true"
       aria-label="Junkie Dig"
     >
-      {/* 背景: CrateFrame(クレートの実写)と同じ元写真を全面に敷く。暗いスクリムで
-       * 上に乗る文字・UIの視認性を確保する。 */}
+      {/* 背景: モーダル全面に実写(record-box-bg.jpg)を敷く。ジャケットスタック
+       * (CrateFrame)は、この写真に写っているクレートの空きスロット位置に
+       * 正確に重なるよう useCrateSlotRect で計算した座標に絶対配置している
+       * (背景写真自体の中にクレートの箱が写っているため、CrateFrame側では
+       * 別の箱画像を描画しない=箱が二重に見える問題を避けている)。 */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
@@ -287,7 +325,7 @@ export default function RecordDiggingModal({ onClose }: { onClose: () => void })
           className="h-full w-full object-cover"
           draggable={false}
         />
-        <div className="absolute inset-0 bg-[#0e0a06]/55" />
+        <div className="absolute inset-0 bg-[#0e0a06]/40" />
       </div>
       <div
         className="pointer-events-none absolute inset-0"
@@ -341,29 +379,34 @@ export default function RecordDiggingModal({ onClose }: { onClose: () => void })
                 </div>
               )}
 
-              <JacketStackEntrance skip={hasEntered}>
-                <CrateFrame>
-                  <RecordSleeve
-                    current={current}
-                    upNext={upNext}
-                    exiting={exiting}
-                    gesture={gesture}
-                    dragState={dragState}
+              <CrateFrame rect={slotRect} className={playEntrance ? 'animate-junkie-dig-stack-in' : ''}>
+                <RecordSleeve
+                  current={current}
+                  upNext={upNext}
+                  exiting={exiting}
+                  gesture={gesture}
+                  dragState={dragState}
+                />
+              </CrateFrame>
+              {/* モバイル用のタイトル/アーティスト表示。CrateFrameがposition:fixedに
+               * なった(背景写真内のスロット位置に絶対配置している)ため、通常の
+               * ドキュメントフロー(mt-8で下に続ける)ではなく、同じslotRectを
+               * 基準にその下へ絶対配置する。 */}
+              <div
+                className={`fixed z-10 flex flex-col items-center gap-3 text-center lg:hidden ${playEntrance ? 'animate-junkie-dig-stack-in' : ''}`}
+                style={{ left: slotRect.left, top: slotRect.top + slotRect.height + 32, width: slotRect.width }}
+              >
+                <p className="text-lg font-bold text-white">{current.title}</p>
+                <p className="text-sm text-white/50">{current.artistName}</p>
+                {current.firstTrackId && (
+                  <PreviewButton
+                    key={current.firstTrackId}
+                    previewUrl={current.firstTrackPreviewUrl}
+                    trackId={current.firstTrackId}
+                    size="lg"
                   />
-                </CrateFrame>
-                <div className="mt-8 flex flex-col items-center gap-3 text-center lg:hidden">
-                  <p className="text-lg font-bold text-white">{current.title}</p>
-                  <p className="text-sm text-white/50">{current.artistName}</p>
-                  {current.firstTrackId && (
-                    <PreviewButton
-                      key={current.firstTrackId}
-                      previewUrl={current.firstTrackPreviewUrl}
-                      trackId={current.firstTrackId}
-                      size="lg"
-                    />
-                  )}
-                </div>
-              </JacketStackEntrance>
+                )}
+              </div>
 
               {shelves.length > 1 && (
                 <div className="pointer-events-none absolute inset-y-0 right-1 z-30 flex items-center sm:right-4">
