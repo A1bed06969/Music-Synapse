@@ -118,6 +118,11 @@ export const ADMIN_TOOL_GROUPS: AdminToolGroup[] = [
         label: 'HRPP 手動マッチング',
         description: '収集したパワープレイ候補をカタログのアーティストと手動でマッチングし、本登録する。',
       },
+      {
+        href: '/admin/data/media/radio-power-play-collect',
+        label: 'ラジオ局PP自動収集',
+        description: 'URL登録済みの全局のパワープレイ/ヘビーローテーションをGeminiでまとめて抽出し、候補として登録する。',
+      },
     ],
   },
   {
