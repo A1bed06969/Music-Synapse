@@ -7,10 +7,15 @@
 // ヘッダを付ける(__tests__/disc-guide-import.integration.test.tsと同じ
 // パターン)。GEMINI_API_KEYが.env.localに必要。
 //
+// このテストは実際にradio_airplay_pickへ行をinsertするため、作成した行を
+// after()で必ず削除する(disc-guide-import.integration.test.tsと同じ方針。
+// npm testを何度実行しても本番データを汚さないようにする)。
+//
 // 実行: npm test
 
-import { test, describe } from 'node:test'
+import { test, describe, before, after } from 'node:test'
 import assert from 'node:assert/strict'
+import { createAdminClient } from '../utils/Supabase/admin.ts'
 
 const BASE_URL = process.env.TEST_BASE_URL ?? 'http://127.0.0.1:3000'
 
@@ -34,6 +39,15 @@ async function isServerUp(): Promise<boolean> {
 }
 
 describe('POST /api/admin/radio-power-play-collect', () => {
+  const supabase = createAdminClient()
+  const createdPickIds: string[] = []
+
+  after(async () => {
+    if (createdPickIds.length > 0) {
+      await supabase.from('radio_airplay_pick').delete().in('id', createdPickIds)
+    }
+  })
+
   test('rejects requests without Basic auth (site-wide proxy.ts still protects this route)', async (t) => {
     if (!(await isServerUp())) return t.skip('dev server not running')
 
@@ -45,6 +59,8 @@ describe('POST /api/admin/radio-power-play-collect', () => {
     if (!(await isServerUp())) return t.skip('dev server not running')
     if (!process.env.GEMINI_API_KEY) return t.skip('GEMINI_API_KEY not set')
 
+    const beforeTimestamp = new Date().toISOString()
+
     const res = await fetch(`${BASE_URL}/api/admin/radio-power-play-collect`, {
       method: 'POST',
       headers: authHeaders(),
@@ -52,6 +68,16 @@ describe('POST /api/admin/radio-power-play-collect', () => {
     const text = await res.text()
     assert.equal(res.status, 200, text)
     const body = JSON.parse(text)
+
+    // このテスト実行でinsertされた行をafter()で消せるよう、直後のタイムスタンプで
+    // 絞り込んで拾っておく(dedupロジックがある関係で0件insertの可能性もある)
+    const { data: createdRows } = await supabase
+      .from('radio_airplay_pick')
+      .select('id')
+      .gte('created_at', beforeTimestamp)
+    if (createdRows) {
+      createdPickIds.push(...createdRows.map((r) => r.id))
+    }
 
     assert.ok(body.stations >= 3, `expected at least the 3 seeded pilot stations, got ${body.stations}`)
     const stationNames = body.results.map((r: { station: string }) => r.station)

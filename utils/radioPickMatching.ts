@@ -2,7 +2,7 @@
 //
 // ラジオ局PP選曲(アーティスト名+曲名)に対するApple Music候補の検索ロジック。
 // scripts/backfill-radio-pick-itunes-candidates.ts(手動HRPPシート向け)と
-// app/api/cron/radio-power-play(自動収集向け)の両方から使う共通処理。
+// app/api/admin/radio-power-play-collect(自動収集向け)の両方から使う共通処理。
 import { searchTracks } from './itunes.ts'
 
 export type ItunesTrackMatch = {

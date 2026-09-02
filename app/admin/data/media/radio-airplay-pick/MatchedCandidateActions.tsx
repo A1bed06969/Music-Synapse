@@ -13,6 +13,7 @@ export default function MatchedCandidateActions({
   albumMode,
   candidateLabel,
   candidateArtworkUrl,
+  isDomestic,
   registerAction,
   clearAction,
 }: {
@@ -20,6 +21,7 @@ export default function MatchedCandidateActions({
   albumMode: boolean
   candidateLabel: string
   candidateArtworkUrl: string | null
+  isDomestic: boolean | null
   registerAction: (formData: FormData) => void
   clearAction: (formData: FormData) => void
 }) {
@@ -51,8 +53,16 @@ export default function MatchedCandidateActions({
         )}
         <span className="max-w-[220px] truncate">{candidateLabel}</span>
       </div>
-      <form action={registerAction}>
+      <form action={registerAction} className="flex items-center gap-2">
         <input type="hidden" name="pick_id" value={pickId} />
+        <select
+          name="music_type"
+          defaultValue={isDomestic === false ? 'OVERSEAS' : 'DOMESTIC'}
+          className="rounded-md border border-white/15 bg-white/5 px-2 py-1 text-xs text-white focus:border-white/30 focus:outline-none"
+        >
+          <option value="DOMESTIC">邦楽</option>
+          <option value="OVERSEAS">洋楽</option>
+        </select>
         <button type="submit" className="shrink-0 text-xs text-emerald-400/80 hover:text-emerald-400">
           登録
         </button>

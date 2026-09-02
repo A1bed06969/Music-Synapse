@@ -33,7 +33,7 @@ export default async function RadioAirplayPickAdminPage({
   const supabase = await createClient()
 
   const selectCols =
-    'id, region, station_name, campaign_name, picked_date, artist_name, track_title, candidate_track_name, candidate_collection_name, candidate_artist_name, candidate_artwork_url'
+    'id, region, station_name, campaign_name, picked_date, artist_name, track_title, is_domestic, candidate_track_name, candidate_collection_name, candidate_artist_name, candidate_artwork_url'
 
   let qb = supabase
     .from('radio_airplay_pick')
@@ -124,6 +124,7 @@ export default async function RadioAirplayPickAdminPage({
                 albumMode={isAlbumCampaign(p.campaign_name)}
                 candidateLabel={`${isAlbumCampaign(p.campaign_name) ? p.candidate_collection_name : (p.candidate_track_name ?? p.candidate_collection_name)} — ${p.candidate_artist_name}`}
                 candidateArtworkUrl={p.candidate_artwork_url}
+                isDomestic={p.is_domestic}
                 registerAction={registerPickToRotation}
                 clearAction={clearPickCandidate}
               />

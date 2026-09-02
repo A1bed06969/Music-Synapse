@@ -1,7 +1,7 @@
 // scripts/backfill-radio-station-urls.ts
 //
 // media.power_play_url を、事前に調査したURLで一括更新する。ラジオ局PP自動収集
-// (app/api/cron/radio-power-play)の対象を広げるための一度きりの実行用スクリプト。
+// (app/api/admin/radio-power-play-collect)の対象を広げるための一度きりの実行用スクリプト。
 // 新しく局のURLが判明するたびに、下記のマッピングに追記して再実行する
 // (既存の値を上書きするだけなので、再実行しても安全)。
 //
@@ -15,7 +15,7 @@ import { createAdminClient } from '@/utils/Supabase/admin'
 const STATION_URLS: Record<string, string> = {
   'J-WAVE': 'https://www.j-wave.co.jp/special/sonartrax/',
   'FM福井': 'https://www.fmfukui.jp/heavyrotation/',
-  'エフエム・ノースウェーブ': 'https://www.fmnorth.co.jp/megaplay/',
+  'エフエム・ノースウエーブ': 'https://www.fmnorth.co.jp/megaplay/',
 }
 
 async function main() {

@@ -943,7 +943,7 @@ git commit -m "feat: add manual admin button to collect radio power-play picks"
 
 ## 実装後のフォローアップ(このplanのスコープ外)
 
-- 残り約62局のURL調査(Claudeが個別にWeb検索し、`scripts/backfill-radio-station-urls.ts`の`STATION_URLS`に追記して再実行する。見つかった分から段階的にcronの対象が広がる)
-- Vercel Cronの初回実行結果を確認し、抽出精度に問題があればプロンプト(`buildPrompt`)やレスポンススキーマを調整する
+- 残り約62局のURL調査(Claudeが個別にWeb検索し、`scripts/backfill-radio-station-urls.ts`の`STATION_URLS`に追記して再実行する。見つかった分から段階的に収集対象が広がる)
+- 初回の収集結果を確認し、抽出精度に問題があればプロンプト(`buildPrompt`)やレスポンススキーマを調整する
 - `/admin/data/media/radio-airplay-pick`で新規に増えた候補を人力確認・本登録する(既存フロー、変更なし)
-- **過去アーカイブの抽出**: 今回の仕組み(cronによる「現在の選曲」の週次収集)が安定して動くことを確認できたら、過去分を掲載しているアーカイブページを持つ局について、同じ`extractRadioPicksFromUrl`(汎用Gemini抽出)を使って過去月・過去週分もまとめて取り込めるようにする。ただし今回のcronルートは常に「今日の日付」でinsertする実装のため、アーカイブ抽出は別立てのスクリプトとして新設し、ページ上の期間表記(例:「2026年6月」)をGeminiまたは`utils/radioScrape.ts`の`parseJapaneseMonthLabel`/`parseEnglishMonthLabel`と同様のロジックで実際の`picked_date`に変換する必要がある(このplanでは未着手)。
+- **過去アーカイブの抽出**: 今回の仕組み(手動収集による「現在の選曲」の収集)が安定して動くことを確認できたら、過去分を掲載しているアーカイブページを持つ局について、同じ`extractRadioPicksFromUrl`(汎用Gemini抽出)を使って過去月・過去週分もまとめて取り込めるようにする。ただし今回の収集APIルートは常に「今日の日付」でinsertする実装のため、アーカイブ抽出は別立てのスクリプトとして新設し、ページ上の期間表記(例:「2026年6月」)をGeminiまたは`utils/radioScrape.ts`の`parseJapaneseMonthLabel`/`parseEnglishMonthLabel`と同様のロジックで実際の`picked_date`に変換する必要がある(このplanでは未着手)。

@@ -141,9 +141,11 @@ const { data: existing } = await supabase
   .ilike('artist_name', candidate.artistName)
   .ilike('track_title', candidate.trackTitle)
   .gte('created_at', firstDayOfCurrentMonthISO)
-  .maybeSingle()
-if (existing) continue // 今月すでに記録済み
+  .limit(1)
+if (existing && existing.length > 0) continue // 今月すでに記録済み
 ```
+
+(実装時に判明した修正: `.maybeSingle()`は該当行が2件以上ある場合`data: null`と`PGRST116`エラーを返す(例外は投げない)。`data`だけを取り出してエラーを見ないと、2件以上ヒットしたケースで「該当なし」と誤判定し重複insertしてしまう。`.limit(1)`+配列長チェックに置き換えて回避する。)
 
 月が変わった時点で「先月と同じ選曲がまだ続いている」場合は新しい月の1件として改めて記録される(HRPPシートの手動運用でも月ごとに記録し直していたため、既存の実績データの粒度と一致する)。
 

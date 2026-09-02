@@ -48,7 +48,7 @@ export async function POST() {
       let inserted = 0
 
       for (const candidate of candidates) {
-        const { data: existing } = await supabase
+        const { data: existing, error: dedupError } = await supabase
           .from('radio_airplay_pick')
           .select('id')
           .eq('station_name', station.name)
@@ -57,7 +57,7 @@ export async function POST() {
           .gte('created_at', monthStart)
           .limit(1)
 
-        if (existing && existing.length > 0) continue
+        if (dedupError || (existing && existing.length > 0)) continue
 
         let itunesMatch = null
         try {
@@ -69,7 +69,7 @@ export async function POST() {
         }
 
         const { error: insertError } = await supabase.from('radio_airplay_pick').insert({
-          region: station.prefecture ?? station.area ?? '不明',
+          region: station.area ?? station.prefecture ?? '不明',
           station_name: station.name,
           campaign_name: candidate.campaignName,
           picked_date: todayDate,

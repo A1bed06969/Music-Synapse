@@ -329,6 +329,7 @@ function redirectWith(result: 'success' | 'error', message: string): never {
  * 名前一致がなければ新規作成する。 */
 export async function registerPickToRotation(formData: FormData) {
   const pickId = String(formData.get('pick_id') ?? '')
+  const musicTypeInput = String(formData.get('music_type') ?? '')
   if (!pickId) redirectWith('error', '不正なリクエストです。')
 
   const supabase = createAdminClient()
@@ -454,7 +455,7 @@ export async function registerPickToRotation(formData: FormData) {
       media_program_id: programId,
       period_type: periodType,
       period_start_date: pick.picked_date,
-      music_type: pick.is_domestic === false ? 'OVERSEAS' : 'DOMESTIC',
+      music_type: musicTypeInput === 'OVERSEAS' || musicTypeInput === 'DOMESTIC' ? musicTypeInput : (pick.is_domestic === false ? 'OVERSEAS' : 'DOMESTIC'),
       track_id: trackId,
       album_id: albumId,
       note: `HRPP: ${pick.station_name}${pick.campaign_name ? `(${pick.campaign_name})` : ''}`,
