@@ -106,9 +106,10 @@ export default function RecordDiggingModal({ onClose }: { onClose: () => void })
   }, [state, hasEntered])
   const playEntrance = usePlayEntranceOnce(hasEntered)
 
-  // 背景写真(record-box-bg.jpg)内でジャケットが収まる位置。ビューポート
-  // サイズが変わるたびに再計算される。
-  const slotRect = useCrateSlotRect()
+  // 背景写真(record-box-bg.jpg)の表示位置と、その中でジャケットが収まる位置。
+  // ビューポートサイズが変わるたびに再計算される(常に同じスケールなので
+  // 背景がレターボックスされる場面でもジャケットは正しく重なる)。
+  const { background: backgroundRect, slot: slotRect } = useCrateSlotRect()
 
   // モバイル用タイトル/アーティスト表示は画面下部からの距離(bottom)で位置決め
   // する。ShelfPicker(棚選択レール)の実際の高さを測り、その上に重ならない
@@ -326,17 +327,26 @@ export default function RecordDiggingModal({ onClose }: { onClose: () => void })
       aria-modal="true"
       aria-label="Junkie Dig"
     >
-      {/* 背景: モーダル全面に実写(record-box-bg.jpg)を敷く。ジャケットスタック
-       * (CrateFrame)は、この写真に写っているクレートの空きスロット位置に
-       * 正確に重なるよう useCrateSlotRect で計算した座標に絶対配置している
-       * (背景写真自体の中にクレートの箱が写っているため、CrateFrame側では
-       * 別の箱画像を描画しない=箱が二重に見える問題を避けている)。 */}
+      {/* 背景: 実写(record-box-bg.jpg)をbackgroundRectの位置・サイズで敷く。
+       * ジャケットスタック(CrateFrame)は、この写真に写っているクレートの
+       * 空きスロット位置に正確に重なるよう同じスケールで計算したslotRectに
+       * 絶対配置している(背景写真自体の中にクレートの箱が写っているため、
+       * CrateFrame側では別の箱画像を描画しない=箱が二重に見える問題を避けて
+       * いる)。横長ビューポートではbackgroundRectが画面より小さくなり
+       * (=ズームしすぎを防ぐため上限スケールで縮小され)、はみ出す領域は
+       * コンテナ自体の下地色(bg-[#0e0a06])がレターボックスとして見える。 */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src="/images/record-digging/record-box-bg.jpg"
           alt=""
-          className="h-full w-full object-cover"
+          className="absolute"
+          style={{
+            left: backgroundRect.left,
+            top: backgroundRect.top,
+            width: backgroundRect.width,
+            height: backgroundRect.height,
+          }}
           draggable={false}
         />
         <div className="absolute inset-0 bg-[#0e0a06]/40" />

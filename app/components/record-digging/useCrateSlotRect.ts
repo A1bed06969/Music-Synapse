@@ -2,63 +2,77 @@
 
 import { useEffect, useState } from 'react'
 
-// 背景写真(public/images/record-digging/record-box-bg.jpg, 921x1707)はビューポート
-// 全面にobject-coverで敷かれている。その中でレコードジャケットが実際に収まる領域を
-// 元画像のピクセル座標で定数化したもの(グリッドオーバーレイを重ねて計測)。
+// 背景写真(public/images/record-digging/record-box-bg.jpg)の元画像サイズと、
+// その中でレコードジャケットが実際に収まる領域を元画像のピクセル座標で定数化
+// したもの(グリッドオーバーレイを重ねて計測)。
 const IMAGE_NATURAL_WIDTH = 921
 const IMAGE_NATURAL_HEIGHT = 1707
 const SLOT_PX = { left: 222, top: 690, width: 476, height: 476 }
 
 // 背景写真は縦長のスマホ画面向けに用意されたもの。PC等の横長ビューポートで
-// そのままobject-coverのスケールを使うと(縦を覆うために)極端に拡大され、
-// ジャケットがヘッダーや下部のShelfPickerと重なるほど巨大になってしまう。
-// そのためスロットの拡大率には上限を設け、上限に達した場合は「本来この
-// スケールなら中心が来るはずだった座標」を軸に縮小する(スマホ縦画面では
-// 実スケールが常にこの上限を大きく下回るため、この上限は効かず従来どおり
-// 背景と正確に重なる)。
-const MAX_SLOT_SCALE = 0.75
-// ヘッダー/ジャンルタブ(上)・ShelfPicker(下)と重ならないための最低余白
+// object-coverの実スケール(縦横どちらかがビューポートを覆うまで拡大)を
+// そのまま使うと、背景が不自然なほどズームされて見え、ジャケットも
+// ヘッダーや下部のShelfPickerと重なるほど巨大になってしまう。そのため
+// 背景・ジャケット共通のスケールに上限を設け、上限に達した場合は背景を
+// ビューポート中央に収める(はみ出す分は周囲がレターボックスになる)。
+// ジャケットのスケールも背景と必ず同じにすることで、常に写真内のクレートに
+// ぴったり重なる(スマホ縦画面では実スケールが常にこの上限を大きく下回るため、
+// この上限は効かず従来どおり画面全面を覆う)。
+const MAX_SCALE = 0.85
+// ヘッダー/ジャンルタブ(上)・ShelfPicker(下)と重ならないための最低余白。
+// 上限スケールでも横長すぎる/縦に低いビューポートでは収まりきらない場合が
+// あるため、その時だけジャケット位置をこの範囲に収める(背景とのわずかな
+// ズレより、UIとの重なりを避けることを優先する)。
 const TOP_RESERVE_PX = 120
 const BOTTOM_RESERVE_PX = 190
+// スマホ(スケールが上限に達しない=画面全面を覆う通常ケース)では、背景と
+// ジャケットを少し上に持ち上げる。下端に空く分は写真自体も暗い床部分の
+// ため、コンテナの下地色と馴染んで違和感が出にくい。
+const MOBILE_LIFT_RATIO = 0.06
 
 export type Rect = { left: number; top: number; width: number; height: number }
 
-function computeSlotRect(viewportWidth: number, viewportHeight: number): Rect {
-  // object-coverと同じスケール計算(縦横どちらかがビューポートを覆うまで拡大)
+function computeLayout(viewportWidth: number, viewportHeight: number): { background: Rect; slot: Rect } {
   const naturalScale = Math.max(viewportWidth / IMAGE_NATURAL_WIDTH, viewportHeight / IMAGE_NATURAL_HEIGHT)
-  const offsetX = (viewportWidth - IMAGE_NATURAL_WIDTH * naturalScale) / 2
-  const offsetY = (viewportHeight - IMAGE_NATURAL_HEIGHT * naturalScale) / 2
-  const centerX = offsetX + (SLOT_PX.left + SLOT_PX.width / 2) * naturalScale
-  const centerY = offsetY + (SLOT_PX.top + SLOT_PX.height / 2) * naturalScale
+  const isCapped = naturalScale > MAX_SCALE
+  const scale = Math.min(naturalScale, MAX_SCALE)
+  const offsetX = (viewportWidth - IMAGE_NATURAL_WIDTH * scale) / 2
+  const offsetY = (viewportHeight - IMAGE_NATURAL_HEIGHT * scale) / 2 - (isCapped ? 0 : viewportHeight * MOBILE_LIFT_RATIO)
 
-  const scale = Math.min(naturalScale, MAX_SLOT_SCALE)
-  const width = SLOT_PX.width * scale
-  const height = SLOT_PX.height * scale
+  const background: Rect = {
+    left: offsetX,
+    top: offsetY,
+    width: IMAGE_NATURAL_WIDTH * scale,
+    height: IMAGE_NATURAL_HEIGHT * scale,
+  }
 
-  const top = Math.min(Math.max(centerY - height / 2, TOP_RESERVE_PX), viewportHeight - BOTTOM_RESERVE_PX - height)
+  const slotWidth = SLOT_PX.width * scale
+  const slotHeight = SLOT_PX.height * scale
+  const naturalSlotTop = offsetY + SLOT_PX.top * scale
+  const slotTop = Math.min(
+    Math.max(naturalSlotTop, TOP_RESERVE_PX),
+    viewportHeight - BOTTOM_RESERVE_PX - slotHeight
+  )
 
   return {
-    left: centerX - width / 2,
-    top,
-    width,
-    height,
+    background,
+    slot: { left: offsetX + SLOT_PX.left * scale, top: slotTop, width: slotWidth, height: slotHeight },
   }
 }
 
-/** 背景写真内のスロット位置を、現在のビューポートサイズに対して計算する。
- * 背景画像と同じobject-coverのスケール/オフセット計算をここで再現することで、
- * どのビューポートサイズでも背景内のジャケット置き場に正確に重なる絶対配置
- * 座標(ビューポート基準のpx)を返す。 */
-export function useCrateSlotRect(): Rect {
-  const [rect, setRect] = useState<Rect>(() => computeSlotRect(window.innerWidth, window.innerHeight))
+/** 背景写真とその中のジャケット置き場を、現在のビューポートサイズに対して
+ * 計算する。両者は常に同じスケールで計算されるため、背景がレターボックス
+ * される(=縮小される)場面でもジャケットは背景内の対応位置に正確に重なる。 */
+export function useCrateSlotRect(): { background: Rect; slot: Rect } {
+  const [layout, setLayout] = useState(() => computeLayout(window.innerWidth, window.innerHeight))
 
   useEffect(() => {
     function handleResize() {
-      setRect(computeSlotRect(window.innerWidth, window.innerHeight))
+      setLayout(computeLayout(window.innerWidth, window.innerHeight))
     }
     window.addEventListener('resize', handleResize)
     return () => window.removeEventListener('resize', handleResize)
   }, [])
 
-  return rect
+  return layout
 }
