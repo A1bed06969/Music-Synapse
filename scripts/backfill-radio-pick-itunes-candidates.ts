@@ -9,23 +9,14 @@
  *   npx tsx --env-file=.env.local scripts/backfill-radio-pick-itunes-candidates.ts
  */
 import { createAdminClient } from '@/utils/Supabase/admin'
-import { searchTracks } from '@/utils/itunes'
 import { fetchAllRows } from '@/utils/fetchAllRows'
+import { findItunesCandidate, isRateLimitError } from '@/utils/radioPickMatching'
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-// iTunes側の(非公式・undocumentedな)IPレート制限は、fetchItunes内の
-// 400ms間隔だけでは足りず、数百件を連続で叩き続けると403/429が数分間
-// ブロックされる形で発生することを確認済み(utils/itunes.tsのコメント参照)。
-// 403/429を検知したら、次の1件に進む前にクールダウンを挟んで自己回復させる。
 const RATE_LIMIT_COOLDOWN_MS = 60_000
-
-function isRateLimitError(err: unknown): boolean {
-  const message = err instanceof Error ? err.message : String(err)
-  return message.includes('403') || message.includes('429')
-}
 
 async function main() {
   const supabase = createAdminClient()
@@ -51,8 +42,7 @@ async function main() {
   for (const row of rows) {
     done++
     try {
-      const results = await searchTracks(`${row.artist_name} ${row.track_title}`, 1)
-      const top = results[0]
+      const top = await findItunesCandidate(row.artist_name!, row.track_title!)
       if (top) {
         const { error: updateError } = await supabase
           .from('radio_airplay_pick')
