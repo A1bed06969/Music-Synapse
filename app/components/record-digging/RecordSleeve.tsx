@@ -63,8 +63,10 @@ export default function RecordSleeve({
           const style: CSSProperties =
             role === 'peek'
               ? {
-                  top: `${depth * 12}px`,
-                  bottom: `${-depth * 12}px`,
+                  // 奥のレコードほど、クレートの中で少し高く積まれて見えるよう上に
+                  // ずらして覗かせる(下にずらすと箱の底に沈んで見えてしまうため)
+                  top: `${-depth * 12}px`,
+                  bottom: `${depth * 12}px`,
                   transform: `scale(${1 - depth * 0.055})`,
                   opacity: PEEK_OPACITY[depth - 1] ?? 0.1,
                   zIndex: 10 - depth,

@@ -110,6 +110,20 @@ export default function RecordDiggingModal({ onClose }: { onClose: () => void })
   // サイズが変わるたびに再計算される。
   const slotRect = useCrateSlotRect()
 
+  // モバイル用タイトル/アーティスト表示は画面下部からの距離(bottom)で位置決め
+  // する。ShelfPicker(棚選択レール)の実際の高さを測り、その上に重ならない
+  // 分だけ余白を確保する。slotRect基準のtopオフセットで置くと、機種によって
+  // ジャケット位置が画面下寄りになった時にShelfPickerと衝突するため。
+  const shelfPickerRef = useRef<HTMLDivElement>(null)
+  const [shelfPickerHeight, setShelfPickerHeight] = useState(0)
+  useEffect(() => {
+    const el = shelfPickerRef.current
+    if (!el) return
+    const observer = new ResizeObserver(([entry]) => setShelfPickerHeight(entry.contentRect.height))
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [shelves.length])
+
   // 棚一覧の取得(モーダルを開いた瞬間に1回だけ)
   useEffect(() => {
     let cancelled = false
@@ -390,11 +404,12 @@ export default function RecordDiggingModal({ onClose }: { onClose: () => void })
               </CrateFrame>
               {/* モバイル用のタイトル/アーティスト表示。CrateFrameがposition:fixedに
                * なった(背景写真内のスロット位置に絶対配置している)ため、通常の
-               * ドキュメントフロー(mt-8で下に続ける)ではなく、同じslotRectを
-               * 基準にその下へ絶対配置する。 */}
+               * ドキュメントフロー(mt-8で下に続ける)ではなく絶対配置する。
+               * 画面下部のShelfPickerと機種によって衝突しないよう、topではなく
+               * 画面下端からの距離(bottom)で位置決めする。 */}
               <div
                 className={`fixed z-10 flex flex-col items-center gap-3 text-center lg:hidden ${playEntrance ? 'animate-junkie-dig-stack-in' : ''}`}
-                style={{ left: slotRect.left, top: slotRect.top + slotRect.height + 32, width: slotRect.width }}
+                style={{ left: slotRect.left, bottom: shelfPickerHeight + 24, width: slotRect.width }}
               >
                 <p className="text-lg font-bold text-white">{current.title}</p>
                 <p className="text-sm text-white/50">{current.artistName}</p>
@@ -446,7 +461,11 @@ export default function RecordDiggingModal({ onClose }: { onClose: () => void })
         )}
       </div>
 
-      {shelves.length > 0 && <ShelfPicker shelves={shelves} currentIndex={shelfIndex} onSelect={handleSelectShelf} />}
+      {shelves.length > 0 && (
+        <div ref={shelfPickerRef}>
+          <ShelfPicker shelves={shelves} currentIndex={shelfIndex} onSelect={handleSelectShelf} />
+        </div>
+      )}
 
       {/* 操作説明: 開いてからHINT_DURATION_MS(2秒)だけ、または最初のスワイプ
        * まで中央に表示する。手のイラストに代わる操作ガイド。 */}
