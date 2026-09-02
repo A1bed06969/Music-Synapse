@@ -165,6 +165,19 @@ async function syncOneAlbum(
     return 0
   }
 
+  // collectionルックアップ(entity=song)がアルバム自体は返しつつ収録曲を1件も
+  // 返さないことが稀にある(Apple Music側のカタログ不整合。アルバム単体の
+  // ルックアップ(entity=album)ではtrackCountが正しく1以上でも、entity=songだと
+  // 曲が紐付いて返ってこないケースを実際に確認した — OWV「Lovey-Dovey」等)。
+  // 例外は投げないため気づかれずアルバムだけ空で登録されてしまう。せめてログに
+  // 残し、後から気付けるようにする(トラックIDが分かっていれば個別ルックアップ
+  // (fetchTrackById)で復旧できる)。
+  if (itunesTracks.length === 0 && (itunesAlbum.trackCount ?? 0) > 0) {
+    console.error(
+      `トラック一覧が0件でした(Apple Music側の索引不整合の可能性): ${itunesAlbum.collectionName} (collectionId=${itunesAlbum.collectionId}, 本来のtrackCount=${itunesAlbum.trackCount})`
+    )
+  }
+
   const title = localizedCollectionName ?? itunesAlbum.collectionName
   const albumPayload = {
     artist_id: artistId,
