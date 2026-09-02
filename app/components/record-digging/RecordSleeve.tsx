@@ -1,6 +1,6 @@
 'use client'
 
-import type { CSSProperties } from 'react'
+import { useState, type CSSProperties } from 'react'
 import type { DiggingRecord } from '@/utils/recordDigging'
 import type { DragState } from './useSwipeGesture'
 
@@ -49,6 +49,12 @@ export default function RecordSleeve({
     ...upNext.map((record, i) => ({ record, role: 'peek', depth: i + 1 }) satisfies Layer),
   ]
 
+  // 手前のジャケットは通信状況によっては読み込みに時間がかかることがあり、
+  // 読み込み中は反射のハイライトだけが見えて「ジャケットが表示されない」
+  // ように見えてしまう(実際は読み込み待ち)。読み込み完了までパルスさせて
+  // 「今読み込み中」であることを示す。
+  const [loadedIds, setLoadedIds] = useState<Set<string>>(() => new Set())
+
   return (
     <div className="relative h-full w-full">
       {layers
@@ -90,18 +96,24 @@ export default function RecordSleeve({
                     : 'transition-spring'
                   : 'transition-layer'
 
+          const isLoaded = loadedIds.has(record.id)
+
           return (
             <div
               key={record.id}
               className={`absolute inset-x-0 overflow-hidden rounded-[3px] bg-white/5 shadow-2xl shadow-black/80 ${role === 'front' || role === 'picking' ? 'ring-1 ring-black/40' : ''} ${animationClass}`}
               style={style}
             >
+              {(role === 'front' || role === 'picking') && !isLoaded && (
+                <div className="absolute inset-0 animate-pulse bg-white/10" />
+              )}
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={record.jacketUrl}
                 alt={isFront ? record.title : ''}
                 className={`h-full w-full ${isFront ? 'object-contain' : 'object-cover'}`}
                 draggable={false}
+                onLoad={() => setLoadedIds((prev) => (prev.has(record.id) ? prev : new Set(prev).add(record.id)))}
               />
               {/* ビニール袋の反射を思わせる、斜めに走る薄いハイライト */}
               {(role === 'front' || role === 'picking') && (

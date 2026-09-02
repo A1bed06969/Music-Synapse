@@ -62,18 +62,38 @@ function computeLayout(viewportWidth: number, viewportHeight: number): Layout {
   }
 }
 
+// モバイルブラウザ(特にSafari)はアドレスバーの開閉でwindow.innerHeightが
+// 一時的に実際より小さい値を返すことがある。その瞬間にscaleを計算すると
+// 縦横比が実際より横長寄りに見え、本来PC等の横長ビューポート向けの
+// レターボックス処理(MAX_SCALE)が誤ってスマホ側でも発動し、背景が
+// フチまで届かない(右端に隙間ができる)不具合につながる。visualViewportが
+// 使える場合はそちらを優先し(アドレスバーの開閉に追従して正確な値を返す)、
+// resizeイベントもwindow分だけでなくvisualViewport分も購読する。
+function getViewportSize(): { width: number; height: number } {
+  const vv = window.visualViewport
+  return { width: vv?.width ?? window.innerWidth, height: vv?.height ?? window.innerHeight }
+}
+
 /** 背景写真とその中のジャケット置き場を、現在のビューポートサイズに対して
  * 計算する。両者は常に同じスケールで計算されるため、背景がレターボックス
  * される(=縮小される)場面でもジャケットは背景内の対応位置に正確に重なる。 */
 export function useCrateSlotRect(): Layout {
-  const [layout, setLayout] = useState(() => computeLayout(window.innerWidth, window.innerHeight))
+  const [layout, setLayout] = useState(() => {
+    const { width, height } = getViewportSize()
+    return computeLayout(width, height)
+  })
 
   useEffect(() => {
     function handleResize() {
-      setLayout(computeLayout(window.innerWidth, window.innerHeight))
+      const { width, height } = getViewportSize()
+      setLayout(computeLayout(width, height))
     }
     window.addEventListener('resize', handleResize)
-    return () => window.removeEventListener('resize', handleResize)
+    window.visualViewport?.addEventListener('resize', handleResize)
+    return () => {
+      window.removeEventListener('resize', handleResize)
+      window.visualViewport?.removeEventListener('resize', handleResize)
+    }
   }, [])
 
   return layout
