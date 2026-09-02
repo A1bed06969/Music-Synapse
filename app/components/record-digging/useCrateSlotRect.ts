@@ -28,11 +28,12 @@ const BOTTOM_RESERVE_PX = 190
 // スマホ(スケールが上限に達しない=画面全面を覆う通常ケース)では、背景と
 // ジャケットを少し上に持ち上げる。下端に空く分は写真自体も暗い床部分の
 // ため、コンテナの下地色と馴染んで違和感が出にくい。
-const MOBILE_LIFT_RATIO = 0.06
+const MOBILE_LIFT_RATIO = 0.12
 
 export type Rect = { left: number; top: number; width: number; height: number }
+type Layout = { background: Rect; slot: Rect; viewportHeight: number }
 
-function computeLayout(viewportWidth: number, viewportHeight: number): { background: Rect; slot: Rect } {
+function computeLayout(viewportWidth: number, viewportHeight: number): Layout {
   const naturalScale = Math.max(viewportWidth / IMAGE_NATURAL_WIDTH, viewportHeight / IMAGE_NATURAL_HEIGHT)
   const isCapped = naturalScale > MAX_SCALE
   const scale = Math.min(naturalScale, MAX_SCALE)
@@ -57,13 +58,14 @@ function computeLayout(viewportWidth: number, viewportHeight: number): { backgro
   return {
     background,
     slot: { left: offsetX + SLOT_PX.left * scale, top: slotTop, width: slotWidth, height: slotHeight },
+    viewportHeight,
   }
 }
 
 /** 背景写真とその中のジャケット置き場を、現在のビューポートサイズに対して
  * 計算する。両者は常に同じスケールで計算されるため、背景がレターボックス
  * される(=縮小される)場面でもジャケットは背景内の対応位置に正確に重なる。 */
-export function useCrateSlotRect(): { background: Rect; slot: Rect } {
+export function useCrateSlotRect(): Layout {
   const [layout, setLayout] = useState(() => computeLayout(window.innerWidth, window.innerHeight))
 
   useEffect(() => {

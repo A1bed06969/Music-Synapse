@@ -109,12 +109,11 @@ export default function RecordDiggingModal({ onClose }: { onClose: () => void })
   // 背景写真(record-box-bg.jpg)の表示位置と、その中でジャケットが収まる位置。
   // ビューポートサイズが変わるたびに再計算される(常に同じスケールなので
   // 背景がレターボックスされる場面でもジャケットは正しく重なる)。
-  const { background: backgroundRect, slot: slotRect } = useCrateSlotRect()
+  const { background: backgroundRect, slot: slotRect, viewportHeight } = useCrateSlotRect()
 
-  // モバイル用タイトル/アーティスト表示は画面下部からの距離(bottom)で位置決め
-  // する。ShelfPicker(棚選択レール)の実際の高さを測り、その上に重ならない
-  // 分だけ余白を確保する。slotRect基準のtopオフセットで置くと、機種によって
-  // ジャケット位置が画面下寄りになった時にShelfPickerと衝突するため。
+  // モバイル用タイトル/アーティスト表示の位置決めに使う実測値。
+  // ShelfPicker(棚選択レール)の実際の高さを測り、その上に重ならない分だけ
+  // 余白を確保する。
   const shelfPickerRef = useRef<HTMLDivElement>(null)
   const [shelfPickerHeight, setShelfPickerHeight] = useState(0)
   useEffect(() => {
@@ -124,6 +123,19 @@ export default function RecordDiggingModal({ onClose }: { onClose: () => void })
     observer.observe(el)
     return () => observer.disconnect()
   }, [shelves.length])
+
+  // タイトル/アーティスト表示ブロック自体の実測高さ。長いタイトル(複数行)だと
+  // ブロックが高くなるため、固定オフセットだけでは足りずジャケットと被って
+  // しまう。実測してジャケット下端との衝突判定に使う。
+  const titleBlockRef = useRef<HTMLDivElement>(null)
+  const [titleBlockHeight, setTitleBlockHeight] = useState(0)
+  useEffect(() => {
+    const el = titleBlockRef.current
+    if (!el) return
+    const observer = new ResizeObserver(([entry]) => setTitleBlockHeight(entry.contentRect.height))
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [state])
 
   // 棚一覧の取得(モーダルを開いた瞬間に1回だけ)
   useEffect(() => {
@@ -415,14 +427,28 @@ export default function RecordDiggingModal({ onClose }: { onClose: () => void })
               {/* モバイル用のタイトル/アーティスト表示。CrateFrameがposition:fixedに
                * なった(背景写真内のスロット位置に絶対配置している)ため、通常の
                * ドキュメントフロー(mt-8で下に続ける)ではなく絶対配置する。
-               * 画面下部のShelfPickerと機種によって衝突しないよう、topではなく
-               * 画面下端からの距離(bottom)で位置決めする。 */}
+               * 本来はジャケット直下(slotRect.bottom + 余白)に置きたいが、
+               * タイトルが長い(複数行になる)とブロック自体が高くなり、
+               * ShelfPickerと被る場合がある。そのため実測したブロック高さを
+               * 使って「ShelfPickerの上に確実に収まる上限」も計算し、
+               * 両者のうち小さい方(より上)を採用することでどちらとも
+               * 被らないようにする。 */}
               <div
+                ref={titleBlockRef}
                 className={`fixed z-10 flex flex-col items-center gap-3 text-center lg:hidden ${playEntrance ? 'animate-junkie-dig-stack-in' : ''}`}
-                style={{ left: slotRect.left, bottom: shelfPickerHeight + 24, width: slotRect.width }}
+                style={{
+                  left: slotRect.left,
+                  top: Math.min(
+                    slotRect.top + slotRect.height + 24,
+                    viewportHeight - shelfPickerHeight - 24 - titleBlockHeight
+                  ),
+                  width: slotRect.width,
+                }}
               >
-                <p className="text-lg font-bold text-white">{current.title}</p>
-                <p className="text-sm text-white/50">{current.artistName}</p>
+                {/* line-clamp: 長いタイトル(feat.表記など)でブロックが高くなりすぎて
+                 * ジャケットやShelfPickerと被るのを防ぐため、行数を固定で制限する */}
+                <p className="line-clamp-2 text-lg font-bold text-white">{current.title}</p>
+                <p className="line-clamp-1 text-sm text-white/50">{current.artistName}</p>
                 {current.firstTrackId && (
                   <PreviewButton
                     key={current.firstTrackId}
