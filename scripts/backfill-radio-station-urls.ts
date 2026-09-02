@@ -49,7 +49,6 @@ const STATION_URLS: Record<string, string> = {
   // 中国・四国
   'エフエム山口': 'https://www.fmy.co.jp/pushone/',
   'エフエム山陰': 'https://www.fm-sanin.co.jp/powerplay',
-  'エフエム徳島': 'https://www.fm807.jp/powerplay/',
   'エフエム愛媛': 'https://www.joeufm.co.jp/heavy/',
   'エフエム香川': 'https://www.fmkagawa.co.jp/prime_tune',
   'エフエム高知': 'https://www.fmkochi.com/topics/415/',
@@ -59,7 +58,6 @@ const STATION_URLS: Record<string, string> = {
   // 中部・北陸
   'CBCラジオ': 'https://radichubu.jp/campaignsong/',
   'エフエムラジオ新潟': 'https://www.fmniigata.com/power_play',
-  'エフエム岐阜': 'https://www.fmgifu.com/blog/index_0_4_0.html',
   'エフエム愛知': 'https://fma.co.jp/f/prg/alreco/',
   'エフエム石川': 'https://hellofive.jp/pickup/',
   // 当初/music/powerplay/を登録していたが、そちらは更新が止まっている
@@ -106,7 +104,6 @@ const STATION_URLS: Record<string, string> = {
 
   // 関西
   'FM大阪': 'https://www.fmosaka.net/_tags/%E2%98%85POWER_PLAY',
-  'エフエム京都': 'https://fm-kyoto.jp/info_cat/power-play/',
   'エフエム滋賀': 'https://www.e-radio.co.jp/hotstuff/',
   'ラジオ関西': 'https://jocr.jp/mpsong/',
   '兵庫エフエム放送': 'https://kiss-fm.co.jp/hotraxx/',
