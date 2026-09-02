@@ -13,8 +13,10 @@ function formatDateRange(start: string, end: string) {
   return start === end ? formatShortDate(start) : `${formatShortDate(start)} - ${formatShortDate(end)}`
 }
 
-/** AlbumFocusCarouselと同じ「中央フォーカス」スナップカルーセル。フェスビジュアルは
- * 縦横比がまちまちなので正方形ではなく縦長のカードにしている。 */
+/** AlbumFocusCarouselと同じ「中央フォーカス」スナップカルーセル。カード幅・画像の
+ * aspect-square・キャプションのmt-6をAlbumFocusCarouselと完全に揃えることで、
+ * TOPページで3バナーを横並びにしたときにタイトル行の高さが一致するようにしている
+ * (幅が違うと正方形画像の高さも変わり、その分タイトルの縦位置がずれてしまう)。 */
 export default function FestivalFocusCarousel({
   festivals,
   accent,
@@ -88,7 +90,7 @@ export default function FestivalFocusCarousel({
     <div className="relative w-full">
       <div
         ref={containerRef}
-        className="flex w-full snap-x snap-mandatory items-start gap-6 overflow-x-auto px-[22%] py-4 @sm:px-[30%]"
+        className="flex w-full snap-x snap-mandatory items-start gap-6 overflow-x-auto px-[24%] py-4 @sm:px-[32%]"
         style={{ scrollbarWidth: 'none' }}
       >
         {festivals.map((f, i) => {
@@ -100,7 +102,7 @@ export default function FestivalFocusCarousel({
                 itemRefs.current[i] = el
               }}
               data-index={i}
-              className="relative w-48 shrink-0 snap-center @sm:w-56"
+              className="relative w-36 shrink-0 snap-center @sm:w-48"
               style={{ zIndex: isActive ? 10 : 1 }}
             >
               <Link href={`/events/${f.id}`} className="group block">
