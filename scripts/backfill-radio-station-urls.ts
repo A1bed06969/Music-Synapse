@@ -102,6 +102,22 @@ const STATION_URLS: Record<string, string> = {
   // ユーザー提供のURL。以前の調査ではbot対策で確認不能とされていたが、実際には
   // 取得・抽出できることを確認済み。
   'FM802': 'https://funky802.com/site/heavy',
+  // ユーザー提供のURL。抽出動作確認済み(「マンスリーA-MUSIC」という企画名)。
+  '関西AM5局': 'https://www.mbs1179.com/mt/',
+  // ユーザー提供のURL。抽出動作確認済み(「RUSH HOUR!」という企画名)。
+  '東海ラジオ': 'https://www.tokairadio.co.jp/program/p10/',
+  // ユーザー提供のURL。抽出動作確認済み(「今月のピックアップキューン!」
+  // 「今月のマンスリーエンディング」の2企画)。
+  'RSKラジオ': 'https://www.rsk.co.jp/radio/kyun/',
+  // ユーザー提供のURL。抽出動作確認済み(「KBC MUSIC SPLASH」)。
+  '九州朝日放送': 'https://kbc.co.jp/r-radio/music_splash/',
+  // ユーザー提供のURL。ホームページ埋め込みの「RADIO GROOVEイチオシ新着
+  // ミュージック」セクション(掲載されない月もある。その場合は抽出0件になる
+  // だけで害はない)。抽出動作確認済み。
+  'エフエム福島': 'https://www.fmf.co.jp/',
+  // ユーザー提供のURL。ホームページ埋め込みの「Monthly On Air」セクション。
+  // 抽出動作確認済み。
+  'エフエム青森': 'https://afb.co.jp/',
 }
 
 async function main() {
