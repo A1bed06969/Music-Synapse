@@ -15,16 +15,16 @@ Music Synapseは65局以上のラジオ局のパワープレイ/ヘビーロー�
 ブレインストーミングで確認済みの方針:
 
 1. **URL収集**: Claudeが各局のサイト/SNSをWeb検索してURLを埋める。見つからない局は空のままにし、既存の手動運用(HRPPシート経由の一括投入)にフォールバックする。
-2. **実行タイミング**: Vercel Cronで自動定期実行。各局の更新日はバラバラなため、月1回ではなく**毎週**実行して差分を拾う方式とする。
+2. **実行タイミング(2026-09-02、実装中に変更)**: 当初はVercel Cronによる毎週自動実行を予定していたが、実装に入る過程で「Vercel Cronが送る認証ヘッダー(`Bearer $CRON_SECRET`)を通すには、サイト全体を保護しているBasic認証ミドルウェア(`proxy.ts`)から`/api/cron/`配下を除外する必要がある」ことが判明し、ユーザーからこれをセキュリティ上の懸念として明確に却下された。加えてVercel本番環境変数への`CRON_SECRET`登録という、このワークツリー外・本番環境への副作用も発生する。ユーザーの判断で**自動実行は行わず、管理画面のボタン1つで手動実行する方式**に変更した。管理画面`/admin`配下は既存のBasic認証の内側にあるため、`proxy.ts`には一切手を加えない。
 3. **人力確認の範囲**: 既存方針(全件人力確認)を維持する。Apple Music候補のマッチングまでは自動、カタログへの本登録(`registerPickToRotation`)は必ず人が確認してから。抽出そのものの信頼度によって自動本登録を分岐させることはしない。
 
 ## ゴール
 
 - `media`に各局のPPページURLを保存できるようにし、Claudeが調査した分をあらかじめ登録しておく
 - URLが登録されている局について、Gemini構造化抽出で汎用的に(サイト構造を問わず)PP選曲を取得できる汎用抽出ユーティリティを作る
-- 毎週自動実行され、抽出結果を既存の`radio_airplay_pick`テーブルへ登録するAPIルート(Vercel Cronから起動)を作る
-- 既に確立している人力確認フロー(`/admin/data/media/radio-airplay-pick`)にそのまま合流させ、新しい確認画面は作らない
-- 同じ選曲を毎週重複登録しないよう、直近の登録済みデータと突き合わせて差分のみを追加する
+- 管理画面にボタン1つで全局分をまとめて収集できるページを作り、抽出結果を既存の`radio_airplay_pick`テーブルへ登録する(自動実行はしない。ユーザーが手動で押した時だけ動く)
+- 既に確立している人力確認フロー(`/admin/data/media/radio-airplay-pick`)にそのまま合流させる(候補確認・本登録の画面自体は変更しない)
+- 同じ月内に同じ選曲を重複登録しないよう、直近の登録済みデータと突き合わせて差分のみを追加する(ボタンを何度押しても安全)
 
 ## 非ゴール
 
@@ -75,63 +75,55 @@ export async function extractRadioPicksFromUrl(
 4. 429/503は`geminiFestivalLineupExtract.ts`と同じリトライロジックを流用
 5. 取得0件・HTTPエラー・パース失敗はすべて空配列を返す(呼び出し側でスキップしログに残す。例外を投げて全体を止めない)
 
-### 2. `app/api/cron/radio-power-play/route.ts`(新規)
+### 2. `/admin/data/media/radio-power-play-collect`(新規、管理画面ページ)
+
+`app/admin/data/media/radio-pilot`(既存の3局パイロット確認画面)と同じ構造で新設する。既存の管理画面と同じくBasic認証の内側にあるため、追加の認証は不要。
+
+- `page.tsx`: `power_play_url`が設定済みの局一覧を表示し、「今すぐ全局を収集する」ボタン(フォーム)を置く。実行結果(局ごとの抽出件数・新規登録件数・エラー)はsearchParams経由で表示する(既存の`registerPickToRotation`の`redirectWith`と同じパターン)。
+- `actions.ts`: `collectRadioPowerPlay()`というサーバーアクション(`'use server'`)。ボタンのフォームから呼ばれる。
 
 ```ts
+'use server'
 export const maxDuration = 300 // 65局分の逐次抽出を見込む
-export async function GET(request: Request) {
-  const authHeader = request.headers.get('authorization')
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
-  }
-  // ...
+
+export async function collectRadioPowerPlay(formData: FormData) {
+  // media (power_play_url is not null) を全件取得
+  // 各局: extractRadioPicksFromUrl(stationName, url)
+  // 各候補: 今月分の重複チェック → 新規のみ radio_airplay_pick へ insert
+  // 新規行に Apple Music 候補を自動付与(findItunesCandidateベース)
+  // 局ごとの結果をredirectのsearchParamsに載せて/admin/data/media/radio-power-play-collectへ戻る
 }
 ```
 
-このプロジェクトにはcronルート・`CRON_SECRET`のような認証パターンがまだ存在しないため、Vercel公式のCron保護方式(`Authorization: Bearer $CRON_SECRET`、Vercel Cronからのリクエストには自動的にこのヘッダーが付与される)を新規に採用する。実装時にVercelプロジェクトの環境変数へ`CRON_SECRET`を追加する作業が必要(値はランダムな文字列を生成して設定する)。
-
-**重要な前提の修正(plan作成時に判明)**: `proxy.ts`がサイト全体(全APIルート含む)をBasic認証で保護しており、`Basic `以外のAuthorizationヘッダーは無条件に401を返す。Vercel Cronは`Bearer $CRON_SECRET`ヘッダーを送るため、このミドルウェアを素通りできず、cronルートに到達する前に必ず401でブロックされてしまう。そのため`proxy.ts`の`config.matcher`から`/api/cron/`配下を除外する変更が必須になる。Basic認証を外す分、ルート自体の`CRON_SECRET`検証が唯一の防御になるため、この検証は必須(オプションではない)。
-
-処理内容:
-1. `media`から`power_play_url is not null`の局を全件取得
+処理内容(cronで検討していた内容と同じ。トリガーが「Vercel Cronからの自動起動」から「管理画面のボタン押下」に変わっただけ):
+1. `media`から`media_type='radio' AND power_play_url is not null`の局を全件取得
 2. 各局について`extractRadioPicksFromUrl`を呼び、成功した候補を受け取る
-3. 各候補について、**今月分**の`radio_airplay_pick`に同一`station_name` + `artist_name` + `track_title`が既に存在するかチェックし、存在しなければinsert(重複防止、詳細は次節)
-4. 新規にiTunes候補が未設定の行に対し、`backfill-radio-pick-itunes-candidates.ts`と同じロジック(`searchTracks`)でApple Music候補を即座に付与する(既存スクリプトの关数を`utils/`に切り出して共有する)
-5. 局ごとの成功/失敗件数をレスポンスJSONで返す(Vercel Cronのログで確認できるようにする)
-
-### 3. `vercel.json`(新規)
-
-```json
-{
-  "crons": [
-    { "path": "/api/cron/radio-power-play", "schedule": "0 21 * * 1" }
-  ]
-}
-```
-
-JSTで毎週火曜6:00(UTC 21:00月曜)に実行(既存の日次バッチが無いため、深夜〜早朝で低負荷な時間帯を選ぶ。曜日は初期値、後から調整可能)。
+3. 各候補について、**今月分**の`radio_airplay_pick`に同一`station_name` + `artist_name` + `track_title`が既に存在するかチェックし、存在しなければinsert(重複防止、詳細は次節。ボタンを誤って複数回押しても重複登録されない)
+4. 新規にiTunes候補が未設定の行に対し、`utils/radioPickMatching.ts`の`findItunesCandidate`でApple Music候補を即座に付与する
+5. 局ごとの成功/失敗件数を結果画面に表示する
 
 ### 4. `scripts/backfill-radio-station-urls.ts`(新規、一度きりの手動実行スクリプト)
 
 Claudeが調査したURLを`media.power_play_url`へ書き込むための、シンプルな「局名→URL」マッピング配列を受け取ってupdateするスクリプト。調査自体はスクリプトの外(Web検索)で行い、結果をこのスクリプトのマッピング定数に埋め込んで一度実行する。
 
-### 5. 既存コンポーネントの変更点
+### 3. 既存コンポーネントの変更点
 
-- `backfill-radio-pick-itunes-candidates.ts`のApple Music検索ロジックを`utils/radioPickMatching.ts`(新規)に切り出し、スクリプトと新しいcronルートの両方から呼べるようにする(重複実装を避ける)。
+- `backfill-radio-pick-itunes-candidates.ts`のApple Music検索ロジックを`utils/radioPickMatching.ts`(新規)に切り出し、スクリプトと新しい収集アクションの両方から呼べるようにする(重複実装を避ける)。実装済み(Task 2)。
 - `/admin/data/media/radio-airplay-pick`・`radio-pilot`は変更しない。
+- `proxy.ts`・`vercel.json`は変更しない(自動cronを取りやめたため、認証境界の変更が不要になった)。
 
 ## データフロー
 
 ```
-[Vercel Cron: 毎週]
-  → GET /api/cron/radio-power-play
-    → media (power_play_url is not null) を全件取得
-    → 各局: extractRadioPicksFromUrl(stationName, url)
-      → HTML取得 → visible text化 → Gemini構造化抽出 → 候補配列
-    → 各候補: 今月分の重複チェック → 新規のみ radio_airplay_pick へ insert
-    → 新規行に Apple Music 候補を自動付与(searchTracksベース)
-  → レスポンス: 局ごとの成功/失敗/新規件数
 [人(ユーザー)]
+  → /admin/data/media/radio-power-play-collect で「今すぐ全局を収集する」ボタンを押す
+    → collectRadioPowerPlay()サーバーアクション
+      → media (media_type='radio' AND power_play_url is not null) を全件取得
+      → 各局: extractRadioPicksFromUrl(stationName, url)
+        → HTML取得 → visible text化 → Gemini構造化抽出 → 候補配列
+      → 各候補: 今月分の重複チェック → 新規のみ radio_airplay_pick へ insert
+      → 新規行に Apple Music 候補を自動付与(findItunesCandidateベース)
+    → 結果画面: 局ごとの成功/失敗/新規件数を表示
   → /admin/data/media/radio-airplay-pick で確認
     → 未マッチ: 手動検索 or URL貼り付けで候補設定
     → マッチ済み: 内容を見て「登録」→ カタログ反映(既存の registerPickToRotation)
@@ -139,7 +131,7 @@ Claudeが調査したURLを`media.power_play_url`へ書き込むための、シ�
 
 ## 重複防止(冪等性)
 
-局のページは毎週再取得するが、局が更新していない週は同じ選曲が再抽出される。挿入前に以下の条件で既存行を確認し、あれば挿入をスキップする:
+「今すぐ全局を収集する」ボタンは何度押しても安全である必要がある(同じ月内に連打しても選曲が重複登録されない)。挿入前に以下の条件で既存行を確認し、あれば挿入をスキップする:
 
 ```ts
 const { data: existing } = await supabase
@@ -160,18 +152,20 @@ if (existing) continue // 今月すでに記録済み
 - 局のfetchが失敗(タイムアウト・4xx/5xx・DNS失敗等)しても、その局だけスキップして他局の処理を続ける(1局の不調で全体を止めない、`radio-pilot`の設計と同じ思想)。
 - Geminiのレスポンスがスキーマに合わない・パース失敗の場合も同様にスキップしログに残す。
 - iTunes候補検索のレート制限(403/429)は`backfill-radio-pick-itunes-candidates.ts`と同じ60秒クールダウン方式を踏襲する。
-- cronルート全体がタイムアウト(Vercel Cronの実行時間上限)に達した場合に備え、局のループは早い段階で失敗したものをログに残しつつ次に進む実装とし、部分的成功でも構わない設計にする(次週の実行で自然にリトライされる)。
+- サーバーアクション全体がタイムアウト(`maxDuration`)に達した場合に備え、局のループは早い段階で失敗したものをログに残しつつ次に進む実装とし、部分的成功でも構わない設計にする(ボタンをもう一度押せば重複防止ロジックにより未処理分だけ再試行される)。
 
 ## テスト方針
 
-- `extractRadioPicksFromUrl`は実際のGemini呼び出しをモックしたユニットテストで、HTML→候補配列の変換ロジック(特にJSON解析・空配列フォールバック)を検証する。
-- cronルートは、Supabaseをモックした結合テストで「重複はスキップされる」「新規は挿入される」ことを検証する。
-- 本番相当の検証は、URLを数局分だけ登録した状態で手動フルリクエスト(`curl`)を叩き、`radio_airplay_pick`に想定通り入るか確認してから、Vercel Cronの有効化・全局展開に進む。
+このプロジェクトの既存の結合テスト(`__tests__/*.integration.test.ts`)はモックを使わず実際の外部サービスを叩く方針で統一されているため、それに合わせる(実装時に確認済み):
+
+- `parseRadioPickResponse`(Gemini応答のJSON→候補配列変換、ネットワーク非依存の純粋関数)はユニットテストで検証する。
+- `extractRadioPicksFromUrl`は、実際にGemini APIと既存パイロット局の実ページ(動作実績のあるFM福井のページ等)を叩く結合テストで検証する。
+- `collectRadioPowerPlay()`は、実際にdevサーバー経由で(Basic認証込みで)叩く結合テストで「重複はスキップされる」「新規は挿入される」ことを検証する。
 
 ## 段階的ロールアウト
 
-1. `media.power_play_url`列を追加。
+1. `media.power_play_url`列を追加。(完了)
 2. Claudeが局のサイトを調査し、判明した分だけURLを埋める(65局中何局埋まるかはやってみないと分からない。一度に全て終わらない場合は複数回に分けて拡充する)。
-3. `geminiRadioPickExtract.ts` / cronルートを実装し、まずURLが埋まった数局だけで手動実行して精度を確認する。
-4. 問題なければVercel Cronを有効化し、以降は毎週自動実行に移行する。
+3. `geminiRadioPickExtract.ts` / 収集ページを実装し、まずURLが埋まった数局だけで手動実行して精度を確認する。
+4. 問題なければ、ユーザーが月次(または任意のタイミング)で管理画面のボタンを押す運用に移行する。
 5. URLが埋まっていない局は、これまでどおりHRPPシート経由の手動投入を継続する(このワークフロー自体は変更しない)。
