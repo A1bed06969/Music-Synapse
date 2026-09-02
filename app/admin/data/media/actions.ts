@@ -104,6 +104,121 @@ export async function deleteMedia(formData: FormData) {
   redirectWith('success', `メディア「${media?.name ?? id}」を削除しました。`)
 }
 
+export async function searchMedia(query: string): Promise<{ id: string; label: string }[]> {
+  const trimmed = query.trim()
+  if (!trimmed) return []
+  const supabase = createAdminClient()
+  const { data } = await supabase.from('media').select('id, name').ilike('name', `%${trimmed}%`).limit(20)
+  return (data ?? []).map((m) => ({ id: m.id, label: m.name }))
+}
+
+/** 表記違いで別行になってしまった局(例: 「エフエム・ノースウエーブ」と
+ * 「エフエム・ノースウェーブ」)を1件へ統合する。mergeArtist(app/admin/data/actions.ts)
+ * と同じ方針: 統合先が未設定のプロフィール項目だけ統合元で埋め、外部キーは
+ * 全て統合先へ付け替えてから統合元を削除する(取り消せない)。
+ *
+ * media_id を外部キーに持つテーブルは3つ:
+ * - media_program(ON DELETE CASCADE) — 番組名が統合先に同名で既にある場合は
+ *   radio_rotationだけ統合先の番組へ付け替えて統合元の番組行を削除し(重複防止)、
+ *   同名が無ければ番組行ごと統合先へ付け替える。reassignOrDropDuplicatesと
+ *   同じ考え方だが、削除ではなく「子(radio_rotation)を先に付け替えてから
+ *   親(media_program)を消す」必要がある点だけ異なる。
+ * - news(ON DELETE SET NULL) — 単純に付け替え。
+ * - ranking(ON DELETE SET NULL) — 単純に付け替え。
+ *
+ * radio_airplay_pick.station_name は外部キーではなく自由入力の文字列なので、
+ * 統合元の局名の行を統合先の局名へ一括で書き換える。 */
+export async function mergeMedia(formData: FormData) {
+  const sourceId = String(formData.get('source_media_id') ?? '')
+  const targetId = String(formData.get('target_media_id') ?? '')
+
+  if (!sourceId || !targetId || sourceId === targetId) {
+    redirectWith('error', '統合元・統合先を正しく選んでください。')
+  }
+
+  const supabase = createAdminClient()
+
+  const { data: source } = await supabase.from('media').select('*').eq('id', sourceId).maybeSingle()
+  const { data: target } = await supabase.from('media').select('*').eq('id', targetId).maybeSingle()
+  if (!source || !target) {
+    redirectWith('error', '統合元・統合先のメディアが見つかりませんでした。')
+  }
+
+  // プロフィール項目は統合先が未設定のものだけ埋める(既存値は上書きしない)
+  const fillFields: Record<string, unknown> = {}
+  for (const col of ['media_type', 'area', 'prefecture', 'logo_url', 'power_play_url'] as const) {
+    if (target![col] == null && source![col] != null) {
+      fillFields[col] = source![col]
+    }
+  }
+  if (Object.keys(fillFields).length > 0) {
+    const { error } = await supabase.from('media').update(fillFields).eq('id', targetId)
+    if (error) {
+      redirectWith('error', `プロフィール項目の統合に失敗しました: ${error.message}`)
+    }
+  }
+
+  // media_program: 統合先に同名の番組が既にあればradio_rotationだけ付け替えて
+  // 統合元の番組行を削除(重複防止)、無ければ番組行ごと付け替える
+  const { data: sourcePrograms } = await supabase
+    .from('media_program')
+    .select('id, program_name')
+    .eq('media_id', sourceId)
+  const { data: targetPrograms } = await supabase.from('media_program').select('id, program_name').eq('media_id', targetId)
+  const targetProgramByName = new Map((targetPrograms ?? []).map((p) => [p.program_name, p.id]))
+
+  for (const program of sourcePrograms ?? []) {
+    const existingTargetProgramId = targetProgramByName.get(program.program_name)
+    if (existingTargetProgramId) {
+      const { error: rotationError } = await supabase
+        .from('radio_rotation')
+        .update({ media_program_id: existingTargetProgramId })
+        .eq('media_program_id', program.id)
+      if (rotationError) {
+        redirectWith('error', `オンエア実績の付け替えに失敗しました: ${rotationError.message}`)
+      }
+      await supabase.from('media_program').delete().eq('id', program.id)
+    } else {
+      const { error: programError } = await supabase
+        .from('media_program')
+        .update({ media_id: targetId })
+        .eq('id', program.id)
+      if (programError) {
+        redirectWith('error', `番組の付け替えに失敗しました: ${programError.message}`)
+      }
+      targetProgramByName.set(program.program_name, program.id)
+    }
+  }
+
+  // news・rankingは単純に付け替え(重複の心配がない参照元カラムのため)
+  for (const table of ['news', 'ranking'] as const) {
+    const { error } = await supabase.from(table).update({ media_id: targetId }).eq('media_id', sourceId)
+    if (error) {
+      redirectWith('error', `${table}の付け替えに失敗しました: ${error.message}`)
+    }
+  }
+
+  // radio_airplay_pick.station_nameは外部キーではなく自由入力の文字列なので、
+  // 統合元の局名で記録されている行を統合先の局名へ書き換える
+  const { error: pickError } = await supabase
+    .from('radio_airplay_pick')
+    .update({ station_name: target!.name })
+    .eq('station_name', source!.name)
+  if (pickError) {
+    redirectWith('error', `HRPP候補データの付け替えに失敗しました: ${pickError.message}`)
+  }
+
+  const { error: deleteError } = await supabase.from('media').delete().eq('id', sourceId)
+  if (deleteError) {
+    redirectWith('error', `統合元の削除に失敗しました(データは既に統合先へ付け替え済みです): ${deleteError.message}`)
+  }
+
+  revalidatePath('/admin/data/media')
+  revalidatePath('/admin/data/media/radio-airplay-pick')
+  revalidatePath('/media/on-air')
+  redirectWith('success', `「${source!.name}」を「${target!.name}」へ統合しました。`)
+}
+
 export async function createMediaProgram(formData: FormData) {
   const mediaId = String(formData.get('media_id') ?? '')
   const programName = String(formData.get('program_name') ?? '').trim()

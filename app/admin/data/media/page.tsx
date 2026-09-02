@@ -5,7 +5,7 @@ import { formatRotationPeriod } from '@/utils/format'
 import { inputClass, buttonClass } from '../adminUi'
 import SearchableSelect from '../SearchableSelect'
 import { searchTracks, searchAlbums, searchArtists } from '../actions'
-import { createMedia, createMediaProgram, createRadioRotation } from './actions'
+import { createMedia, createMediaProgram, createRadioRotation, searchMedia, mergeMedia } from './actions'
 
 const MEDIA_TYPE_OPTIONS = [
   { value: 'radio', label: 'ラジオ' },
@@ -118,6 +118,30 @@ export default async function MediaAdminPage({
           ))}
         </ul>
       )}
+
+      <section className="mt-6 rounded-md border border-white/10 p-4">
+        <h2 className="text-sm font-semibold">メディア統合</h2>
+        <p className="mt-1 text-xs text-white/40">
+          表記違い(例: 「エフエム・ノースウエーブ」と「エフエム・ノースウェーブ」)で別行になってしまった局を1件へまとめる。統合元の番組・オンエア実績・ニュース・ランキング・HRPP候補は全て統合先へ付け替わり、統合元は削除される。取り消せない操作。
+        </p>
+        <form action={mergeMedia} className="mt-3 flex flex-wrap items-center gap-2">
+          <SearchableSelect
+            searchAction={searchMedia}
+            name="source_media_id"
+            placeholder="統合元(削除する方)を検索..."
+          />
+          <span className="text-xs text-white/40">を</span>
+          <SearchableSelect
+            searchAction={searchMedia}
+            name="target_media_id"
+            placeholder="統合先(残す方)を検索..."
+          />
+          <span className="text-xs text-white/40">へ統合</span>
+          <button type="submit" className="rounded-md border border-red-500/30 px-4 py-2 text-sm hover:bg-red-500/10">
+            統合する
+          </button>
+        </form>
+      </section>
 
       <form action={createMediaProgram} className="mt-4 flex flex-wrap gap-2">
         <select name="media_id" required className={`${inputClass} max-w-xs`} defaultValue="">
