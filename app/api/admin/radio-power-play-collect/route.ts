@@ -55,9 +55,9 @@ export async function POST() {
           .ilike('artist_name', candidate.artistName)
           .ilike('track_title', candidate.trackTitle)
           .gte('created_at', monthStart)
-          .maybeSingle()
+          .limit(1)
 
-        if (existing) continue
+        if (existing && existing.length > 0) continue
 
         let itunesMatch = null
         try {
