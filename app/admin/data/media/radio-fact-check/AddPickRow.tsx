@@ -32,14 +32,16 @@ export default function AddPickRow({
     region: string,
     monthKey: string,
     trackId: string,
-    campaignName: string | null
+    campaignName: string | null,
+    musicType: 'DOMESTIC' | 'OVERSEAS'
   ) => Promise<{ success: boolean; message: string }>
   addFromUrlAction: (
     stationName: string,
     region: string,
     monthKey: string,
     url: string,
-    campaignName: string | null
+    campaignName: string | null,
+    musicType: 'DOMESTIC' | 'OVERSEAS'
   ) => Promise<{ success: boolean; message: string }>
   addManualAction: (
     stationName: string,
@@ -47,12 +49,14 @@ export default function AddPickRow({
     monthKey: string,
     artistName: string,
     trackTitle: string,
-    campaignName: string | null
+    campaignName: string | null,
+    musicType: 'DOMESTIC' | 'OVERSEAS'
   ) => Promise<void>
 }) {
   const [adding, setAdding] = useState(false)
   const [manualMode, setManualMode] = useState(false)
   const [campaignDraft, setCampaignDraft] = useState('')
+  const [musicType, setMusicType] = useState<'DOMESTIC' | 'OVERSEAS'>('DOMESTIC')
   const [url, setUrl] = useState('')
   const [artistDraft, setArtistDraft] = useState('')
   const [titleDraft, setTitleDraft] = useState('')
@@ -67,6 +71,7 @@ export default function AddPickRow({
     setAdding(false)
     setManualMode(false)
     setCampaignDraft('')
+    setMusicType('DOMESTIC')
     setUrl('')
     setArtistDraft('')
     setTitleDraft('')
@@ -99,6 +104,14 @@ export default function AddPickRow({
             <option key={p} value={p} />
           ))}
         </datalist>
+        <select
+          value={musicType}
+          onChange={(e) => setMusicType(e.target.value as 'DOMESTIC' | 'OVERSEAS')}
+          className="shrink-0 rounded-md border border-white/15 bg-white/5 px-2 py-1 text-xs text-white focus:border-white/30 focus:outline-none"
+        >
+          <option value="DOMESTIC">邦楽</option>
+          <option value="OVERSEAS">洋楽</option>
+        </select>
       </div>
       {!manualMode ? (
         <>
@@ -110,7 +123,7 @@ export default function AddPickRow({
               if (!item) return
               setError(null)
               startTransition(async () => {
-                const result = await addFromSearchAction(stationName, region, monthKey, item.id, campaignName)
+                const result = await addFromSearchAction(stationName, region, monthKey, item.id, campaignName, musicType)
                 if (result.success) reset()
                 else setError(result.message)
               })
@@ -127,7 +140,7 @@ export default function AddPickRow({
                 e.preventDefault()
                 setError(null)
                 startTransition(async () => {
-                  const result = await addFromUrlAction(stationName, region, monthKey, url.trim(), campaignName)
+                  const result = await addFromUrlAction(stationName, region, monthKey, url.trim(), campaignName, musicType)
                   if (result.success) reset()
                   else setError(result.message)
                 })
@@ -171,7 +184,7 @@ export default function AddPickRow({
             disabled={isPending || !artistDraft.trim() || !titleDraft.trim()}
             onClick={() =>
               startTransition(async () => {
-                await addManualAction(stationName, region, monthKey, artistDraft, titleDraft, campaignName)
+                await addManualAction(stationName, region, monthKey, artistDraft, titleDraft, campaignName, musicType)
                 reset()
               })
             }

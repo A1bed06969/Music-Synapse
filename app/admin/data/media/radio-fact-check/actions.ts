@@ -49,7 +49,8 @@ export async function addManualPick(
   monthKey: string,
   artistName: string,
   trackTitle: string,
-  campaignName: string | null = null
+  campaignName: string | null = null,
+  musicType: 'DOMESTIC' | 'OVERSEAS' = 'DOMESTIC'
 ): Promise<void> {
   const trimmedArtist = artistName.trim()
   const trimmedTitle = trackTitle.trim()
@@ -64,6 +65,7 @@ export async function addManualPick(
     track_title: trimmedTitle,
     fact_checked_correct: true,
     campaign_name: campaignName,
+    is_domestic: musicType === 'DOMESTIC',
   })
   revalidatePath('/admin/data/media/radio-fact-check')
 }
@@ -82,7 +84,8 @@ export async function addManualPickFromSearch(
   region: string,
   monthKey: string,
   trackId: string,
-  campaignName: string | null = null
+  campaignName: string | null = null,
+  musicType: 'DOMESTIC' | 'OVERSEAS' = 'DOMESTIC'
 ): Promise<AddPickResult> {
   let match
   try {
@@ -105,6 +108,7 @@ export async function addManualPickFromSearch(
       track_title: match.trackName,
       fact_checked_correct: true,
       campaign_name: campaignName,
+      is_domestic: musicType === 'DOMESTIC',
       candidate_track_id: match.trackId,
       candidate_track_name: match.trackName,
       candidate_artist_name: match.artistName,
@@ -119,7 +123,7 @@ export async function addManualPickFromSearch(
     return { success: false, message: `保存に失敗しました: ${error?.message}` }
   }
 
-  const registerResult = await registerPickIdToRotation(inserted.id)
+  const registerResult = await registerPickIdToRotation(inserted.id, musicType)
 
   revalidatePath('/admin/data/media/radio-fact-check')
   return {
@@ -139,7 +143,8 @@ export async function addManualPickFromUrl(
   region: string,
   monthKey: string,
   url: string,
-  campaignName: string | null = null
+  campaignName: string | null = null,
+  musicType: 'DOMESTIC' | 'OVERSEAS' = 'DOMESTIC'
 ): Promise<AddPickResult> {
   const parsed = parseAppleMusicAlbumUrl(url.trim())
   if (!parsed?.trackId) {
@@ -148,5 +153,5 @@ export async function addManualPickFromUrl(
       message: 'Apple Musicで曲を選択した状態でコピーしたURL(末尾に?i=数字が付いたもの)を貼ってください。',
     }
   }
-  return addManualPickFromSearch(stationName, region, monthKey, String(parsed.trackId), campaignName)
+  return addManualPickFromSearch(stationName, region, monthKey, String(parsed.trackId), campaignName, musicType)
 }
