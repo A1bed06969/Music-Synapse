@@ -197,16 +197,19 @@ export default async function ArtistDetailPage({
     )
   }
 
-  const fenderNextYears = Array.from(
-    new Set(
-      (rankingSelections ?? [])
-        .filter((row) => {
-          const ranking = Array.isArray(row.ranking) ? row.ranking[0] : row.ranking
-          return ranking?.name === 'Fender NEXT'
-        })
-        .map((row) => parseInt(row.period_date.slice(0, 4), 10))
-    )
-  ).sort((a, b) => b - a)
+  // タワレコメン等のアルバム起点と同じ「🏆 選出」タグを、Fender NEXT・NME 100等
+  // アーティスト直指定のキュレーションコンテンツにも汎用的に表示する
+  // (以前はFender NEXTだけをハードコードで年別チップ表示していた)
+  type RankingRef = { id: string; name: string }
+  const seenRankingIds = new Set<string>()
+  const curationRankings: RankingRef[] = (rankingSelections ?? [])
+    .map((row) => (Array.isArray(row.ranking) ? row.ranking[0] : row.ranking))
+    .filter((r): r is RankingRef & { list_type: string } => r != null)
+    .filter((r) => {
+      if (seenRankingIds.has(r.id)) return false
+      seenRankingIds.add(r.id)
+      return true
+    })
 
   const appearances = (eventAppearances ?? [])
     .map((row) => {
@@ -281,13 +284,14 @@ export default async function ArtistDetailPage({
                 🎤 {band.name} のメンバー
               </Link>
             ))}
-            {fenderNextYears.map((year) => (
-              <span
-                key={year}
-                className="rounded-full border border-amber-400/40 px-2.5 py-0.5 text-amber-300"
+            {curationRankings.map((ranking) => (
+              <Link
+                key={ranking.id}
+                href={`/media/features/${ranking.id}`}
+                className="rounded-full border border-amber-400/30 bg-amber-400/10 px-2.5 py-0.5 text-amber-300 hover:bg-amber-400/20"
               >
-                🎸 Fender NEXT {year}
-              </span>
+                🏆 {ranking.name}選出
+              </Link>
             ))}
           </div>
 

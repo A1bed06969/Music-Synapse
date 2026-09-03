@@ -34,7 +34,7 @@ export default async function TrackDetailPage({
     notFound()
   }
 
-  const [{ data: credits }, { data: trackInstruments }, { data: syncEntries }, { data: rotations }, { data: coArtistRows }] =
+  const [{ data: credits }, { data: trackInstruments }, { data: syncEntries }, { data: rotations }, { data: coArtistRows }, { data: curationSelections }] =
     await Promise.all([
       supabase
         .from('artist_credit')
@@ -58,6 +58,13 @@ export default async function TrackDetailPage({
         .select('artist_id, role, billing_order, artist:artist_id(id, name)')
         .eq('track_id', id)
         .order('billing_order', { ascending: true, nullsFirst: false }),
+      // トラック単位で選出されるキュレーションコンテンツ(将来のTSUTAYA名盤の
+      // トラック起点選出等)向け。album/artist詳細ページと同じ🏆選出タグを表示する
+      supabase
+        .from('ranking_entry')
+        .select('ranking:ranking_id!inner(id, name, list_type)')
+        .eq('track_id', id)
+        .eq('ranking.list_type', 'selection'),
     ])
 
   const album = Array.isArray(track.album) ? track.album[0] : track.album
@@ -73,6 +80,17 @@ export default async function TrackDetailPage({
     seenArtistIds.add(a.id)
     return true
   })
+
+  type RankingRef = { id: string; name: string }
+  const seenRankingIds = new Set<string>()
+  const curationRankings: RankingRef[] = (curationSelections ?? [])
+    .map((row) => (Array.isArray(row.ranking) ? row.ranking[0] : row.ranking))
+    .filter((r): r is RankingRef & { list_type: string } => r != null)
+    .filter((r) => {
+      if (seenRankingIds.has(r.id)) return false
+      seenRankingIds.add(r.id)
+      return true
+    })
 
   // 「ミュージシャン」ロールは楽器名ごとに演奏者をまとめて「使用楽器」欄で表示するため、
   // ここでは楽器を伴わないロール(プロデューサー等)だけを対象にする
@@ -149,6 +167,19 @@ export default async function TrackDetailPage({
 
         <div>
           <h1 className="text-2xl font-bold">{track.title}</h1>
+          {curationRankings.length > 0 && (
+            <div className="mt-1.5 flex flex-wrap gap-1.5 text-xs">
+              {curationRankings.map((ranking) => (
+                <Link
+                  key={ranking.id}
+                  href={`/media/features/${ranking.id}`}
+                  className="rounded-full border border-amber-400/30 bg-amber-400/10 px-2.5 py-0.5 text-amber-300 hover:bg-amber-400/20"
+                >
+                  🏆 {ranking.name}選出
+                </Link>
+              ))}
+            </div>
+          )}
           {allArtists.length > 0 && (
             <p className="mt-1 flex flex-wrap items-center gap-x-1 text-sm text-white/60">
               {allArtists.map((a, i) => (
