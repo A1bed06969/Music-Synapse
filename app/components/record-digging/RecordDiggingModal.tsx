@@ -352,7 +352,11 @@ export default function RecordDiggingModal({ onClose }: { onClose: () => void })
         <img
           src="/images/record-digging/record-box-bg.jpg"
           alt=""
-          className="absolute"
+          // Tailwind PreflightのデフォルトでimgにはCSSのmax-width:100%が付くため、
+          // max-w-noneを指定しないと下のwidth(スケール計算済みの実寸px、コンテナより
+          // 大きくなりうる=画面を覆うための意図的なオーバーサイズ)が親要素の幅で
+          // クランプされ、右端に隙間ができてしまう。
+          className="absolute max-w-none"
           style={{
             left: backgroundRect.left,
             top: backgroundRect.top,
