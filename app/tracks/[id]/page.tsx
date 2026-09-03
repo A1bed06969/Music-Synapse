@@ -4,6 +4,7 @@ import { createClient } from '@/utils/Supabase/server'
 import { formatDuration, extractYoutubeVideoId, CREDIT_ROLE_LABEL } from '@/utils/format'
 import PreviewButton from '@/app/components/PreviewButton'
 import RotationModal from '@/app/components/track/RotationModal'
+import CurationTags from '@/app/components/CurationTags'
 
 const WORK_TYPE_LABEL: Record<string, string> = {
   cm: 'CM',
@@ -62,7 +63,7 @@ export default async function TrackDetailPage({
       // トラック起点選出等)向け。album/artist詳細ページと同じ🏆選出タグを表示する
       supabase
         .from('ranking_entry')
-        .select('ranking:ranking_id!inner(id, name, list_type)')
+        .select('ranking:ranking_id!inner(id, name, list_type, source)')
         .eq('track_id', id)
         .eq('ranking.list_type', 'selection'),
     ])
@@ -81,7 +82,7 @@ export default async function TrackDetailPage({
     return true
   })
 
-  type RankingRef = { id: string; name: string }
+  type RankingRef = { id: string; name: string; source: string | null }
   const seenRankingIds = new Set<string>()
   const curationRankings: RankingRef[] = (curationSelections ?? [])
     .map((row) => (Array.isArray(row.ranking) ? row.ranking[0] : row.ranking))
@@ -169,15 +170,7 @@ export default async function TrackDetailPage({
           <h1 className="text-2xl font-bold">{track.title}</h1>
           {curationRankings.length > 0 && (
             <div className="mt-1.5 flex flex-wrap gap-1.5 text-xs">
-              {curationRankings.map((ranking) => (
-                <Link
-                  key={ranking.id}
-                  href={`/media/features/${ranking.id}`}
-                  className="rounded-full border border-amber-400/30 bg-amber-400/10 px-2.5 py-0.5 text-amber-300 hover:bg-amber-400/20"
-                >
-                  🏆 {ranking.name}選出
-                </Link>
-              ))}
+              <CurationTags rankings={curationRankings} />
             </div>
           )}
           {allArtists.length > 0 && (

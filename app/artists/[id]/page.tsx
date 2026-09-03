@@ -20,6 +20,7 @@ import { fetchAllNews, findRelatedNews, formatRelativeTime } from '@/utils/newsP
 import { ALBUM_TYPE_LABEL_JA, ALBUM_TYPE_ORDER, type AlbumType } from '@/utils/albumType'
 import { fetchArtistMediaSelections } from '@/utils/fetchArtistMediaSelections'
 import ArtistTimeline from './ArtistTimeline'
+import CurationTags from '@/app/components/CurationTags'
 
 type ArtistAlbumRow = {
   id: string
@@ -122,7 +123,7 @@ export default async function ArtistDetailPage({
       // Fender NEXTのようなアーティストそのものが選出対象のキュレーションコンテンツ)
       supabase
         .from('ranking_entry')
-        .select('id, period_date, ranking:ranking_id(id, name, list_type)')
+        .select('id, period_date, ranking:ranking_id(id, name, list_type, source)')
         .eq('artist_id', id)
         .order('period_date', { ascending: false }),
     ]),
@@ -200,7 +201,7 @@ export default async function ArtistDetailPage({
   // タワレコメン等のアルバム起点と同じ「🏆 選出」タグを、Fender NEXT・NME 100等
   // アーティスト直指定のキュレーションコンテンツにも汎用的に表示する
   // (以前はFender NEXTだけをハードコードで年別チップ表示していた)
-  type RankingRef = { id: string; name: string }
+  type RankingRef = { id: string; name: string; source: string | null }
   const seenRankingIds = new Set<string>()
   const curationRankings: RankingRef[] = (rankingSelections ?? [])
     .map((row) => (Array.isArray(row.ranking) ? row.ranking[0] : row.ranking))
@@ -284,15 +285,7 @@ export default async function ArtistDetailPage({
                 🎤 {band.name} のメンバー
               </Link>
             ))}
-            {curationRankings.map((ranking) => (
-              <Link
-                key={ranking.id}
-                href={`/media/features/${ranking.id}`}
-                className="rounded-full border border-amber-400/30 bg-amber-400/10 px-2.5 py-0.5 text-amber-300 hover:bg-amber-400/20"
-              >
-                🏆 {ranking.name}選出
-              </Link>
-            ))}
+            <CurationTags rankings={curationRankings} />
           </div>
 
           <ArtistLinkIcons

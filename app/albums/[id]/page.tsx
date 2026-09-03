@@ -4,6 +4,7 @@ import { createClient } from '@/utils/Supabase/server'
 import { formatDate, formatDuration, STREAMING_STATUS_LABEL } from '@/utils/format'
 import { ALBUM_TYPE_LABEL_JA, type AlbumType } from '@/utils/albumType'
 import PreviewButton from '@/app/components/PreviewButton'
+import CurationTags from '@/app/components/CurationTags'
 
 export default async function AlbumDetailPage({
   params,
@@ -47,7 +48,7 @@ export default async function AlbumDetailPage({
       // ほとんどのためalbum_idでの紐付けのみを対象にする
       supabase
         .from('ranking_entry')
-        .select('ranking:ranking_id!inner(id, name, list_type)')
+        .select('ranking:ranking_id!inner(id, name, list_type, source)')
         .eq('album_id', id)
         .eq('ranking.list_type', 'selection'),
     ])
@@ -75,7 +76,7 @@ export default async function AlbumDetailPage({
   })
   const status = album.streaming_status ? STREAMING_STATUS_LABEL[album.streaming_status] : null
 
-  type RankingRef = { id: string; name: string }
+  type RankingRef = { id: string; name: string; source: string | null }
   const seenRankingIds = new Set<string>()
   const curationRankings: RankingRef[] = (curationSelections ?? [])
     .map((row) => (Array.isArray(row.ranking) ? row.ranking[0] : row.ranking))
@@ -165,15 +166,7 @@ export default async function AlbumDetailPage({
                 {status.icon} {status.label}
               </span>
             )}
-            {curationRankings.map((ranking) => (
-              <Link
-                key={ranking.id}
-                href={`/media/features/${ranking.id}`}
-                className="rounded-full border border-amber-400/30 bg-amber-400/10 px-2.5 py-0.5 text-amber-300 hover:bg-amber-400/20"
-              >
-                🏆 {ranking.name}選出
-              </Link>
-            ))}
+            <CurationTags rankings={curationRankings} />
           </div>
 
           <div className="mt-4 space-y-1 text-sm text-white/50">
