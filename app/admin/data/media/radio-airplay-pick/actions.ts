@@ -322,16 +322,19 @@ function redirectWith(result: 'success' | 'error', message: string): never {
   redirect(`/admin/data/media/radio-airplay-pick?view=matched&${result}=${encodeURIComponent(message)}`)
 }
 
+export type RegisterToRotationResult = { success: boolean; message: string }
+
 /** マッチ済み候補を本番のradio_rotationへ登録する(パワープレイ&ヘビロテページに反映)。
  * カタログに未登録のアーティスト/トラックは、検索・選択式バルク登録と同じ
  * registerTrackFromSearch(アルバム単位の正規登録、MusicBrainz補完・版統合込み)で
  * その場で登録してから紐付ける。局・番組も既存の手動登録(radio-pilot)と同じく
- * 名前一致がなければ新規作成する。 */
-export async function registerPickToRotation(formData: FormData) {
-  const pickId = String(formData.get('pick_id') ?? '')
-  const musicTypeInput = String(formData.get('music_type') ?? '')
-  if (!pickId) redirectWith('error', '不正なリクエストです。')
-
+ * 名前一致がなければ新規作成する。/admin/data/media/radio-airplay-pickの「登録」ボタン
+ * (registerPickToRotation)と、ファクトチェックでApple Music候補が確定した時点での
+ * 即時登録(radio-fact-check/actions.ts)の両方から共通で呼ばれる。 */
+export async function registerPickIdToRotation(
+  pickId: string,
+  musicTypeOverride?: 'DOMESTIC' | 'OVERSEAS'
+): Promise<RegisterToRotationResult> {
   const supabase = createAdminClient()
 
   const { data: pick } = await supabase
@@ -343,7 +346,7 @@ export async function registerPickToRotation(formData: FormData) {
     .single()
 
   if (!pick || !pick.candidate_collection_id) {
-    redirectWith('error', '候補情報が見つかりませんでした。')
+    return { success: false, message: '候補情報が見つかりませんでした。' }
   }
 
   const albumMode = isAlbumCampaign(pick.campaign_name)
@@ -355,7 +358,7 @@ export async function registerPickToRotation(formData: FormData) {
   if (albumMode) {
     const itunesAlbum = await fetchAlbumById(pick.candidate_collection_id)
     if (!itunesAlbum) {
-      redirectWith('error', `「${candidateLabel}」がiTunesで見つかりませんでした。`)
+      return { success: false, message: `「${candidateLabel}」がiTunesで見つかりませんでした。` }
     }
 
     // コラボ/feat.クレジットの作品は同じapple_music_album_idが複数アーティストの
@@ -363,23 +366,23 @@ export async function registerPickToRotation(formData: FormData) {
     // 同じ作品が現れる)、artist_idも合わせて絞り込まないと.maybeSingle()が
     // 「複数件ヒット」エラーで常にnullを返し、既に登録済みでも見つけられない
     // (実際にEBiDANのコラボ曲でこの不具合が発生した)
-    const album = await findRegisteredAlbum(supabase, itunesAlbum!.artistId, pick.candidate_collection_id)
+    const album = await findRegisteredAlbum(supabase, itunesAlbum.artistId, pick.candidate_collection_id)
     if (album) {
       albumId = album.id
     } else {
       const registerResult = await registerAlbumFromSearch(pick.candidate_collection_id)
       if (!registerResult.success) {
-        redirectWith('error', `カタログ登録に失敗しました: ${registerResult.message}`)
+        return { success: false, message: `カタログ登録に失敗しました: ${registerResult.message}` }
       }
-      const reFetchedAlbum = await findRegisteredAlbum(supabase, itunesAlbum!.artistId, pick.candidate_collection_id)
+      const reFetchedAlbum = await findRegisteredAlbum(supabase, itunesAlbum.artistId, pick.candidate_collection_id)
       if (!reFetchedAlbum) {
-        redirectWith('error', `「${candidateLabel}」はカタログ登録後も見つかりませんでした。`)
+        return { success: false, message: `「${candidateLabel}」はカタログ登録後も見つかりませんでした。` }
       }
-      albumId = reFetchedAlbum!.id
+      albumId = reFetchedAlbum.id
     }
   } else {
     if (!pick.candidate_track_id) {
-      redirectWith('error', '候補情報が見つかりませんでした。')
+      return { success: false, message: '候補情報が見つかりませんでした。' }
     }
 
     // オムニバス盤(例: 「HiGH & LOW ORIGINAL BEST ALBUM」)はアルバム自体の
@@ -392,25 +395,25 @@ export async function registerPickToRotation(formData: FormData) {
     // 「見つからない」と誤判定して延々と再登録を試みてしまう)。
     const itunesAlbumForTrack = await fetchAlbumById(pick.candidate_collection_id)
     if (!itunesAlbumForTrack) {
-      redirectWith('error', `「${candidateLabel}」がiTunesで見つかりませんでした。`)
+      return { success: false, message: `「${candidateLabel}」がiTunesで見つかりませんでした。` }
     }
 
-    const track = await findRegisteredTrack(supabase, itunesAlbumForTrack!.artistId, pick.candidate_track_id)
+    const track = await findRegisteredTrack(supabase, itunesAlbumForTrack.artistId, pick.candidate_track_id)
     if (track) {
       trackId = track.id
     } else {
       const registerResult = await registerTrackFromSearch(pick.candidate_collection_id)
       if (!registerResult.success) {
-        redirectWith('error', `カタログ登録に失敗しました: ${registerResult.message}`)
+        return { success: false, message: `カタログ登録に失敗しました: ${registerResult.message}` }
       }
-      const reFetchedTrack = await findRegisteredTrack(supabase, itunesAlbumForTrack!.artistId, pick.candidate_track_id)
+      const reFetchedTrack = await findRegisteredTrack(supabase, itunesAlbumForTrack.artistId, pick.candidate_track_id)
       if (!reFetchedTrack) {
-        redirectWith(
-          'error',
-          `「${candidateLabel}」はカタログ登録後も見つかりませんでした(収録アルバムが変更/削除された可能性があります)。`
-        )
+        return {
+          success: false,
+          message: `「${candidateLabel}」はカタログ登録後も見つかりませんでした(収録アルバムが変更/削除された可能性があります)。`,
+        }
       }
-      trackId = reFetchedTrack!.id
+      trackId = reFetchedTrack.id
     }
   }
 
@@ -423,9 +426,9 @@ export async function registerPickToRotation(formData: FormData) {
       .select('id')
       .single()
     if (error || !createdMedia) {
-      redirectWith('error', `局の登録に失敗しました: ${error?.message}`)
+      return { success: false, message: `局の登録に失敗しました: ${error?.message}` }
     }
-    mediaId = createdMedia!.id
+    mediaId = createdMedia.id
   }
 
   const programName = pick.campaign_name || pick.station_name
@@ -444,9 +447,9 @@ export async function registerPickToRotation(formData: FormData) {
       .select('id')
       .single()
     if (error || !createdProgram) {
-      redirectWith('error', `番組の登録に失敗しました: ${error?.message}`)
+      return { success: false, message: `番組の登録に失敗しました: ${error?.message}` }
     }
-    programId = createdProgram!.id
+    programId = createdProgram.id
   }
 
   const { data: rotation, error: rotationError } = await supabase
@@ -455,7 +458,7 @@ export async function registerPickToRotation(formData: FormData) {
       media_program_id: programId,
       period_type: periodType,
       period_start_date: pick.picked_date,
-      music_type: musicTypeInput === 'OVERSEAS' || musicTypeInput === 'DOMESTIC' ? musicTypeInput : (pick.is_domestic === false ? 'OVERSEAS' : 'DOMESTIC'),
+      music_type: musicTypeOverride ?? (pick.is_domestic === false ? 'OVERSEAS' : 'DOMESTIC'),
       track_id: trackId,
       album_id: albumId,
       note: `HRPP: ${pick.station_name}${pick.campaign_name ? `(${pick.campaign_name})` : ''}`,
@@ -464,12 +467,24 @@ export async function registerPickToRotation(formData: FormData) {
     .single()
 
   if (rotationError || !rotation) {
-    redirectWith('error', `登録に失敗しました: ${rotationError?.message}`)
+    return { success: false, message: `登録に失敗しました: ${rotationError?.message}` }
   }
 
-  await supabase.from('radio_airplay_pick').update({ registered_rotation_id: rotation!.id }).eq('id', pickId)
+  await supabase.from('radio_airplay_pick').update({ registered_rotation_id: rotation.id }).eq('id', pickId)
 
   revalidatePath('/admin/data/media/radio-airplay-pick')
   revalidatePath('/media/on-air')
-  redirectWith('success', `「${candidateLabel}」を登録しました。`)
+  return { success: true, message: `「${candidateLabel}」を登録しました。` }
+}
+
+/** /admin/data/media/radio-airplay-pickの「登録」ボタン用のフォームアクション版。
+ * 実処理はregisterPickIdToRotationに委ね、結果に応じてリダイレクトする。 */
+export async function registerPickToRotation(formData: FormData) {
+  const pickId = String(formData.get('pick_id') ?? '')
+  const musicTypeInput = String(formData.get('music_type') ?? '')
+  if (!pickId) redirectWith('error', '不正なリクエストです。')
+
+  const musicTypeOverride = musicTypeInput === 'OVERSEAS' || musicTypeInput === 'DOMESTIC' ? musicTypeInput : undefined
+  const result = await registerPickIdToRotation(pickId, musicTypeOverride)
+  redirectWith(result.success ? 'success' : 'error', result.message)
 }

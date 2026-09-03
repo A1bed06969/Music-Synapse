@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/utils/Supabase/admin'
 import { fetchTrackById, parseAppleMusicAlbumUrl } from '@/utils/itunes'
-import type { PickerItem } from '../radio-airplay-pick/actions'
+import { registerPickIdToRotation, type PickerItem } from '../radio-airplay-pick/actions'
 
 type AddPickResult = { success: boolean; message: string; item?: PickerItem }
 
@@ -71,7 +71,12 @@ export async function addManualPick(
 /** 手動追加の本命経路。Apple Musicの検索結果(radio-airplay-pick/actions.tsの
  * searchAppleMusicTracksForPickを流用)から選んだ候補で、局サイトを見て確認した
  * 選曲を新規登録する。addManualPickとは異なり、candidate_*列も最初から
- * 埋まった状態で保存されるため、この後のマッチング画面での再検索が不要になる。 */
+ * 埋まった状態で保存されるため、この後のマッチング画面での再検索が不要になる。
+ * ファクトチェック自体が既に人力確認済みのため、保存直後にそのままパワープレイ
+ * &ヘビロテ(radio_rotation)へも本登録する(/admin/data/media/radio-airplay-pickの
+ * 「マッチ済み・未登録」から改めて登録する手間を省く)。カタログ登録等が失敗しても
+ * 候補の保存自体は成立しているので、その場合は「マッチ済み・未登録」に残り、
+ * 従来どおりそちらの画面から手動で登録し直せる。 */
 export async function addManualPickFromSearch(
   stationName: string,
   region: string,
@@ -90,30 +95,38 @@ export async function addManualPickFromSearch(
   }
 
   const supabase = createAdminClient()
-  const { error } = await supabase.from('radio_airplay_pick').insert({
-    region,
-    station_name: stationName,
-    picked_date: `${monthKey}-01`,
-    artist_name: match.artistName,
-    track_title: match.trackName,
-    fact_checked_correct: true,
-    campaign_name: campaignName,
-    candidate_track_id: match.trackId,
-    candidate_track_name: match.trackName,
-    candidate_artist_name: match.artistName,
-    candidate_collection_id: match.collectionId,
-    candidate_collection_name: match.collectionName,
-    candidate_artwork_url: match.artworkUrl100 ?? null,
-  })
+  const { data: inserted, error } = await supabase
+    .from('radio_airplay_pick')
+    .insert({
+      region,
+      station_name: stationName,
+      picked_date: `${monthKey}-01`,
+      artist_name: match.artistName,
+      track_title: match.trackName,
+      fact_checked_correct: true,
+      campaign_name: campaignName,
+      candidate_track_id: match.trackId,
+      candidate_track_name: match.trackName,
+      candidate_artist_name: match.artistName,
+      candidate_collection_id: match.collectionId,
+      candidate_collection_name: match.collectionName,
+      candidate_artwork_url: match.artworkUrl100 ?? null,
+    })
+    .select('id')
+    .single()
 
-  if (error) {
-    return { success: false, message: `保存に失敗しました: ${error.message}` }
+  if (error || !inserted) {
+    return { success: false, message: `保存に失敗しました: ${error?.message}` }
   }
+
+  const registerResult = await registerPickIdToRotation(inserted.id)
 
   revalidatePath('/admin/data/media/radio-fact-check')
   return {
     success: true,
-    message: '保存しました。',
+    message: registerResult.success
+      ? 'パワープレイに登録しました。'
+      : `保存しましたが、パワープレイへの自動登録に失敗しました(${registerResult.message})。「マッチ済み・未登録」画面から登録してください。`,
     item: { id: String(match.trackId), label: `${match.trackName} — ${match.artistName}`, imageUrl: match.artworkUrl100 },
   }
 }
