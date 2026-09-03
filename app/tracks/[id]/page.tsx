@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation'
 import { createClient } from '@/utils/Supabase/server'
 import { formatDuration, extractYoutubeVideoId, CREDIT_ROLE_LABEL } from '@/utils/format'
 import PreviewButton from '@/app/components/PreviewButton'
+import RotationModal from '@/app/components/track/RotationModal'
 
 const WORK_TYPE_LABEL: Record<string, string> = {
   cm: 'CM',
@@ -275,23 +276,7 @@ export default async function TrackDetailPage({
         </section>
       )}
 
-      {rotations && rotations.length > 0 && (
-        <section className="mt-8">
-          <h2 className="text-xs font-medium uppercase tracking-wide text-white/40">パワープレイ/ヘビロテ実績</h2>
-          <ul className="mt-3 space-y-1.5 text-sm text-white/70">
-            {rotations.map((row) => {
-              const program = Array.isArray(row.media_program) ? row.media_program[0] : row.media_program
-              const media = program ? (Array.isArray(program.media) ? program.media[0] : program.media) : null
-              return (
-                <li key={row.id}>
-                  {media?.name} {program?.program_name}
-                  <span className="text-white/40"> ・ {row.period_start_date}</span>
-                </li>
-              )
-            })}
-          </ul>
-        </section>
-      )}
+      {rotations && rotations.length > 0 && <RotationModal rotations={rotations} />}
     </div>
   )
 }
