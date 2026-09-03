@@ -35,6 +35,9 @@ export default function RecordDetailPanel({ current, shelf }: { current: Digging
       <div>
         <p className="text-lg font-bold text-white">{current.artistName}</p>
         <p className="text-sm text-white/60">{current.title}</p>
+        {current.firstTrackTitle && (
+          <p className="mt-1 text-xs text-white/35">♪ {current.firstTrackTitle}</p>
+        )}
         <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-white/35">
           {year && <span>{year}</span>}
           {shelf?.isGenre && (

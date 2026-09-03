@@ -485,6 +485,9 @@ export default function RecordDiggingModal({ onClose }: { onClose: () => void })
                  * ジャケットやShelfPickerと被るのを防ぐため、行数を固定で制限する */}
                 <p className="line-clamp-2 text-lg font-bold text-white">{current.title}</p>
                 <p className="line-clamp-1 text-sm text-white/50">{current.artistName}</p>
+                {current.firstTrackTitle && (
+                  <p className="mt-0.5 line-clamp-1 text-xs text-white/35">♪ {current.firstTrackTitle}</p>
+                )}
                 {current.firstTrackId && (
                   <PreviewButton
                     key={current.firstTrackId}

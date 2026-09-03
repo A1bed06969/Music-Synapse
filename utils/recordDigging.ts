@@ -24,6 +24,7 @@ export type DiggingRecord = {
   releaseDate: string | null
   firstTrackId: string | null
   firstTrackPreviewUrl: string | null
+  firstTrackTitle: string | null
 }
 
 export type ArtistExternalLink = { id: string; link_type: string; url: string }
@@ -63,6 +64,7 @@ type ShelfAlbumRow = {
   release_date: string | null
   first_track_id: string | null
   first_track_preview_url: string | null
+  first_track_title: string | null
 }
 
 function mapShelfRow(r: ShelfAlbumRow): DiggingRecord {
@@ -75,6 +77,7 @@ function mapShelfRow(r: ShelfAlbumRow): DiggingRecord {
     releaseDate: r.release_date,
     firstTrackId: r.first_track_id,
     firstTrackPreviewUrl: r.first_track_preview_url,
+    firstTrackTitle: r.first_track_title,
   }
 }
 
