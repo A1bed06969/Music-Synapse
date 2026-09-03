@@ -2,12 +2,15 @@
 
 import { useEffect, useState } from 'react'
 
-// 背景写真(public/images/record-digging/record-box-bg.jpg)の元画像サイズと、
-// その中でレコードジャケットが実際に収まる領域を元画像のピクセル座標で定数化
-// したもの(グリッドオーバーレイを重ねて計測)。
+// 背景写真(public/images/record-digging/record-box-tag.png)の元画像サイズと、
+// その中でレコードジャケットが実際に収まる領域・ジャンル札(タグ)が写っている
+// 領域を元画像のピクセル座標で定数化したもの(グリッドオーバーレイを重ねて計測)。
 const IMAGE_NATURAL_WIDTH = 921
 const IMAGE_NATURAL_HEIGHT = 1707
 const SLOT_PX = { left: 222, top: 690, width: 476, height: 476 }
+// 札に写っている"NEW ARRIVAL"の文字部分(角丸カードの上端・下端は含まない、
+// 文字だけを覆えれば良いため)
+const TAG_PX = { left: 300, top: 498, width: 345, height: 52 }
 
 // 背景写真は縦長のスマホ画面向けに用意されたもの。PC等の横長ビューポートで
 // object-coverの実スケール(縦横どちらかがビューポートを覆うまで拡大)を
@@ -31,7 +34,7 @@ const BOTTOM_RESERVE_PX = 190
 const MOBILE_LIFT_RATIO = 0.12
 
 export type Rect = { left: number; top: number; width: number; height: number }
-type Layout = { background: Rect; slot: Rect; viewportHeight: number }
+type Layout = { background: Rect; slot: Rect; tag: Rect; viewportHeight: number }
 
 function computeLayout(viewportWidth: number, viewportHeight: number): Layout {
   const naturalScale = Math.max(viewportWidth / IMAGE_NATURAL_WIDTH, viewportHeight / IMAGE_NATURAL_HEIGHT)
@@ -54,10 +57,21 @@ function computeLayout(viewportWidth: number, viewportHeight: number): Layout {
     Math.max(naturalSlotTop, TOP_RESERVE_PX),
     viewportHeight - BOTTOM_RESERVE_PX - slotHeight
   )
+  // 札は背景写真に写り込んでいる実物(動かない)なので、ジャケットが安全領域に
+  // 収まるよう調整される分のズレ(slotTop - naturalSlotTop)は追従させない。
+  // 追従させると、ジャケットが避けるためにずらされた分だけ札のマスクが
+  // 背景の実物の札からズレ、下にはみ出た元の文字が二重に見えてしまう。
+  const tag: Rect = {
+    left: offsetX + TAG_PX.left * scale,
+    top: offsetY + TAG_PX.top * scale,
+    width: TAG_PX.width * scale,
+    height: TAG_PX.height * scale,
+  }
 
   return {
     background,
     slot: { left: offsetX + SLOT_PX.left * scale, top: slotTop, width: slotWidth, height: slotHeight },
+    tag,
     viewportHeight,
   }
 }

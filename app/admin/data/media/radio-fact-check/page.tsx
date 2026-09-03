@@ -9,7 +9,15 @@ import Link from 'next/link'
 import { createClient } from '@/utils/Supabase/server'
 import FactCheckRow from './FactCheckRow'
 import AddPickRow from './AddPickRow'
-import { markFactCheckCorrect, saveFactCheckCorrection, deleteFactCheckPick, addManualPick } from './actions'
+import {
+  markFactCheckCorrect,
+  saveFactCheckCorrection,
+  deleteFactCheckPick,
+  addManualPick,
+  addManualPickFromSearch,
+  addManualPickFromUrl,
+} from './actions'
+import { searchAppleMusicTracksForPick } from '../radio-airplay-pick/actions'
 
 type PickRow = {
   id: string
@@ -42,7 +50,7 @@ export default async function RadioFactCheckPage({
   const { month } = await searchParams
   const supabase = await createClient()
 
-  const [{ data: dateRows }, { data: stations }] = await Promise.all([
+  const [{ data: dateRows }, { data: stations }, { data: programRows }] = await Promise.all([
     supabase
       .from('radio_airplay_pick')
       .select('picked_date')
@@ -50,8 +58,25 @@ export default async function RadioFactCheckPage({
       .not('track_title', 'is', null)
       .order('picked_date', { ascending: false })
       .limit(5000),
-    supabase.from('media').select('name, area, prefecture').eq('media_type', 'radio').order('name'),
+    supabase.from('media').select('id, name, area, prefecture').eq('media_type', 'radio').order('name'),
+    supabase
+      .from('media_program')
+      .select('program_name, media:media_id!inner(name)')
+      .eq('media.media_type', 'radio')
+      .order('program_name'),
   ])
+
+  // 局名 → その局の既存番組名一覧(手動追加時に選べるようにする。局サイトの
+  // ページ構造がGeminiにとって不安定/追跡不能で自動収集の対象にできない局でも、
+  // 番組自体は既に登録されていることが多いため、局一覧とは別に集計する)
+  const programsByStation = new Map<string, string[]>()
+  for (const row of programRows ?? []) {
+    const media = Array.isArray(row.media) ? row.media[0] : row.media
+    if (!media?.name) continue
+    const arr = programsByStation.get(media.name) ?? []
+    arr.push(row.program_name)
+    programsByStation.set(media.name, arr)
+  }
 
   const months = Array.from(new Set([currentMonthKeyJST(), ...(dateRows ?? []).map((r) => toMonthKey(r.picked_date))])).sort(
     (a, b) => (a < b ? 1 : -1)
@@ -149,7 +174,16 @@ export default async function RadioFactCheckPage({
                       />
                     ))}
                   </ul>
-                  <AddPickRow stationName={s.stationName} region={g.region} monthKey={selectedMonth} addAction={addManualPick} />
+                  <AddPickRow
+                    stationName={s.stationName}
+                    region={g.region}
+                    monthKey={selectedMonth}
+                    programs={programsByStation.get(s.stationName) ?? []}
+                    searchAction={searchAppleMusicTracksForPick}
+                    addFromSearchAction={addManualPickFromSearch}
+                    addFromUrlAction={addManualPickFromUrl}
+                    addManualAction={addManualPick}
+                  />
                 </div>
               ))}
             </div>

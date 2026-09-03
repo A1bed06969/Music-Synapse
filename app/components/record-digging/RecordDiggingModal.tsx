@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState, useTransition } from 'react'
+import { Anton } from 'next/font/google'
 import { useRouter } from 'next/navigation'
 import { usePreviewPlayer } from '@/app/components/PreviewPlayerContext'
 import PreviewButton from '@/app/components/PreviewButton'
@@ -16,6 +17,11 @@ import SwipeGestureIcon from './SwipeGestureIcon'
 import { NEW_ARRIVALS_KEY, type DiggingShelf, type DiggingRecord } from '@/utils/recordDigging'
 import { Button } from '@/components/ui/button'
 import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown } from 'lucide-react'
+
+// ランチャーバナー(junkie-dig-banner.png)の"JUNKIE"(小)+"DIG"(大)という
+// 太く縦長な見出し書体に、モーダル左上のタイトルも揃える(BannerShell.tsxの
+// TOPページ3バナーと同じフォント選定理由)。
+const anton = Anton({ subsets: ['latin'], weight: '400' })
 
 // 送る(下スワイプ)/つまみ上げる(上スワイプ)モーションの再生時間。
 // globals.cssのanimate-record-send-away/animate-record-liftの尺と揃えてある。
@@ -109,7 +115,7 @@ export default function RecordDiggingModal({ onClose }: { onClose: () => void })
   // 背景写真(record-box-bg.jpg)の表示位置と、その中でジャケットが収まる位置。
   // ビューポートサイズが変わるたびに再計算される(常に同じスケールなので
   // 背景がレターボックスされる場面でもジャケットは正しく重なる)。
-  const { background: backgroundRect, slot: slotRect, viewportHeight } = useCrateSlotRect()
+  const { background: backgroundRect, slot: slotRect, tag: tagRect, viewportHeight } = useCrateSlotRect()
 
   // モバイル用タイトル/アーティスト表示の位置決めに使う実測値。
   // ShelfPicker(棚選択レール)の実際の高さを測り、その上に重ならない分だけ
@@ -339,18 +345,22 @@ export default function RecordDiggingModal({ onClose }: { onClose: () => void })
       aria-modal="true"
       aria-label="Junkie Dig"
     >
-      {/* 背景: 実写(record-box-bg.jpg)をbackgroundRectの位置・サイズで敷く。
+      {/* 背景: 実写(record-box-tag.png)をbackgroundRectの位置・サイズで敷く。
        * ジャケットスタック(CrateFrame)は、この写真に写っているクレートの
        * 空きスロット位置に正確に重なるよう同じスケールで計算したslotRectに
        * 絶対配置している(背景写真自体の中にクレートの箱が写っているため、
        * CrateFrame側では別の箱画像を描画しない=箱が二重に見える問題を避けて
        * いる)。横長ビューポートではbackgroundRectが画面より小さくなり
        * (=ズームしすぎを防ぐため上限スケールで縮小され)、はみ出す領域は
-       * コンテナ自体の下地色(bg-[#0e0a06])がレターボックスとして見える。 */}
+       * コンテナ自体の下地色(bg-[#0e0a06])がレターボックスとして見える。
+       * この写真には木箱の手前にジャンル札(仕切りカード)が写っており、
+       * 撮影時のサンプルとして"NEW ARRIVAL"の文字が入っている。実際の棚に
+       * 合わせて表示を変えるため、tagRectの位置にその文字を覆う形で現在の
+       * 棚名を重ねて描画する(下のtag overlay参照)。 */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src="/images/record-digging/record-box-bg.jpg"
+          src="/images/record-digging/record-box-tag.png"
           alt=""
           // Tailwind PreflightのデフォルトでimgにはCSSのmax-width:100%が付くため、
           // max-w-noneを指定しないと下のwidth(スケール計算済みの実寸px、コンテナより
@@ -376,8 +386,33 @@ export default function RecordDiggingModal({ onClose }: { onClose: () => void })
         style={{ boxShadow: 'inset 0 0 min(22vw,220px) rgba(0,0,0,0.75)' }}
       />
 
+      {/* ジャンル札: 背景写真に写っているサンプルの"NEW ARRIVAL"文字を、同じ
+       * カード地の色(実写から採取)で覆い隠し、現在表示中の棚名を代わりに
+       * 描画する。位置・スケールはtagRect(useCrateSlotRect、slotとの相対位置は
+       * 写真内で固定のため同じデルタで追従する)。 */}
+      <div
+        className="pointer-events-none fixed z-10 flex items-center justify-center overflow-hidden"
+        style={{
+          left: tagRect.left,
+          top: tagRect.top,
+          width: tagRect.width,
+          height: tagRect.height,
+          background: 'linear-gradient(180deg, #9c8161 0%, #b89d74 100%)',
+        }}
+      >
+        <span
+          className="truncate px-1 text-center font-bold uppercase tracking-wide text-[#1c1712]"
+          style={{ fontSize: tagRect.height * 0.46 }}
+        >
+          {currentShelf?.label ?? 'New Arrival'}
+        </span>
+      </div>
+
       <div className="relative z-10 flex items-center justify-between p-4">
-        <span className="text-sm font-semibold tracking-wide text-amber-200">Junkie Dig</span>
+        <span className={`${anton.className} flex items-baseline gap-1.5 leading-none tracking-tight text-stone-100`}>
+          <span className="text-xs">JUNKIE</span>
+          <span className="text-xl">DIG</span>
+        </span>
         <button
           type="button"
           onClick={handleClose}
