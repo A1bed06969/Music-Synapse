@@ -143,6 +143,12 @@ export default function RankingEntryRow({
           >
             Discogsから取込 →
           </Link>
+          <Link
+            href={`/admin/data/albums/${oldAlbumId}/spotify-lookup?from=${encodeURIComponent(`/admin/data/curation/${rankingId}/match`)}`}
+            className="text-xs text-white/40 hover:text-white/70"
+          >
+            Spotifyから取込 →
+          </Link>
         </div>
       )}
     </li>
