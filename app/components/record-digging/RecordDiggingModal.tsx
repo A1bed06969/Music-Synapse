@@ -8,7 +8,6 @@ import PreviewButton from '@/app/components/PreviewButton'
 import { useSwipeGesture, type SwipeDirection, type DragState } from './useSwipeGesture'
 import { useDiggingSound } from './useDiggingSound'
 import RecordSleeve, { type PickupGesture } from './RecordSleeve'
-import GenreShelfTabs from './GenreShelfTabs'
 import ShelfPicker from './ShelfPicker'
 import RecordDetailPanel from './RecordDetailPanel'
 import CrateFrame from './CrateFrame'
@@ -401,8 +400,8 @@ export default function RecordDiggingModal({ onClose }: { onClose: () => void })
         }}
       >
         <span
-          className="truncate px-1 text-center font-bold uppercase tracking-wide text-[#1c1712]"
-          style={{ fontSize: tagRect.height * 0.46 }}
+          className={`${anton.className} truncate px-1 text-center uppercase tracking-wide text-[#1c1712]`}
+          style={{ fontSize: tagRect.height * 0.42 }}
         >
           {currentShelf?.label ?? 'New Arrival'}
         </span>
@@ -422,8 +421,6 @@ export default function RecordDiggingModal({ onClose }: { onClose: () => void })
           閉じる ✕
         </button>
       </div>
-
-      {shelves.length > 0 && <GenreShelfTabs shelves={shelves} currentIndex={shelfIndex} />}
 
       <div className="relative z-10 flex flex-1 flex-col overflow-hidden lg:flex-row lg:items-center lg:gap-8 lg:px-10">
         <div

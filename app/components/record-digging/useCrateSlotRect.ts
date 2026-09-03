@@ -12,16 +12,17 @@ const SLOT_PX = { left: 222, top: 690, width: 476, height: 476 }
 // 文字だけを覆えれば良いため)
 const TAG_PX = { left: 300, top: 498, width: 345, height: 52 }
 
-// 背景写真は縦長のスマホ画面向けに用意されたもの。PC等の横長ビューポートで
-// object-coverの実スケール(縦横どちらかがビューポートを覆うまで拡大)を
-// そのまま使うと、背景が不自然なほどズームされて見え、ジャケットも
-// ヘッダーや下部のShelfPickerと重なるほど巨大になってしまう。そのため
-// 背景・ジャケット共通のスケールに上限を設け、上限に達した場合は背景を
-// ビューポート中央に収める(はみ出す分は周囲がレターボックスになる)。
+// 背景写真は縦長のスマホ画面向けに用意されたもの。PC・タブレット等、画像の
+// 縦横比(921:1707≒0.54)より横長/正方形寄りのビューポートでobject-coverの
+// 実スケール(縦横どちらかがビューポートを覆うまで拡大)をそのまま使うと、
+// 背景が不自然なほどズームされて見え、写真の大部分(木箱全体)が画面外に
+// はみ出してしまう。このスケールがCOVER_SCALE_THRESHOLDを超える場合は、
+// covorではなくcontain(縦横どちらも収まる方の小さいスケール)に切り替え、
+// 木箱全体が見える形でビューポート中央にレターボックス表示する。
 // ジャケットのスケールも背景と必ず同じにすることで、常に写真内のクレートに
-// ぴったり重なる(スマホ縦画面では実スケールが常にこの上限を大きく下回るため、
-// この上限は効かず従来どおり画面全面を覆う)。
-const MAX_SCALE = 0.85
+// ぴったり重なる(スマホ縦画面では実スケールが常にこの閾値を大きく下回るため、
+// containへの切り替えは発生せず従来どおり画面全面を覆う)。
+const COVER_SCALE_THRESHOLD = 0.85
 // ヘッダー/ジャンルタブ(上)・ShelfPicker(下)と重ならないための最低余白。
 // 上限スケールでも横長すぎる/縦に低いビューポートでは収まりきらない場合が
 // あるため、その時だけジャケット位置をこの範囲に収める(背景とのわずかな
@@ -37,9 +38,10 @@ export type Rect = { left: number; top: number; width: number; height: number }
 type Layout = { background: Rect; slot: Rect; tag: Rect; viewportHeight: number }
 
 function computeLayout(viewportWidth: number, viewportHeight: number): Layout {
-  const naturalScale = Math.max(viewportWidth / IMAGE_NATURAL_WIDTH, viewportHeight / IMAGE_NATURAL_HEIGHT)
-  const isCapped = naturalScale > MAX_SCALE
-  const scale = Math.min(naturalScale, MAX_SCALE)
+  const coverScale = Math.max(viewportWidth / IMAGE_NATURAL_WIDTH, viewportHeight / IMAGE_NATURAL_HEIGHT)
+  const containScale = Math.min(viewportWidth / IMAGE_NATURAL_WIDTH, viewportHeight / IMAGE_NATURAL_HEIGHT)
+  const isCapped = coverScale > COVER_SCALE_THRESHOLD
+  const scale = isCapped ? containScale : coverScale
   const offsetX = (viewportWidth - IMAGE_NATURAL_WIDTH * scale) / 2
   const offsetY = (viewportHeight - IMAGE_NATURAL_HEIGHT * scale) / 2 - (isCapped ? 0 : viewportHeight * MOBILE_LIFT_RATIO)
 
