@@ -143,7 +143,7 @@ export async function fillMissingArtistImage(
  * (大量アルバムの一括同期でチャンクあたりの処理数を稼ぎ、Vercelの自己ディスパッチ
  * ホップ数を減らすため。省略されたクレジットはscripts/backfill-album-credits.tsが
  * 別途拾う) */
-async function syncOneAlbum(
+export async function syncOneAlbum(
   supabase: SupabaseClient,
   artistId: string,
   artistName: string,
