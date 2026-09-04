@@ -102,6 +102,17 @@ export function parseAppleMusicAlbumUrl(url: string): { collectionId: number; tr
 }
 
 /**
+ * Apple MusicのアーティストページURLからartistIdを抽出する。
+ * 例: https://music.apple.com/jp/artist/ciel/1234567890 -> {artistId: 1234567890}
+ * 名前検索が同名・類似名の別人に埋もれて見つからない場合の手動フォールバック用。
+ */
+export function parseAppleMusicArtistUrl(url: string): { artistId: number } | null {
+  const match = url.match(/\/artist\/[^/]+\/(\d+)/)
+  if (!match) return null
+  return { artistId: Number(match[1]) }
+}
+
+/**
  * アーティスト情報 + アルバム一覧を1回のlookupで取得
  */
 export async function fetchArtistWithAlbums(artistId: string): Promise<{

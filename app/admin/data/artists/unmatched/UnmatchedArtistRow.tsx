@@ -5,6 +5,7 @@ import { useState, useTransition } from 'react'
 import {
   searchAppleMusicArtistForStub,
   linkStubArtistToItunes,
+  linkStubArtistByAppleMusicUrl,
   type ItunesArtistSearchResultWithImage,
 } from './actions'
 
@@ -23,6 +24,7 @@ export default function UnmatchedArtistRow({ artist }: { artist: StubArtist }) {
   const [linkingId, setLinkingId] = useState<number | null>(null)
   const [linked, setLinked] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [urlInput, setUrlInput] = useState('')
   const [isPending, startTransition] = useTransition()
 
   function handleSearch() {
@@ -48,6 +50,19 @@ export default function UnmatchedArtistRow({ artist }: { artist: StubArtist }) {
     startTransition(async () => {
       const result = await linkStubArtistToItunes(artist.id, candidate.artistId)
       setLinkingId(null)
+      if (result.success) {
+        setLinked(result.registeredName)
+      } else {
+        setErrorMessage(result.message)
+      }
+    })
+  }
+
+  function handleLinkByUrl() {
+    if (!urlInput.trim()) return
+    setErrorMessage(null)
+    startTransition(async () => {
+      const result = await linkStubArtistByAppleMusicUrl(artist.id, urlInput.trim())
       if (result.success) {
         setLinked(result.registeredName)
       } else {
@@ -150,6 +165,33 @@ export default function UnmatchedArtistRow({ artist }: { artist: StubArtist }) {
               ))}
             </div>
           ) : null}
+
+          <div className="mt-1 flex items-center gap-1.5 border-t border-white/10 pt-2">
+            <span className="shrink-0 text-white/30">同名の別人に埋もれて見つからない場合はURLで指定:</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <input
+              type="text"
+              value={urlInput}
+              onChange={(e) => setUrlInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  handleLinkByUrl()
+                }
+              }}
+              placeholder="https://music.apple.com/jp/artist/..."
+              className="min-w-0 flex-1 rounded border border-white/15 bg-transparent px-2 py-1 text-xs text-white placeholder:text-white/30 focus:border-white/30 focus:outline-none"
+            />
+            <button
+              type="button"
+              onClick={handleLinkByUrl}
+              disabled={!urlInput.trim() || isPending}
+              className="shrink-0 rounded border border-white/15 px-2 py-1 hover:bg-white/5 disabled:opacity-40"
+            >
+              紐付け
+            </button>
+          </div>
 
           {errorMessage && <span className="text-red-400">{errorMessage}</span>}
         </div>

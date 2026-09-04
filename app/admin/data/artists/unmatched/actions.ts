@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { after } from 'next/server'
 import { createAdminClient } from '@/utils/Supabase/admin'
-import { searchArtist, fetchArtistWithAlbums, type ItunesArtistSearchResult } from '@/utils/itunes'
+import { searchArtist, fetchArtistWithAlbums, parseAppleMusicArtistUrl, type ItunesArtistSearchResult } from '@/utils/itunes'
 import { fetchAppleMusicArtistImage } from '@/utils/appleMusicImage'
 import { dispatchAlbumSync } from '@/utils/albumSyncDispatch'
 
@@ -93,4 +93,17 @@ export async function linkStubArtistToItunes(stubArtistId: string, appleMusicArt
   revalidatePath(`/artists/${stubArtistId}`)
 
   return { success: true, registeredName: itunesArtist.artistName }
+}
+
+/** 名前検索が同名・類似名の別人に埋もれて本人が候補に出てこない場合のフォールバック。
+ * Apple MusicアプリでアーティストページのURLをコピーして直接紐付ける。 */
+export async function linkStubArtistByAppleMusicUrl(stubArtistId: string, url: string): Promise<LinkStubResult> {
+  const parsed = parseAppleMusicArtistUrl(url.trim())
+  if (!parsed) {
+    return {
+      success: false,
+      message: 'Apple MusicでアーティストページのURL(https://music.apple.com/jp/artist/...)を貼ってください。',
+    }
+  }
+  return linkStubArtistToItunes(stubArtistId, parsed.artistId)
 }
