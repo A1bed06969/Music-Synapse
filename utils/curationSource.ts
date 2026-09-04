@@ -6,7 +6,10 @@ const CURATION_SOURCE_DOMAIN: Record<string, string> = {
   'Rolling Stone Japan': 'rollingstonejapan.com',
   Spotify: 'spotify.com',
   NME: 'nme.com',
-  TSUTAYA: 'tsutaya.co.jp',
+  // tsutaya.co.jp(企業サイト)のファビコンは16x16の低解像度版しか無く粗く
+  // 表示されるため、同じ紺色「T」ロゴを高解像度で配信しているstore-tsutaya
+  // .tsite.jp(店舗検索サイト)を使う
+  TSUTAYA: 'store-tsutaya.tsite.jp',
   'TOWER RECORDS': 'tower.jp',
 }
 
