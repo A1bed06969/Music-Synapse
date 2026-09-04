@@ -2,10 +2,10 @@
 
 'use client'
 
-import { useState } from 'react'
+import { useState, useTransition } from 'react'
 import Link from 'next/link'
 import SearchableSelect from '../../SearchableSelect'
-import { searchAppleMusicAlbums } from './actions'
+import { searchAppleMusicAlbums, judgeDiscGuideCandidatesWithGemini, type DiscGuideJudgement } from './actions'
 import AlbumCandidatePicker from './AlbumCandidatePicker'
 
 type AlbumExtract = {
@@ -77,6 +77,8 @@ export default function ConfirmationClient({ pending }: { pending: PendingRecord
       matched.map((m) => [m.extracted_index, isSuspiciousMatch(m.candidates)])
     )
   )
+  const [judgements, setJudgements] = useState<Record<number, DiscGuideJudgement>>({})
+  const [judging, startJudging] = useTransition()
   const [loading, setLoading] = useState(false)
   // サーバー側で保持しているregistered_indices(register-one/route.ts参照)から
   // 初期化する。これが無いと、1件ずつ登録した後にページを再読み込みすると
@@ -173,9 +175,53 @@ export default function ConfirmationClient({ pending }: { pending: PendingRecord
     }
   }
 
+  // AUTO_SELECT_THRESHOLD以上は候補を自動選択し手動検索欄も閉じる、
+  // REVIEW_THRESHOLD以上は候補は選ぶが要確認表示のまま(人力の最終判断を促す)。
+  // 未登録の下書き段階なのでDBには一切書き込まず、selections stateを
+  // 埋めるだけに留める(実際の登録は既存の「確認して登録」/「この1件を登録」ボタンのまま)。
+  const AUTO_SELECT_THRESHOLD = 0.9
+  const REVIEW_THRESHOLD = 0.5
+
+  const handleGeminiJudge = () => {
+    startJudging(async () => {
+      const results = await judgeDiscGuideCandidatesWithGemini(extracted, matched)
+      const nextJudgements: Record<number, DiscGuideJudgement> = {}
+      const nextSelections = { ...selections }
+      const nextManualSearchOpen = { ...manualSearchOpen }
+
+      for (const r of results) {
+        nextJudgements[r.extractedIndex] = r
+        if (r.candidateIndex === null || r.confidence < REVIEW_THRESHOLD) continue
+
+        const m = matched.find((mm) => mm.extracted_index === r.extractedIndex)
+        const candidate = m?.candidates?.[r.candidateIndex]
+        if (!candidate) continue
+
+        nextSelections[r.extractedIndex] = candidate.id
+        if (r.confidence >= AUTO_SELECT_THRESHOLD) {
+          nextManualSearchOpen[r.extractedIndex] = false
+        }
+      }
+
+      setJudgements(nextJudgements)
+      setSelections(nextSelections)
+      setManualSearchOpen(nextManualSearchOpen)
+    })
+  }
+
   return (
     <div>
-      <h2 className="text-sm font-semibold">アルバム確認 ({extracted.length}件)</h2>
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-semibold">アルバム確認 ({extracted.length}件)</h2>
+        <button
+          type="button"
+          onClick={handleGeminiJudge}
+          disabled={judging}
+          className="rounded border border-white/15 px-3 py-1.5 text-xs hover:bg-white/5 disabled:opacity-40"
+        >
+          {judging ? '判定中...' : 'Geminiで自動判定'}
+        </button>
+      </div>
       <div className="mt-4 space-y-4">
         {extracted.map((album, i) => {
           const match = matched.find((m) => m.extracted_index === i) ?? matched[i]
@@ -195,6 +241,12 @@ export default function ConfirmationClient({ pending }: { pending: PendingRecord
                   {hasWeakCandidates
                     ? '自動マッチング候補の確度が低いです。手動で検索してください。'
                     : '自動マッチング候補が見つかりませんでした。手動で検索してください。'}
+                </p>
+              )}
+              {judgements[i] && (
+                <p className="mb-2 text-xs text-blue-300">
+                  {judgements[i].confidence >= AUTO_SELECT_THRESHOLD ? '✓ Gemini自動選択 ' : 'Gemini判定 '}
+                  (確信度{Math.round(judgements[i].confidence * 100)}%) — {judgements[i].reasoning}
                 </p>
               )}
               <div className="grid grid-cols-2 gap-4">

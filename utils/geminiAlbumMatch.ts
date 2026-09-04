@@ -31,11 +31,17 @@ export type AlbumMatchJudgement = {
   reasoning: string
 }
 
+export type AlbumMatchContext = {
+  label?: string
+  releaseYear?: number
+}
+
 function buildPrompt(
   targetTitle: string,
   targetArtistName: string,
   rankingContext: string,
-  candidates: AlbumMatchCandidate[]
+  candidates: AlbumMatchCandidate[],
+  context?: AlbumMatchContext
 ): string {
   const candidatesBlock = candidates
     .map((c) => {
@@ -44,9 +50,18 @@ function buildPrompt(
     })
     .join('\n')
 
+  const contextBlock =
+    context?.label || context?.releaseYear
+      ? `対象について分かっている情報:
+${context.label ? `- レーベル: ${context.label}` : ''}
+${context.releaseYear ? `- 発売年: ${context.releaseYear}年` : ''}
+
+`
+      : ''
+
   return `「${rankingContext}」に選出されたアルバム「${targetTitle}」(アーティスト: ${targetArtistName})を、候補の中から特定してください。
 
-候補一覧:
+${contextBlock}候補一覧:
 ${candidatesBlock}
 
 判定ルール:
@@ -56,6 +71,10 @@ ${candidatesBlock}
 - 特に対象のタイトルが「1999」「Love」のような短い/ありふれた語の場合、
   類似度スコアだけでは無関係な別作品と誤って高スコアになりやすいので、
   アーティスト名の一致を最優先の判断材料にすること
+- 発売年が分かっている場合、候補のタイトルに「リマスター」「Remaster」
+  「Deluxe Edition」等の版違いを示す語が無くても、あまりに年代がかけ離れた
+  再発盤・ベスト盤である可能性を考慮すること(確実に別物と言い切れる場合のみ
+  確信度を下げる。年式情報だけで機械的に除外はしない)
 - 該当する候補が無い、または全候補が明らかに別作品の場合はcandidateIndexをnullにする
 - reasoningには判定の決め手になった具体的な情報(アーティスト名の一致度・
   類似度・出典等)を日本語で簡潔に書く
@@ -90,7 +109,8 @@ export async function judgeAlbumMatchWithGemini(
   targetTitle: string,
   targetArtistName: string,
   rankingContext: string,
-  candidates: AlbumMatchCandidate[]
+  candidates: AlbumMatchCandidate[],
+  context?: AlbumMatchContext
 ): Promise<AlbumMatchJudgement> {
   const apiKey = process.env.GEMINI_API_KEY
   if (!apiKey) {
@@ -101,7 +121,7 @@ export async function judgeAlbumMatchWithGemini(
   }
 
   const ai = new GoogleGenAI({ apiKey })
-  const prompt = buildPrompt(targetTitle, targetArtistName, rankingContext, candidates)
+  const prompt = buildPrompt(targetTitle, targetArtistName, rankingContext, candidates, context)
 
   let lastErr: unknown
   let response: Awaited<ReturnType<typeof ai.models.generateContent>> | undefined
