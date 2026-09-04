@@ -13,7 +13,8 @@ export async function dispatchAlbumSync(
   artistName: string,
   appleMusicArtistId: string,
   albums: ItunesAlbum[],
-  startIndex = 0
+  startIndex = 0,
+  country = 'JP'
 ): Promise<void> {
   const baseUrl = internalApiBaseUrl()
   const authHeader =
@@ -23,7 +24,7 @@ export async function dispatchAlbumSync(
     const res = await fetch(`${baseUrl}/api/admin/album-sync`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: authHeader },
-      body: JSON.stringify({ artistId, artistName, appleMusicArtistId, albums, startIndex }),
+      body: JSON.stringify({ artistId, artistName, appleMusicArtistId, albums, startIndex, country }),
     })
     if (!res.ok) {
       console.error(`アルバム同期のディスパッチに失敗しました(${artistName}, startIndex=${startIndex}): HTTP ${res.status}`)

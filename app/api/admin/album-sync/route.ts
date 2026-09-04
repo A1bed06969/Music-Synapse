@@ -26,12 +26,13 @@ const TIME_BUDGET_MS = 40_000
 
 export async function POST(request: NextRequest) {
   const body = await request.json()
-  const { artistId, artistName, appleMusicArtistId, albums, startIndex } = body as {
+  const { artistId, artistName, appleMusicArtistId, albums, startIndex, country } = body as {
     artistId: string
     artistName: string
     appleMusicArtistId: string
     albums: ItunesAlbum[]
     startIndex: number
+    country?: string
   }
 
   if (!artistId || !Array.isArray(albums)) {
@@ -43,7 +44,7 @@ export async function POST(request: NextRequest) {
       const supabase = createAdminClient()
 
       if (startIndex === 0) {
-        await fillMissingArtistImage(supabase, artistId, appleMusicArtistId)
+        await fillMissingArtistImage(supabase, artistId, appleMusicArtistId, country ?? 'JP')
       }
 
       const startedAt = Date.now()
@@ -53,7 +54,7 @@ export async function POST(request: NextRequest) {
         // 自己ディスパッチを繰り返し無限ループになりうるため)
         if (i > startIndex && Date.now() - startedAt > TIME_BUDGET_MS) break
         try {
-          await registerSingleAlbum(supabase, artistId, artistName, albums[i], true)
+          await registerSingleAlbum(supabase, artistId, artistName, albums[i], true, country ?? 'JP')
         } catch (err) {
           console.error(`アルバム同期に失敗しました(${artistName}, ${albums[i].collectionName}):`, err)
         }
@@ -65,7 +66,7 @@ export async function POST(request: NextRequest) {
         // 次のチャンクへのディスパッチ前に少し間を空ける(45秒予算消費後でも
         // maxDuration=60秒に対してまだ余裕がある)
         await new Promise((resolve) => setTimeout(resolve, 3_000))
-        await dispatchAlbumSync(artistId, artistName, appleMusicArtistId, albums, i)
+        await dispatchAlbumSync(artistId, artistName, appleMusicArtistId, albums, i, country ?? 'JP')
       } else {
         console.log(`アルバム同期完了(${artistName}): ${albums.length}件`)
         await flagDelistedAlbums(supabase, artistId, albums)

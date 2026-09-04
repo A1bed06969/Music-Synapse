@@ -7,17 +7,27 @@ import { searchArtist, fetchArtistWithAlbums, parseAppleMusicArtistUrl, type Itu
 import { fetchAppleMusicArtistImage } from '@/utils/appleMusicImage'
 import { dispatchAlbumSync } from '@/utils/albumSyncDispatch'
 
-export type ItunesArtistSearchResultWithImage = ItunesArtistSearchResult & { imageUrl: string | null }
+export type ItunesArtistSearchResultWithImage = ItunesArtistSearchResult & { imageUrl: string | null; country: string }
 
 /** 未マッチアーティスト(apple_music_artist_id未設定のスタブ)の名前でApple Musicを
  * 検索する。festival-pilot/actions.tsのsearchAppleMusicArtistと同じ方針
- * (候補の顔写真も並行取得し、同名・類似名の別人を判別しやすくする)。 */
+ * (候補の顔写真も並行取得し、同名・類似名の別人を判別しやすくする)。
+ * 日本のカタログに0件の場合、米国ストアフロントでも検索する
+ * (例: マキシマム ザ ホルモンのように国内配信が無くとも海外で解禁されているケース)。
+ * 呼び出し側はcandidate.countryを見て、紐付け時に同じ国を指定する必要がある
+ * (国が食い違うとfetchArtistWithAlbumsが0件を返す)。 */
 export async function searchAppleMusicArtistForStub(name: string): Promise<ItunesArtistSearchResultWithImage[]> {
-  const candidates = await searchArtist(name)
+  let country = 'JP'
+  let candidates = await searchArtist(name, country)
+  if (candidates.length === 0) {
+    country = 'US'
+    candidates = await searchArtist(name, country)
+  }
   const withImages = await Promise.all(
     candidates.map(async (c) => ({
       ...c,
-      imageUrl: await fetchAppleMusicArtistImage(String(c.artistId)).catch(() => null),
+      country,
+      imageUrl: await fetchAppleMusicArtistImage(String(c.artistId), country).catch(() => null),
     }))
   )
   return withImages
@@ -35,7 +45,11 @@ export type LinkStubResult = { success: true; registeredName: string } | { succe
  * 発動しないため、ここでは管理者が既に選んだstubArtistIdへ無条件に
  * 紐付ける専用の処理にする(名前一致の推測は行わない)。
  */
-export async function linkStubArtistToItunes(stubArtistId: string, appleMusicArtistId: number): Promise<LinkStubResult> {
+export async function linkStubArtistToItunes(
+  stubArtistId: string,
+  appleMusicArtistId: number,
+  country = 'JP'
+): Promise<LinkStubResult> {
   const supabase = createAdminClient()
 
   const { data: stub } = await supabase
@@ -50,7 +64,7 @@ export async function linkStubArtistToItunes(stubArtistId: string, appleMusicArt
     return { success: false, message: 'このアーティストは既にApple Musicと紐付け済みです。' }
   }
 
-  const { artist: itunesArtist, albums: itunesAlbums } = await fetchArtistWithAlbums(String(appleMusicArtistId))
+  const { artist: itunesArtist, albums: itunesAlbums } = await fetchArtistWithAlbums(String(appleMusicArtistId), country)
   if (!itunesArtist) {
     return { success: false, message: '指定のアーティストがApple Musicに見つかりませんでした。' }
   }
@@ -71,6 +85,7 @@ export async function linkStubArtistToItunes(stubArtistId: string, appleMusicArt
     .update({
       name: itunesArtist.artistName,
       apple_music_artist_id: String(itunesArtist.artistId),
+      apple_music_country: country,
       official_site_url: stub.official_site_url ?? (itunesArtist.artistLinkUrl ?? null),
       last_synced_at: new Date().toISOString(),
     })
@@ -81,13 +96,15 @@ export async function linkStubArtistToItunes(stubArtistId: string, appleMusicArt
 
   const { data: artistRow } = await supabase.from('artist').select('image_url').eq('id', stubArtistId).single()
   if (!artistRow?.image_url) {
-    const imageUrl = await fetchAppleMusicArtistImage(String(itunesArtist.artistId))
+    const imageUrl = await fetchAppleMusicArtistImage(String(itunesArtist.artistId), country)
     if (imageUrl) {
       await supabase.from('artist').update({ image_url: imageUrl }).eq('id', stubArtistId)
     }
   }
 
-  after(() => dispatchAlbumSync(stubArtistId, itunesArtist.artistName, String(itunesArtist.artistId), itunesAlbums))
+  after(() =>
+    dispatchAlbumSync(stubArtistId, itunesArtist.artistName, String(itunesArtist.artistId), itunesAlbums, 0, country)
+  )
 
   revalidatePath('/admin/data/artists/unmatched')
   revalidatePath(`/artists/${stubArtistId}`)
@@ -105,5 +122,5 @@ export async function linkStubArtistByAppleMusicUrl(stubArtistId: string, url: s
       message: 'Apple MusicでアーティストページのURL(https://music.apple.com/jp/artist/...)を貼ってください。',
     }
   }
-  return linkStubArtistToItunes(stubArtistId, parsed.artistId)
+  return linkStubArtistToItunes(stubArtistId, parsed.artistId, parsed.country)
 }

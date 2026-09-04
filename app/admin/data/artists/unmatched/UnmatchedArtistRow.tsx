@@ -48,7 +48,7 @@ export default function UnmatchedArtistRow({ artist }: { artist: StubArtist }) {
     setErrorMessage(null)
     setLinkingId(candidate.artistId)
     startTransition(async () => {
-      const result = await linkStubArtistToItunes(artist.id, candidate.artistId)
+      const result = await linkStubArtistToItunes(artist.id, candidate.artistId, candidate.country)
       setLinkingId(null)
       if (result.success) {
         setLinked(result.registeredName)
@@ -134,9 +134,14 @@ export default function UnmatchedArtistRow({ artist }: { artist: StubArtist }) {
           {searching ? (
             <span className="text-white/40">検索中...</span>
           ) : candidates && candidates.length === 0 ? (
-            <span className="text-white/40">候補が見つかりませんでした。別のキーワードで試してください。</span>
+            <span className="text-white/40">候補が見つかりませんでした(日本・米国のApple Musicで検索済み)。URLで指定するか、別のキーワードで試してください。</span>
           ) : candidates && candidates.length > 0 ? (
             <div className="flex flex-col gap-1">
+              {candidates[0]?.country && candidates[0].country !== 'JP' && (
+                <span className="text-amber-300/70">
+                  日本のカタログには見つからなかったため、{candidates[0].country}のApple Musicで検索しています。
+                </span>
+              )}
               {candidates.map((c) => (
                 <div key={c.artistId} className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2">
@@ -151,6 +156,11 @@ export default function UnmatchedArtistRow({ artist }: { artist: StubArtist }) {
                     <span>
                       {c.artistName}
                       {c.primaryGenreName && <span className="ml-1 text-white/30">({c.primaryGenreName})</span>}
+                      {c.country !== 'JP' && (
+                        <span className="ml-1 rounded border border-amber-400/30 px-1 text-[10px] text-amber-300/80">
+                          {c.country}
+                        </span>
+                      )}
                     </span>
                   </div>
                   <button

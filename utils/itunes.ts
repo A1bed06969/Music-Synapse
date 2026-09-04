@@ -102,24 +102,29 @@ export function parseAppleMusicAlbumUrl(url: string): { collectionId: number; tr
 }
 
 /**
- * Apple MusicのアーティストページURLからartistIdを抽出する。
- * 例: https://music.apple.com/jp/artist/ciel/1234567890 -> {artistId: 1234567890}
+ * Apple MusicのアーティストページURLからartistIdとストアフロント国コードを抽出する。
+ * 例: https://music.apple.com/us/artist/ciel/1234567890 -> {artistId: 1234567890, country: 'US'}
  * 名前検索が同名・類似名の別人に埋もれて見つからない場合の手動フォールバック用。
+ * 国コードが取れない場合はJP扱いにする。
  */
-export function parseAppleMusicArtistUrl(url: string): { artistId: number } | null {
+export function parseAppleMusicArtistUrl(url: string): { artistId: number; country: string } | null {
   const match = url.match(/\/artist\/[^/]+\/(\d+)/)
   if (!match) return null
-  return { artistId: Number(match[1]) }
+  const countryMatch = url.match(/music\.apple\.com\/([a-z]{2})\//i)
+  return { artistId: Number(match[1]), country: countryMatch ? countryMatch[1].toUpperCase() : 'JP' }
 }
 
 /**
- * アーティスト情報 + アルバム一覧を1回のlookupで取得
+ * アーティスト情報 + アルバム一覧を1回のlookupで取得。
+ * countryは基本JPだが、日本のカタログには存在せず海外ストアフロントでのみ
+ * サブスク解禁されているアーティスト(例: マキシマム ザ ホルモンの一部作品)向けに
+ * 呼び出し側から指定できるようにしている。
  */
-export async function fetchArtistWithAlbums(artistId: string): Promise<{
+export async function fetchArtistWithAlbums(artistId: string, country = 'JP'): Promise<{
   artist: ItunesArtist | null
   albums: ItunesAlbum[]
 }> {
-  const url = `${ITUNES_LOOKUP_BASE}?id=${artistId}&entity=album&limit=200&country=JP`
+  const url = `${ITUNES_LOOKUP_BASE}?id=${artistId}&entity=album&limit=200&country=${country}`
   const data = await fetchItunes(url, 'artist lookup')
 
   const artist = data.results.find((r: any) => r.wrapperType === 'artist') ?? null
@@ -161,11 +166,11 @@ export async function fetchArtistWithAlbums(artistId: string): Promise<{
  * (entity=albumのcollectionNameはローマ字化されていることがあるが、
  *  entity=song側の各トラックが持つcollectionNameは一貫して正しく日本語化されているため)
  */
-export async function fetchTracksForAlbum(albumId: number): Promise<{
+export async function fetchTracksForAlbum(albumId: number, country = 'JP'): Promise<{
   tracks: ItunesTrack[]
   localizedCollectionName: string | null
 }> {
-  const url = `${ITUNES_LOOKUP_BASE}?id=${albumId}&entity=song&limit=200&country=JP`
+  const url = `${ITUNES_LOOKUP_BASE}?id=${albumId}&entity=song&limit=200&country=${country}`
   const data = await fetchItunes(url, 'album lookup (tracks)')
   const tracks = data.results.filter((r: any) => r.wrapperType === 'track')
   const localizedCollectionName = tracks.length > 0 ? (tracks[0].collectionName ?? null) : null
@@ -263,8 +268,8 @@ export async function searchTracks(term: string, limit = 10): Promise<ItunesTrac
  * アーティスト名でApple Musicを検索し、候補を返す(上位5件)。
  * 同名・類似名の別人がヒットすることがあるため、呼び出し側で必ず人間の確認を挟むこと。
  */
-export async function searchArtist(name: string): Promise<ItunesArtistSearchResult[]> {
-  const url = `https://itunes.apple.com/search?term=${encodeURIComponent(name)}&entity=musicArtist&limit=5&country=JP`
+export async function searchArtist(name: string, country = 'JP'): Promise<ItunesArtistSearchResult[]> {
+  const url = `https://itunes.apple.com/search?term=${encodeURIComponent(name)}&entity=musicArtist&limit=5&country=${country}`
   const data = await fetchItunes(url, 'artist search')
   return (data.results ?? [])
     .filter((r: any) => r.wrapperType === 'artist')

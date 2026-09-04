@@ -35,7 +35,7 @@ async function main() {
 
   const { data: artists } = await supabase
     .from('artist')
-    .select('id, name, apple_music_artist_id, musicbrainz_id')
+    .select('id, name, apple_music_artist_id, apple_music_country, musicbrainz_id')
     .not('apple_music_artist_id', 'is', null)
     .order('last_synced_at', { ascending: true, nullsFirst: true })
     .limit(MAX_ARTISTS_PER_RUN)
@@ -54,9 +54,10 @@ async function main() {
   for (const [index, artist] of artists.entries()) {
     console.log(`\n[${index + 1}/${artists.length}] ${artist.name}`)
 
+    const country = (artist.apple_music_country as string) || 'JP'
     let itunesAlbums
     try {
-      const result = await fetchArtistWithAlbums(artist.apple_music_artist_id as string)
+      const result = await fetchArtistWithAlbums(artist.apple_music_artist_id as string, country)
       if (!result.artist) {
         console.log('  iTunesでアーティストが見つかりませんでした(削除された可能性)')
         continue
@@ -72,7 +73,8 @@ async function main() {
       artist.id,
       artist.name,
       itunesAlbums,
-      artist.apple_music_artist_id as string
+      artist.apple_music_artist_id as string,
+      country
     )
     newAlbumsTotal += newAlbumCount
     newTracksTotal += newTrackCount

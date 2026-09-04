@@ -34,8 +34,8 @@ function toSquareUrl(url: string): string {
  * 返すため、代わりに公開アーティストページのog:imageメタタグから画像URLを取得する
  * (非公式な手法)。取得できない場合はnullを返すので、呼び出し側は失敗を許容すること。
  */
-export async function fetchAppleMusicArtistImage(appleMusicArtistId: string): Promise<string | null> {
-  const url = `https://music.apple.com/jp/artist/${appleMusicArtistId}`
+export async function fetchAppleMusicArtistImage(appleMusicArtistId: string, country = 'jp'): Promise<string | null> {
+  const url = `https://music.apple.com/${country.toLowerCase()}/artist/${appleMusicArtistId}`
 
   try {
     const res = await fetch(url, {

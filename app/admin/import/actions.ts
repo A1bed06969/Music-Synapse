@@ -126,11 +126,12 @@ export async function upsertArtistFromItunes(
 export async function fillMissingArtistImage(
   supabase: SupabaseClient,
   artistId: string,
-  appleMusicArtistId: string
+  appleMusicArtistId: string,
+  country = 'JP'
 ): Promise<void> {
   const { data: artistRow } = await supabase.from('artist').select('image_url').eq('id', artistId).single()
   if (artistRow?.image_url) return
-  const imageUrl = await fetchAppleMusicArtistImage(appleMusicArtistId)
+  const imageUrl = await fetchAppleMusicArtistImage(appleMusicArtistId, country)
   if (imageUrl) {
     await supabase.from('artist').update({ image_url: imageUrl }).eq('id', artistId)
   }
@@ -149,7 +150,8 @@ export async function syncOneAlbum(
   artistName: string,
   itunesAlbum: ItunesAlbum,
   existingAlbumId: string | null,
-  skipCreditImport = false
+  skipCreditImport = false,
+  country = 'JP'
 ): Promise<number> {
   // iTunes側の一時的なエラー(レート制限等)でここが失敗しても、このアルバムだけ
   // スキップして呼び出し元(残りのアルバムのループ)は継続させる(以前は無捕捉のまま
@@ -157,7 +159,7 @@ export async function syncOneAlbum(
   let itunesTracks: ItunesTrack[]
   let localizedCollectionName: string | null
   try {
-    const trackResult = await fetchTracksForAlbum(itunesAlbum.collectionId)
+    const trackResult = await fetchTracksForAlbum(itunesAlbum.collectionId, country)
     itunesTracks = trackResult.tracks
     localizedCollectionName = trackResult.localizedCollectionName
   } catch (err) {
@@ -295,7 +297,8 @@ export async function registerSingleAlbum(
   artistId: string,
   artistName: string,
   itunesAlbum: ItunesAlbum,
-  skipCreditImport = false
+  skipCreditImport = false,
+  country = 'JP'
 ): Promise<{ trackCount: number }> {
   const { data: existingAlbum } = await supabase
     .from('album')
@@ -310,7 +313,8 @@ export async function registerSingleAlbum(
     artistName,
     itunesAlbum,
     existingAlbum?.id ?? null,
-    skipCreditImport
+    skipCreditImport,
+    country
   )
   return { trackCount }
 }
@@ -393,9 +397,10 @@ export async function refreshArtistCatalog(
   artistId: string,
   artistName: string,
   itunesAlbums: ItunesAlbum[],
-  appleMusicArtistId: string
+  appleMusicArtistId: string,
+  country = 'JP'
 ): Promise<{ newAlbumCount: number; newTrackCount: number }> {
-  await fillMissingArtistImage(supabase, artistId, appleMusicArtistId)
+  await fillMissingArtistImage(supabase, artistId, appleMusicArtistId, country)
 
   const { data: existingAlbums } = await supabase
     .from('album')
@@ -409,7 +414,7 @@ export async function refreshArtistCatalog(
 
   for (const itunesAlbum of itunesAlbums) {
     if (knownAlbumIds.has(String(itunesAlbum.collectionId))) continue // 既存アルバムは触らない
-    newTrackCount += await syncOneAlbum(supabase, artistId, artistName, itunesAlbum, null)
+    newTrackCount += await syncOneAlbum(supabase, artistId, artistName, itunesAlbum, null, false, country)
     newAlbumCount++
   }
 
