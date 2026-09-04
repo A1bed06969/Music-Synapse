@@ -57,15 +57,24 @@ export async function applyDiscogsLookup(formData: FormData) {
     }
   }
 
-  const update: Record<string, unknown> = { discogs_url: discogsUrl }
-  if (info.imageUrl) update.jacket_url = info.imageUrl
+  // discogs_urlは画像が取れた場合のみ保存する。画像抽出だけ失敗した状態で
+  // discogs_urlを保存すると、「未マッチ」判定(album.discogs_url is null)から
+  // ジャケット無しのまま静かに外れてしまうため(release_date/label/tracksは
+  // 取れた分だけそのまま反映し、次の確認のためにURLの再入力を促す)
+  const update: Record<string, unknown> = {}
+  if (info.imageUrl) {
+    update.discogs_url = discogsUrl
+    update.jacket_url = info.imageUrl
+  }
   if (info.releaseDate) update.release_date = info.releaseDate
   if (labelId) update.label_id = labelId
 
-  const { error: updateError } = await supabase.from('album').update(update).eq('id', albumId)
+  if (Object.keys(update).length > 0) {
+    const { error: updateError } = await supabase.from('album').update(update).eq('id', albumId)
 
-  if (updateError) {
-    redirectWith(albumId, 'error', `更新に失敗しました: ${updateError.message}`, from)
+    if (updateError) {
+      redirectWith(albumId, 'error', `更新に失敗しました: ${updateError.message}`, from)
+    }
   }
 
   // Tower Records取込と同じく、既にトラックが登録されている場合は重複作成を避けるため
@@ -98,6 +107,16 @@ export async function applyDiscogsLookup(formData: FormData) {
 
   revalidatePath(`/albums/${albumId}`)
   revalidatePath(`/admin/data/albums/${albumId}/discogs-lookup`)
+
+  if (!info.imageUrl) {
+    redirectWith(
+      albumId,
+      'error',
+      `ジャケット画像は見つかりませんでした(発売日・レーベル等、取得できた項目のみ反映しました)。未マッチ扱いのまま残ります。`,
+      from
+    )
+  }
+
   redirectWith(
     albumId,
     'success',
