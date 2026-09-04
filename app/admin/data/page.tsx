@@ -1,6 +1,5 @@
 import Link from 'next/link'
 import { createClient } from '@/utils/Supabase/server'
-import { fetchAllRows } from '@/utils/fetchAllRows'
 import SearchableSelect from './SearchableSelect'
 import AdminArtistSearchList from './AdminArtistSearchList'
 import { searchArtists, mergeArtist } from './actions'
@@ -13,9 +12,13 @@ export default async function AdminDataPage({
 }) {
   const { success, error } = await searchParams
   const supabase = await createClient()
-  // 2026年8月時点でアーティスト総数がPostgRESTの1リクエストあたり行数上限(既定1000件)を
-  // 超えており、単純な.select()だと後半のアーティストが一覧から丸ごと消えていた
-  const artistOptions = await fetchAllRows<{ id: string; name: string }>(supabase, 'artist', 'id, name', 'name')
+  // 以前はfetchAllRowsでカタログ全アーティスト(4000件超)を一括取得し、
+  // クライアント側でフィルタしていた。アーティスト数の増加でページ読み込みの
+  // たびに複数回のDB往復＋巨大なペイロード転送が発生し「手動データ」への
+  // 遷移が明らかに遅くなっていたため、件数表示用の軽量なCOUNTのみ取得し、
+  // 検索自体はAdminArtistSearchList側でsearchArtists(サーバーアクション)を
+  // 都度呼ぶ方式に変更した。
+  const { count: artistCount } = await supabase.from('artist').select('id', { count: 'exact', head: true })
 
   return (
     <div className="mx-auto max-w-[1600px] px-6 py-12">
@@ -59,7 +62,7 @@ export default async function AdminDataPage({
           プロフィール項目(bio・URL・配信状況等)の編集はこちらから。新規登録はiTunes一括登録のみ対応。
         </p>
         <div className="mt-4">
-          <AdminArtistSearchList artists={artistOptions} />
+          <AdminArtistSearchList searchAction={searchArtists} totalCount={artistCount ?? 0} />
         </div>
       </section>
 
