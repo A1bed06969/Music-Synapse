@@ -3,6 +3,10 @@ import { notFound } from 'next/navigation'
 import { createClient } from '@/utils/Supabase/server'
 import { matchAlbumsWithCandidates } from '@/utils/discGuideImport'
 import RankingEntryRow from './RankingEntryRow'
+import GeminiAlbumMatchPanel from './GeminiAlbumMatchPanel'
+import { GeminiAlbumReviewQueue, GeminiAlbumAutoAppliedList, type AlbumReviewLogRow, type AlbumAutoAppliedLogRow } from './GeminiAlbumQueues'
+
+type AlbumMatchCandidateJson = { id: string; title: string; artist_name: string; artwork_url?: string }
 
 const PAGE_SIZE = 15
 
@@ -71,6 +75,44 @@ export default async function RankingMatchPage({
 
   const totalPages = Math.max(1, Math.ceil((count ?? 0) / PAGE_SIZE))
 
+  const { data: logRows } = await supabase
+    .from('album_match_log')
+    .select('id, stub_title, stub_artist_name, chosen_title, chosen_artist_name, confidence, reasoning, candidates_json, auto_applied, reverted')
+    .eq('ranking_id', rankingId)
+    .eq('reverted', false)
+    .order('created_at', { ascending: false })
+    .limit(200)
+
+  const reviewRows: AlbumReviewLogRow[] = (logRows ?? [])
+    .filter((r) => !r.auto_applied && r.chosen_title)
+    .map((r) => {
+      const candidates = (r.candidates_json as AlbumMatchCandidateJson[] | null) ?? []
+      const chosen = candidates.find((c) => c.title === r.chosen_title && c.artist_name === r.chosen_artist_name)
+      return {
+        id: r.id,
+        stubTitle: r.stub_title,
+        stubArtistName: r.stub_artist_name,
+        chosenTitle: r.chosen_title,
+        chosenArtistName: r.chosen_artist_name,
+        confidence: Number(r.confidence),
+        reasoning: r.reasoning,
+        imageUrl: chosen?.artwork_url ?? null,
+      }
+    })
+
+  const autoAppliedRows: AlbumAutoAppliedLogRow[] = (logRows ?? [])
+    .filter((r) => r.auto_applied)
+    .slice(0, 50)
+    .map((r) => ({
+      id: r.id,
+      stubTitle: r.stub_title,
+      stubArtistName: r.stub_artist_name,
+      chosenTitle: r.chosen_title,
+      chosenArtistName: r.chosen_artist_name,
+      confidence: Number(r.confidence),
+      reasoning: r.reasoning,
+    }))
+
   return (
     <div className="mx-auto max-w-[1600px] px-6 py-12">
       <Link href="/admin/data/curation" className="text-xs text-white/40 hover:text-white/70">
@@ -81,6 +123,10 @@ export default async function RankingMatchPage({
       <p className="mt-2 text-sm text-white/50">
         自動登録時にApple Musicと確実に一致しなかった{count ?? 0}件です。ジャケット付きの候補から選んで、実データに差し替えられます。
       </p>
+
+      <GeminiAlbumMatchPanel rankingId={rankingId} stubCount={count ?? 0} />
+      <GeminiAlbumAutoAppliedList rows={autoAppliedRows} />
+      <GeminiAlbumReviewQueue rows={reviewRows} />
 
       <ul className="mt-8 space-y-3">
         {rows.map((row, i) => {
