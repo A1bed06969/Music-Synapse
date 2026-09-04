@@ -77,21 +77,32 @@ export function stripArticleText(html: string, maxLength = 300000): string {
 }
 
 const PROMPT = `以下は音楽メディアの記事ページから抽出したテキストです。
-「注目の新人アーティスト」を紹介する記事で、アーティストごとに紹介文が
-書かれています。各アーティストについて次の情報を抽出してください:
+「注目の新人アーティスト」を紹介する記事です。書式は記事によって様々で、
+アーティストごとに詳しい紹介文がある形式(出身地・似ている系統・代表曲の
+見出し付き)の場合もあれば、「Aziya (UK) Lambrini Girls (UK) Balu Brigada
+(New Zealand)」のように名前と出身国だけを列挙しているだけの場合もある。
+どちらの形式でも、記事内で選出対象として言及されている全アーティストを
+漏れなく対象にすること(数行の紹介がある一部の代表例だけでなく、単純な
+列挙部分に出てくる名前も同様に拾う)。
 
-- artistName: アーティスト名(見出しに使われている表記のまま)
-- from: 出身地(「From:」等の見出しの直後に書かれている地名。無ければ省略)
+各アーティストについて、分かる範囲で次の情報を抽出してください:
+
+- artistName: アーティスト名(見出しや列挙で使われている表記のまま)
+- from: 出身地・出身国(「From:」等の見出しの直後や、名前の後の括弧書き
+  "(UK)"のような表記から。分からなければこのフィールド自体を省略する)
 - forFansOf: 似ている系統として挙げられているアーティスト名(「For fans of:」
-  「For Fans Of:」等の見出しの直後。カンマ区切りの表記のままでよい。無ければ省略)
-- keyTrack: 代表曲として挙げられている曲名(「Key track」等の見出しがあれば。無ければ省略)
+  等の見出しの直後。カンマ区切りの表記のままでよい。分からなければ省略)
+- keyTrack: 代表曲として挙げられている曲名(「Key track」等の見出しがあれば。分からなければ省略)
 - bioSnippet: 紹介文の本文から、アルバム名・曲名・経歴等が分かる範囲を200字程度で
-  抜粋する(丸ごと書き写す必要はない。要約せず、本文にある固有名詞はそのまま残すこと)
+  抜粋する(丸ごと書き写す必要はない。要約せず、本文にある固有名詞はそのまま残すこと。
+  紹介文自体が無い場合は省略)
 
 以下のルールに従ってください:
-- 実際にアーティスト紹介として書かれているものだけを対象にする(ナビゲーション、
+- 実際にアーティスト紹介・列挙として書かれているものだけを対象にする(ナビゲーション、
   広告、無関係な他記事へのリンク一覧は含めない)
 - 同じアーティストが複数箇所に出てくる場合は1回だけ含める
+- 各フィールドは、情報が本文に無い場合は「n/a」「不明」等のプレースホルダーを
+  入れず、そのフィールド自体を省略すること
 - 情報が見つからない場合は空の配列を返す`
 
 const RESPONSE_SCHEMA = {
@@ -130,8 +141,14 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+const PLACEHOLDER_VALUES = new Set(['n/a', 'na', 'unknown', '不明', 'なし', '無し', '-', '—'])
+
 function cleanField(value: unknown): string | undefined {
-  return typeof value === 'string' && value.trim() ? value.trim() : undefined
+  if (typeof value !== 'string') return undefined
+  const trimmed = value.trim()
+  if (!trimmed) return undefined
+  if (PLACEHOLDER_VALUES.has(trimmed.toLowerCase())) return undefined
+  return trimmed
 }
 
 export async function extractArticleContextWithGemini(pageText: string): Promise<ArtistArticleContext[]> {
