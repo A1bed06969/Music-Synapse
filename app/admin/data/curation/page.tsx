@@ -6,15 +6,6 @@ import SearchableSelect from '../SearchableSelect'
 import { searchTracks, searchAlbums, searchArtists } from '../actions'
 import { createRanking, createRankingEntry } from './actions'
 
-type RankingEntryRow = {
-  id: number
-  rank: number | null
-  ranking: { name: string } | { name: string }[] | null
-  track: { title: string } | { title: string }[] | null
-  album: { title: string } | { title: string }[] | null
-  artist: { name: string } | { name: string }[] | null
-}
-
 type StubCheckRow = {
   ranking_id: string
   album: { streaming_status: string | null; tower_url: string | null; discogs_url: string | null } | { streaming_status: string | null; tower_url: string | null; discogs_url: string | null }[] | null
@@ -29,19 +20,16 @@ export default async function CurationPage({
   const supabase = await createClient()
 
   // ranking_entryは2432件超あり、PostgRESTの1リクエストあたり行数上限(既定1000件)を
-  // 超えている。単純な.select()だと後半のエントリが「要マッチング」件数の集計・
-  // 一覧表示のどちらからも欠落する(実際に「要マッチング204件」のような表示が
-  // 過小になっていた)。fetchAllRowsでページネーションして全件取得する。
-  const [{ data: mediaList }, { data: rankings }, rankingEntries, stubRows] = await Promise.all([
+  // 超えている。単純な.select()だと後半のエントリが「要マッチング」件数の集計から
+  // 欠落する(実際に「要マッチング204件」のような表示が過小になっていた)。
+  // fetchAllRowsでページネーションして全件取得する。
+  // (以前はこのページ自体に企画ごとの全エントリ一覧も表示していたが、2432件を
+  // 毎回丸ごとレンダリングするのが重く、正確な件数を取るためにページネーションで
+  // 全件取得するとさらに悪化したため、一覧表示は削除し各企画から既存の詳細
+  // ページ(公開一覧/media/features、マッチング画面)へのリンクに置き換えた)
+  const [{ data: mediaList }, { data: rankings }, stubRows] = await Promise.all([
     supabase.from('media').select('id, name').order('name'),
     supabase.from('ranking').select('id, name, source, list_type, media:media_id(name)').order('name'),
-    fetchAllRows<RankingEntryRow>(
-      supabase,
-      'ranking_entry',
-      'id, rank, ranking:ranking_id(name), track:track_id(title), album:album_id(title), artist:artist_id(name)',
-      'id',
-      { ascending: false }
-    ),
     fetchAllRows<StubCheckRow>(
       supabase,
       'ranking_entry',
@@ -109,17 +97,18 @@ export default async function CurationPage({
           {rankingOptions.map((r) => {
             const stubCount = stubCountByRanking.get(r.id) ?? 0
             return (
-              <li key={r.id}>
-                <Link
-                  href={`/admin/data/curation/${r.id}/match`}
-                  className="flex items-center gap-2 rounded-md border border-white/10 px-3 py-1.5 text-xs text-white/60 hover:border-white/25 hover:text-white"
-                >
-                  <span>{r.name}</span>
-                  {stubCount > 0 && (
-                    <span className="rounded-full border border-orange-400/40 px-1.5 py-0.5 text-[10px] text-orange-300">
-                      要マッチング{stubCount}件
-                    </span>
-                  )}
+              <li key={r.id} className="flex items-center gap-1 rounded-md border border-white/10 px-3 py-1.5 text-xs text-white/60">
+                <span>{r.name}</span>
+                {stubCount > 0 && (
+                  <Link
+                    href={`/admin/data/curation/${r.id}/match`}
+                    className="rounded-full border border-orange-400/40 px-1.5 py-0.5 text-[10px] text-orange-300 hover:bg-orange-400/10"
+                  >
+                    要マッチング{stubCount}件
+                  </Link>
+                )}
+                <Link href={`/media/features/${r.id}`} className="text-white/30 hover:text-white/60">
+                  一覧を見る →
                 </Link>
               </li>
             )
@@ -159,43 +148,6 @@ export default async function CurationPage({
           ランクインを追加
         </button>
       </form>
-
-      {rankingEntries && rankingEntries.length > 0 && (
-        <div className="mt-4 space-y-3">
-          {(() => {
-            // 全企画のエントリを一列に並べると件数が多い企画に埋もれて「どのアーティストが
-            // どの企画か分からない」状態になるため、企画ごとにグルーピングして表示する。
-            const groups = new Map<string, { name: string; rows: typeof rankingEntries }>()
-            for (const row of rankingEntries) {
-              const ranking = Array.isArray(row.ranking) ? row.ranking[0] : row.ranking
-              const key = ranking?.name ?? '(不明)'
-              if (!groups.has(key)) groups.set(key, { name: key, rows: [] })
-              groups.get(key)!.rows.push(row)
-            }
-            return Array.from(groups.values()).map((group) => (
-              <details key={group.name} className="rounded-md border border-white/10 p-3">
-                <summary className="cursor-pointer text-sm font-medium text-white/80">
-                  {group.name} <span className="text-xs text-white/30">({group.rows.length}件)</span>
-                </summary>
-                <ul className="mt-2 space-y-1 text-sm text-white/60">
-                  {group.rows.map((row) => {
-                    const track = Array.isArray(row.track) ? row.track[0] : row.track
-                    const album = Array.isArray(row.album) ? row.album[0] : row.album
-                    const artist = Array.isArray(row.artist) ? row.artist[0] : row.artist
-                    const target = track?.title ?? album?.title ?? artist?.name
-                    return (
-                      <li key={row.id}>
-                        {row.rank != null ? `#${row.rank} ` : ''}
-                        {target}
-                      </li>
-                    )
-                  })}
-                </ul>
-              </details>
-            ))
-          })()}
-        </div>
-      )}
     </div>
   )
 }
