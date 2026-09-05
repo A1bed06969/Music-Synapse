@@ -698,7 +698,7 @@ export async function extractFestivalLineupCandidates(
     }
   }
 
-  return {
+  const result: FestivalExtractResult = {
     success: true,
     imageUrl,
     candidates,
@@ -707,6 +707,14 @@ export async function extractFestivalLineupCandidates(
     startDate: edition.start_date,
     endDate: edition.end_date,
   }
+
+  // 画面遷移・再読み込みで消えないよう、抽出結果をキャッシュしておく
+  // (ページ側でこれを読んでFestivalLineupExtractorの初期状態として渡す)
+  await supabase
+    .from('festival_extract_pending')
+    .upsert({ event_edition_id: eventEditionId, result }, { onConflict: 'event_edition_id' })
+
+  return result
 }
 
 /** AI抽出で見つかったog:imageを、確認のうえイベントのキービジュアルとして採用する。 */

@@ -17,6 +17,7 @@ import {
   deleteFestivalAppearance,
   createFestivalEditionDates,
   deleteFestivalEditionDate,
+  type FestivalExtractResult,
 } from '../../../actions'
 
 const EVENT_TYPE_OPTIONS = [
@@ -70,6 +71,7 @@ export default async function EditEventPage({
     { data: editions },
     { data: appearances },
     { data: editionDates },
+    { data: extractPending },
   ] = await Promise.all([
     supabase
       .from('event')
@@ -93,6 +95,7 @@ export default async function EditEventPage({
       .select('id, event_edition_id, date, venue, region')
       .in('event_edition_id', editionIds)
       .order('date', { ascending: true }),
+    supabase.from('festival_extract_pending').select('event_edition_id, result').in('event_edition_id', editionIds),
   ])
 
   if (fetchError || !entry) {
@@ -103,6 +106,26 @@ export default async function EditEventPage({
   for (const row of (appearances ?? []) as AppearanceRow[]) {
     if (!appearancesByEdition.has(row.event_edition_id)) appearancesByEdition.set(row.event_edition_id, [])
     appearancesByEdition.get(row.event_edition_id)!.push(row)
+  }
+
+  // 画面遷移・再読み込みでAI抽出結果が消えないよう、event_edition_idごとに
+  // キャッシュ済みの抽出結果をFestivalLineupExtractorへ初期値として渡す
+  const pendingByEdition = new Map<string, FestivalExtractResult>()
+  for (const row of extractPending ?? []) {
+    pendingByEdition.set(row.event_edition_id, row.result as FestivalExtractResult)
+  }
+
+  // 再抽出した候補が、既にこのeventEditionへ出演登録済みのアーティストと
+  // 重複しないよう、正規化した名前の集合を渡す(表記ゆれまでは吸収しないが、
+  // festival-pilotの既存一致判定と同じ簡易な完全一致で十分実用になる)
+  const registeredNamesByEdition = new Map<string, Set<string>>()
+  for (const [editionId, rows] of appearancesByEdition) {
+    const names = new Set<string>()
+    for (const row of rows) {
+      const artist = Array.isArray(row.artist) ? row.artist[0] : row.artist
+      if (artist) names.add(artist.name.trim().toUpperCase())
+    }
+    registeredNamesByEdition.set(editionId, names)
   }
 
   const editionDatesByEdition = new Map<string, EditionDateRow[]>()
@@ -412,7 +435,12 @@ export default async function EditEventPage({
                   </button>
                 </form>
 
-                <FestivalLineupExtractor eventId={entry.id} eventEditionId={ed.id} />
+                <FestivalLineupExtractor
+                  eventId={entry.id}
+                  eventEditionId={ed.id}
+                  initialResult={pendingByEdition.get(ed.id) ?? null}
+                  registeredArtistNames={Array.from(registeredNamesByEdition.get(ed.id) ?? [])}
+                />
               </div>
             )
           })}

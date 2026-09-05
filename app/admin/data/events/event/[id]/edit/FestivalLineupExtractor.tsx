@@ -9,11 +9,21 @@ import { quickAddFestivalPilotDataset } from '../../../festival-pilot/actions'
 export default function FestivalLineupExtractor({
   eventId,
   eventEditionId,
+  initialResult = null,
+  registeredArtistNames = [],
 }: {
   eventId: string
   eventEditionId: string
+  /** 前回このevent_editionで抽出した結果(festival_extract_pendingにキャッシュ済みのもの)。
+   * 画面遷移・再読み込みで消えないよう、あればこれをそのまま初期表示に使う。 */
+  initialResult?: FestivalExtractResult | null
+  /** 既にこのevent_editionへ出演登録済みのアーティスト名(正規化済み、大文字化・trim済み)。
+   * 再抽出しても同じ人を二重登録できてしまわないよう、該当する候補は
+   * UnmatchedArtistTagの代わりに「✓ 登録済み」表示にする。 */
+  registeredArtistNames?: string[]
 }) {
-  const [result, setResult] = useState<FestivalExtractResult | null>(null)
+  const [result, setResult] = useState<FestivalExtractResult | null>(initialResult)
+  const registeredNameSet = new Set(registeredArtistNames)
   const [imageApplied, setImageApplied] = useState(false)
   const [imageMessage, setImageMessage] = useState<string | null>(null)
   const [pilotAdded, setPilotAdded] = useState<{ key: string; message: string } | null>(null)
@@ -126,24 +136,33 @@ export default function FestivalLineupExtractor({
             <div>
               <p className="text-xs text-white/40">出演者候補({result.candidates.length}件)。タップしてApple Musicと照合・登録:</p>
               <div className="mt-2 flex flex-wrap gap-1.5">
-                {result.candidates.map((c, i) => (
-                  <UnmatchedArtistTag
-                    key={`${c.artist_name}-${i}`}
-                    pick={{
-                      artistName: c.artist_name,
-                      datasetKey: '',
-                      festivalName: result.festivalName,
-                      editionYear: result.editionYear,
-                      startDate: result.startDate,
-                      endDate: result.endDate,
-                      stage: c.stage ?? null,
-                      performanceDate: null,
-                      startAt: null,
-                      endAt: null,
-                      day: c.day_or_time_label ?? null,
-                    }}
-                  />
-                ))}
+                {result.candidates.map((c) =>
+                  registeredNameSet.has(c.artist_name.trim().toUpperCase()) ? (
+                    <span
+                      key={c.artist_name}
+                      className="inline-block align-top rounded-full border border-green-500/30 bg-green-500/5 px-2 py-0.5 text-xs text-green-400"
+                    >
+                      ✓ {c.artist_name}(登録済み)
+                    </span>
+                  ) : (
+                    <UnmatchedArtistTag
+                      key={c.artist_name}
+                      pick={{
+                        artistName: c.artist_name,
+                        datasetKey: '',
+                        festivalName: result.festivalName,
+                        editionYear: result.editionYear,
+                        startDate: result.startDate,
+                        endDate: result.endDate,
+                        stage: c.stage ?? null,
+                        performanceDate: null,
+                        startAt: null,
+                        endAt: null,
+                        day: c.day_or_time_label ?? null,
+                      }}
+                    />
+                  )
+                )}
               </div>
             </div>
           )}
