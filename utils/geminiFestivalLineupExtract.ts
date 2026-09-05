@@ -105,8 +105,11 @@ type GeminiEntry = {
   day_or_time_label?: unknown
 }
 
-const MAX_ATTEMPTS = 2
-const RETRY_DELAY_MS = 2_000
+// gemini-3.1-flash-liteは高負荷時に503(UNAVAILABLE)を頻繁に返す実態が確認できた
+// ため、リトライ回数を増やし指数バックオフにする(utils/geminiArticleContextExtract.ts・
+// utils/geminiArtistMatch.tsと同じ対応)
+const MAX_ATTEMPTS = 5
+const RETRY_DELAY_MS = 3_000
 
 function isRetryableStatus(status: unknown): boolean {
   return status === 503 || status === 429
@@ -142,7 +145,7 @@ export async function extractFestivalLineupWithGemini(pageText: string): Promise
       lastErr = err
       const status = (err as { status?: unknown })?.status
       if (attempt < MAX_ATTEMPTS && isRetryableStatus(status)) {
-        await sleep(RETRY_DELAY_MS)
+        await sleep(RETRY_DELAY_MS * attempt)
         continue
       }
       throw err
