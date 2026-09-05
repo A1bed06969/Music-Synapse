@@ -180,9 +180,9 @@ export default async function FestivalPilotPage({
 
                 {matchedRows.length > 0 && (
                   <ul className="mt-3 space-y-2 text-sm">
-                    {matchedRows.map((p, i) => (
+                    {matchedRows.map((p) => (
                       <li
-                        key={i}
+                        key={p.artistName}
                         className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-white/15 px-4 py-3"
                       >
                         <div>
@@ -220,9 +220,9 @@ export default async function FestivalPilotPage({
 
                 {unmatchedRows.length > 0 && (
                   <div className="mt-3 flex flex-wrap items-start gap-1.5">
-                    {unmatchedRows.map((p, i) => (
+                    {unmatchedRows.map((p) => (
                       <UnmatchedArtistTag
-                        key={i}
+                        key={p.artistName}
                         pick={{
                           artistName: p.artistName,
                           datasetKey: activeFestival.key,

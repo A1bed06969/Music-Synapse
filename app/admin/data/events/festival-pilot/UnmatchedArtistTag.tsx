@@ -136,7 +136,7 @@ export default function UnmatchedArtistTag({ pick }: { pick: PickInput }) {
     // 誤解された不具合があったため、実際に登録された名前とリンクを必ず示す)
     const renamed = registered.registeredName.trim() !== pick.artistName.trim()
     return (
-      <span className="rounded-full border border-green-500/30 bg-green-500/5 px-2 py-0.5 text-xs text-green-400">
+      <span className="inline-block align-top rounded-full border border-green-500/30 bg-green-500/5 px-2 py-0.5 text-xs text-green-400">
         ✓{' '}
         <Link href={`/artists/${registered.artistId}`} className="hover:underline">
           {pick.artistName}
