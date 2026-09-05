@@ -1,15 +1,9 @@
 import Link from 'next/link'
 import { createClient } from '@/utils/Supabase/server'
-import { fetchAllRows } from '@/utils/fetchAllRows'
 import { inputClass, buttonClass } from '../adminUi'
 import SearchableSelect from '../SearchableSelect'
 import { searchTracks, searchAlbums, searchArtists } from '../actions'
 import { createRanking, createRankingEntry } from './actions'
-
-type StubCheckRow = {
-  ranking_id: string
-  album: { streaming_status: string | null; tower_url: string | null; discogs_url: string | null } | { streaming_status: string | null; tower_url: string | null; discogs_url: string | null }[] | null
-}
 
 export default async function CurationPage({
   searchParams,
@@ -20,34 +14,23 @@ export default async function CurationPage({
   const supabase = await createClient()
 
   // ranking_entryは2432件超あり、PostgRESTの1リクエストあたり行数上限(既定1000件)を
-  // 超えている。単純な.select()だと後半のエントリが「要マッチング」件数の集計から
-  // 欠落する(実際に「要マッチング204件」のような表示が過小になっていた)。
-  // fetchAllRowsでページネーションして全件取得する。
-  // (以前はこのページ自体に企画ごとの全エントリ一覧も表示していたが、2432件を
-  // 毎回丸ごとレンダリングするのが重く、正確な件数を取るためにページネーションで
-  // 全件取得するとさらに悪化したため、一覧表示は削除し各企画から既存の詳細
-  // ページ(公開一覧/media/features、マッチング画面)へのリンクに置き換えた)
-  const [{ data: mediaList }, { data: rankings }, stubRows] = await Promise.all([
+  // 超えている。以前はJS側で全件取得して「要マッチング」件数を集計しており、
+  // 単純な.select()だと過小集計になる(実際に「要マッチング204件」が本来310件
+  // だった)うえ、正しく全件取得しようとすると2432件をページネーションで
+  // 転送する分だけ表示が重くなっていた。count_unmatched_ranking_entries
+  // (SQL側でGROUP BY集計)に置き換え、返り値を企画数(現状6件)程度に抑える。
+  const [{ data: mediaList }, { data: rankings }, { data: stubCounts }] = await Promise.all([
     supabase.from('media').select('id, name').order('name'),
     supabase.from('ranking').select('id, name, source, list_type, media:media_id(name)').order('name'),
-    fetchAllRows<StubCheckRow>(
-      supabase,
-      'ranking_entry',
-      'ranking_id, album:album_id(streaming_status, tower_url, discogs_url)',
-      'id'
-    ),
+    supabase.rpc('count_unmatched_ranking_entries'),
   ])
 
   const mediaOptions = mediaList ?? []
   const rankingOptions = rankings ?? []
 
-  const stubCountByRanking = new Map<string, number>()
-  for (const row of stubRows) {
-    const album = Array.isArray(row.album) ? row.album[0] : row.album
-    if (album?.streaming_status !== 'unreleased') continue
-    if (album.tower_url || album.discogs_url) continue
-    stubCountByRanking.set(row.ranking_id, (stubCountByRanking.get(row.ranking_id) ?? 0) + 1)
-  }
+  const stubCountByRanking = new Map<string, number>(
+    (stubCounts ?? []).map((row: { ranking_id: string; stub_count: number }) => [row.ranking_id, row.stub_count])
+  )
 
   return (
     <div className="mx-auto max-w-[1600px] px-6 py-12">
