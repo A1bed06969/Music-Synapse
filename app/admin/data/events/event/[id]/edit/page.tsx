@@ -72,6 +72,7 @@ export default async function EditEventPage({
     { data: appearances },
     { data: editionDates },
     { data: extractPending },
+    { data: artistLinks },
   ] = await Promise.all([
     supabase
       .from('event')
@@ -96,6 +97,13 @@ export default async function EditEventPage({
       .in('event_edition_id', editionIds)
       .order('date', { ascending: true }),
     supabase.from('festival_extract_pending').select('event_edition_id, result').in('event_edition_id', editionIds),
+    // FestivalLineupExtractorはevent_edition_idをdatasetKey代わりに使って
+    // importAndRegisterFestivalArtistを呼ぶため、ここに「サイト表記(pick_name)→
+    // 実際に登録したartist_id」の確定した記録が残る。event_appearance側の
+    // アーティスト名(Apple Music側の正式表記)と、サイトの生表記が一致しない
+    // ケース(例:「平井大」→実際の登録名「平井 大」)でも、表記ゆれに関係なく
+    // 確実に「この表記は登録済み」と判定できる。
+    supabase.from('festival_pilot_artist_link').select('dataset_key, pick_name').in('dataset_key', editionIds),
   ])
 
   if (fetchError || !entry) {
@@ -116,8 +124,12 @@ export default async function EditEventPage({
   }
 
   // 再抽出した候補が、既にこのeventEditionへ出演登録済みのアーティストと
-  // 重複しないよう、正規化した名前の集合を渡す(表記ゆれまでは吸収しないが、
-  // festival-pilotの既存一致判定と同じ簡易な完全一致で十分実用になる)
+  // 重複しないよう、正規化した名前の集合を渡す。event_appearance側の
+  // アーティスト名(Apple Music正式表記)による判定に加えて、
+  // festival_pilot_artist_link側のpick_name(サイトの生表記そのもの、
+  // FestivalLineupExtractorがdatasetKey=event_edition_idで登録したもの)も
+  // 合わせる。前者だけだと表記ゆれ(例:「平井大」→「平井 大」)で不一致になり
+  // 実際は登録済みでも未登録として再表示され続けることがあったため。
   const registeredNamesByEdition = new Map<string, Set<string>>()
   for (const [editionId, rows] of appearancesByEdition) {
     const names = new Set<string>()
@@ -126,6 +138,11 @@ export default async function EditEventPage({
       if (artist) names.add(artist.name.trim().toUpperCase())
     }
     registeredNamesByEdition.set(editionId, names)
+  }
+  for (const row of artistLinks ?? []) {
+    const names = registeredNamesByEdition.get(row.dataset_key) ?? new Set<string>()
+    names.add(row.pick_name)
+    registeredNamesByEdition.set(row.dataset_key, names)
   }
 
   const editionDatesByEdition = new Map<string, EditionDateRow[]>()

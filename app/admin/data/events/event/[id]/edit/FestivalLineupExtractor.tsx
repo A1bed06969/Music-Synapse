@@ -149,7 +149,12 @@ export default function FestivalLineupExtractor({
                       key={c.artist_name}
                       pick={{
                         artistName: c.artist_name,
-                        datasetKey: '',
+                        // festival_pilot_artist_link(サイト表記→実際のartist_idの固定紐付け)に
+                        // 記録を残すため、event_edition_idをdatasetKey代わりに使う。これが無いと
+                        // 「既に登録済みか」の判定が名前の文字列比較(表記ゆれに弱い。例:
+                        // サイト表記「平井大」 vs 実際の登録名「平井 大」)に頼るしかなく、
+                        // 実際は登録済みでも再読み込みで未登録として再表示され続けていた。
+                        datasetKey: eventEditionId,
                         festivalName: result.festivalName,
                         editionYear: result.editionYear,
                         startDate: result.startDate,
