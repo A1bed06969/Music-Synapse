@@ -516,6 +516,21 @@ export async function registerCollabFestivalAppearance(
   const venue = await resolveVenueForRegion(supabase, editionId, input.region)
   const primaryArtistId = resolvedArtistIds[0]
 
+  // importAndRegisterFestivalArtistと同じ既存チェック。同じ組が複数箇所に
+  // 掲載されている場合や連打での二重送信で、代表メンバーが既にこの開催回に
+  // 出演登録済みだと生のDBユニーク制約違反(event_appearance_edition_artist_venue_key)
+  // がそのままエラーメッセージに出てしまっていたため、事前に確認して
+  // わかりやすいメッセージを返す。
+  const { data: existingAppearance } = await supabase
+    .from('event_appearance')
+    .select('id')
+    .eq('event_edition_id', editionId)
+    .eq('artist_id', primaryArtistId)
+    .maybeSingle()
+  if (existingAppearance) {
+    return { success: false, message: `「${input.pickArtistName}」は既に登録済みです。` }
+  }
+
   const { data: inserted, error: appearanceError } = await supabase
     .from('event_appearance')
     .insert({
