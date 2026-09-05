@@ -8,7 +8,8 @@ export async function fetchAllRows<T>(
   supabase: SupabaseClient,
   table: string,
   columns: string,
-  orderColumn: string
+  orderColumn: string,
+  options?: { ascending?: boolean }
 ): Promise<T[]> {
   const rows: T[] = []
   const pageSize = 1000
@@ -17,7 +18,7 @@ export async function fetchAllRows<T>(
     const { data } = await supabase
       .from(table)
       .select(columns)
-      .order(orderColumn, { ascending: true })
+      .order(orderColumn, { ascending: options?.ascending ?? true })
       .range(offset, offset + pageSize - 1)
     const page = (data ?? []) as T[]
     rows.push(...page)

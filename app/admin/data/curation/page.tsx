@@ -1,9 +1,24 @@
 import Link from 'next/link'
 import { createClient } from '@/utils/Supabase/server'
+import { fetchAllRows } from '@/utils/fetchAllRows'
 import { inputClass, buttonClass } from '../adminUi'
 import SearchableSelect from '../SearchableSelect'
 import { searchTracks, searchAlbums, searchArtists } from '../actions'
 import { createRanking, createRankingEntry } from './actions'
+
+type RankingEntryRow = {
+  id: number
+  rank: number | null
+  ranking: { name: string } | { name: string }[] | null
+  track: { title: string } | { title: string }[] | null
+  album: { title: string } | { title: string }[] | null
+  artist: { name: string } | { name: string }[] | null
+}
+
+type StubCheckRow = {
+  ranking_id: string
+  album: { streaming_status: string | null; tower_url: string | null; discogs_url: string | null } | { streaming_status: string | null; tower_url: string | null; discogs_url: string | null }[] | null
+}
 
 export default async function CurationPage({
   searchParams,
@@ -13,23 +28,33 @@ export default async function CurationPage({
   const { success, error } = await searchParams
   const supabase = await createClient()
 
-  const [{ data: mediaList }, { data: rankings }, { data: rankingEntries }] = await Promise.all([
+  // ranking_entryは2432件超あり、PostgRESTの1リクエストあたり行数上限(既定1000件)を
+  // 超えている。単純な.select()だと後半のエントリが「要マッチング」件数の集計・
+  // 一覧表示のどちらからも欠落する(実際に「要マッチング204件」のような表示が
+  // 過小になっていた)。fetchAllRowsでページネーションして全件取得する。
+  const [{ data: mediaList }, { data: rankings }, rankingEntries, stubRows] = await Promise.all([
     supabase.from('media').select('id, name').order('name'),
     supabase.from('ranking').select('id, name, source, list_type, media:media_id(name)').order('name'),
-    supabase
-      .from('ranking_entry')
-      .select('id, rank, ranking:ranking_id(name), track:track_id(title), album:album_id(title), artist:artist_id(name)')
-      .order('id', { ascending: false }),
+    fetchAllRows<RankingEntryRow>(
+      supabase,
+      'ranking_entry',
+      'id, rank, ranking:ranking_id(name), track:track_id(title), album:album_id(title), artist:artist_id(name)',
+      'id',
+      { ascending: false }
+    ),
+    fetchAllRows<StubCheckRow>(
+      supabase,
+      'ranking_entry',
+      'ranking_id, album:album_id(streaming_status, tower_url, discogs_url)',
+      'id'
+    ),
   ])
 
   const mediaOptions = mediaList ?? []
   const rankingOptions = rankings ?? []
 
   const stubCountByRanking = new Map<string, number>()
-  const { data: stubRows } = await supabase
-    .from('ranking_entry')
-    .select('ranking_id, album:album_id(streaming_status, tower_url, discogs_url)')
-  for (const row of stubRows ?? []) {
+  for (const row of stubRows) {
     const album = Array.isArray(row.album) ? row.album[0] : row.album
     if (album?.streaming_status !== 'unreleased') continue
     if (album.tower_url || album.discogs_url) continue
