@@ -6,6 +6,7 @@ import { createAdminClient } from '@/utils/Supabase/admin'
 import { searchTracks, fetchTrackById, searchAlbums, fetchAlbumById, fetchTracksForAlbum, parseAppleMusicAlbumUrl } from '@/utils/itunes'
 import { registerTrackFromSearch, registerAlbumFromSearch } from '@/app/admin/import/search/actions'
 import { getStationPeriodType, isAlbumCampaign } from '@/utils/radioStationPeriod'
+import { safeRevalidatePath } from '@/utils/safeRevalidate'
 
 export type PickerItem = { id: string; label: string; imageUrl?: string }
 
@@ -472,8 +473,10 @@ export async function registerPickIdToRotation(
 
   await supabase.from('radio_airplay_pick').update({ registered_rotation_id: rotation.id }).eq('id', pickId)
 
-  revalidatePath('/admin/data/media/radio-airplay-pick')
-  revalidatePath('/media/on-air')
+  // scripts/verify-radio-pick-matches.ts(バックグラウンド一括検証)からも直接
+  // importして呼ばれるため、リクエストコンテキスト外でも例外にならないsafeRevalidatePathを使う
+  safeRevalidatePath('/admin/data/media/radio-airplay-pick')
+  safeRevalidatePath('/media/on-air')
   return { success: true, message: `「${candidateLabel}」を登録しました。` }
 }
 

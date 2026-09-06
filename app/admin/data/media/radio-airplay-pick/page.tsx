@@ -4,6 +4,19 @@ import RadioPickMatcher from './RadioPickMatcher'
 import MatchedCandidateActions from './MatchedCandidateActions'
 import { clearPickCandidate, registerPickToRotation, unregisterPickFromRotation } from './actions'
 import { isAlbumCampaign } from '@/utils/radioStationPeriod'
+import GeminiRadioPickPanel from './GeminiRadioPickPanel'
+import {
+  GeminiRadioPickReviewQueue,
+  GeminiRadioPickAutoAppliedList,
+  type RadioPickReviewLogRow,
+  type RadioPickAutoAppliedLogRow,
+} from './GeminiRadioPickQueues'
+import type { RadioPickCandidate } from '@/utils/geminiRadioPickMatch'
+
+// 「Geminiで一括マッチング」は未マッチ全件(2026-09時点で175件程度)をこの1リクエストの
+// サーバーアクション内で順に処理する(app/api/admin/radio-power-play-collect/routeの
+// 300秒予算と同じ考え方)。
+export const maxDuration = 300
 
 type ViewState = 'unmatched' | 'matched' | 'registered'
 
@@ -47,6 +60,64 @@ export default async function RadioAirplayPickAdminPage({
   qb = qb.or(`artist_name.ilike.%${query}%,track_title.ilike.%${query}%`)
 
   const { data: picks, count } = await qb.order('picked_date', { ascending: false }).limit(200)
+
+  // Gemini一括マッチングのパネル・要確認キュー・自動反映一覧は「未マッチ」タブでのみ使う。
+  let unmatchedCountForGemini = 0
+  let reviewRows: RadioPickReviewLogRow[] = []
+  let autoAppliedRows: RadioPickAutoAppliedLogRow[] = []
+  if (viewState === 'unmatched') {
+    const { count: unmatchedCount } = await supabase
+      .from('radio_airplay_pick')
+      .select('id', { count: 'exact', head: true })
+      .is('candidate_track_id', null)
+      .is('candidate_collection_id', null)
+      .not('artist_name', 'is', null)
+      .not('track_title', 'is', null)
+    unmatchedCountForGemini = unmatchedCount ?? 0
+
+    const { data: logRows } = await supabase
+      .from('radio_pick_match_log')
+      .select('id, action, stub_artist_name, stub_track_title, chosen_track_id, chosen_collection_id, chosen_label, chosen_artist_name, confidence, reasoning, candidates_json, auto_applied, reverted')
+      .eq('reverted', false)
+      .order('created_at', { ascending: false })
+      .limit(200)
+
+    reviewRows = (logRows ?? [])
+      .filter((r) => r.action === 'set_candidate' && !r.auto_applied && r.chosen_collection_id)
+      .map((r) => {
+        const candidates = (r.candidates_json as RadioPickCandidate[] | null) ?? []
+        const chosen = candidates.find(
+          (c) => c.collectionId === r.chosen_collection_id && (c.trackId ?? null) === (r.chosen_track_id ?? null)
+        )
+        return {
+          id: r.id,
+          stubArtistName: r.stub_artist_name,
+          stubTrackTitle: r.stub_track_title,
+          chosenLabel: r.chosen_label,
+          chosenArtistName: r.chosen_artist_name,
+          confidence: Number(r.confidence),
+          reasoning: r.reasoning,
+          imageUrl: chosen?.artworkUrl ?? null,
+        }
+      })
+
+    autoAppliedRows = (logRows ?? [])
+      // verify_registerでconfidence90%以上(=本登録済み)は「本登録済み」タブの
+      // 解除ボタンで扱う対象なので、このキューには出さない(誤って取消できて
+      // しまうとregistered_rotation_idの整合が崩れるため)
+      .filter((r) => r.auto_applied && !(r.action === 'verify_register' && Number(r.confidence) >= 0.9))
+      .slice(0, 50)
+      .map((r) => ({
+        id: r.id,
+        stubArtistName: r.stub_artist_name,
+        stubTrackTitle: r.stub_track_title,
+        chosenLabel: r.chosen_label,
+        chosenArtistName: r.chosen_artist_name,
+        confidence: Number(r.confidence),
+        reasoning: r.reasoning,
+        outcome: (r.action === 'set_candidate' ? 'candidate_set' : 'cleared') as 'candidate_set' | 'cleared',
+      }))
+  }
 
   return (
     <div className="mx-auto max-w-[1600px] px-6 py-12">
@@ -99,6 +170,14 @@ export default async function RadioAirplayPickAdminPage({
         <p className="mt-2 text-xs text-white/30">
           該当{count}件中{picks?.length ?? 0}件を表示しています。絞り込んで目的の項目を探してください。
         </p>
+      )}
+
+      {viewState === 'unmatched' && (
+        <>
+          <GeminiRadioPickPanel unmatchedCount={unmatchedCountForGemini} />
+          <GeminiRadioPickAutoAppliedList rows={autoAppliedRows} />
+          <GeminiRadioPickReviewQueue rows={reviewRows} />
+        </>
       )}
 
       <ul className="mt-8 space-y-2">
