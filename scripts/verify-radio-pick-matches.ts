@@ -6,23 +6,43 @@
 // 背景: これらの候補はscripts/backfill-radio-pick-itunes-candidates.ts等による
 // 「artist_name+track_titleでのiTunes検索、上位1件を機械的に採用」で付いたもので、
 // 人力確認前提のまま2000件超が溜まっている(2026-09-06時点)。局名・番組名・
-// 選出日・国内外フラグという文脈をGeminiに渡し、確信度90%以上なら
-// registerPickIdToRotationでそのまま本登録、50%未満で明確に別物と判定されれば
-// 候補をクリアして未マッチへ差し戻す。中間はradio_pick_match_logに記録するのみで
-// 現状(マッチ済み・未登録)を維持する。
+// 選出日・国内外フラグという文脈をGeminiに渡し、確信度90%以上なら本登録、
+// 50%未満で明確に別物と判定されれば候補をクリアして未マッチへ差し戻す。
+// 中間はradio_pick_match_logに記録するのみで現状(マッチ済み・未登録)を維持する。
 //
-// registerPickIdToRotation(app/admin/data/media/radio-airplay-pick/actions.ts)は
-// 内部でrevalidatePathを呼ぶが、utils/safeRevalidate.ts経由にしてあるため
-// このスクリプト(Next.jsのリクエストライフサイクル外)から直接importして呼んでも
-// 例外にならない。
+// 実際の判定・登録処理はapp/api/admin/radio-pick-verify/route.ts経由で行う
+// (registerPickIdToRotationの先で使われるNext.jsのafter()がリクエストコンテキスト外
+// では例外になるため、このスクリプトから直接サーバーアクションをimportせず、
+// 実際のHTTPリクエストとして本番デプロイに投げる)。
 //
 // 実行方法:
 //   npx tsx --env-file=.env.local scripts/verify-radio-pick-matches.ts [--limit=N]
 import { createAdminClient } from '@/utils/Supabase/admin'
-import { runGeminiVerifyForOneMatch } from '@/app/admin/data/media/radio-airplay-pick/geminiMatchActions'
+
+const BASE_URL = 'https://music-synapse.vercel.app'
 
 const limitArg = process.argv.find((a) => a.startsWith('--limit='))
 const LIMIT = limitArg ? Number(limitArg.split('=')[1]) : undefined
+
+type VerifyResponse = {
+  status: 'registered' | 'cleared' | 'needs_review' | 'error'
+  message: string
+  confidence?: number
+}
+
+async function verifyOne(pickId: string): Promise<VerifyResponse> {
+  const authHeader = 'Basic ' + Buffer.from(`${process.env.BASIC_AUTH_USER}:${process.env.BASIC_AUTH_PASSWORD}`).toString('base64')
+  const res = await fetch(`${BASE_URL}/api/admin/radio-pick-verify`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: authHeader },
+    body: JSON.stringify({ pickId }),
+  })
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    throw new Error(`HTTP ${res.status}: ${text.slice(0, 200)}`)
+  }
+  return res.json()
+}
 
 async function main() {
   const supabase = createAdminClient()
@@ -54,7 +74,7 @@ async function main() {
 
   for (const [index, pickId] of targets.entries()) {
     try {
-      const result = await runGeminiVerifyForOneMatch(pickId)
+      const result = await verifyOne(pickId)
       console.log(`[${index + 1}/${targets.length}] ${pickId}: ${result.status}(確信度${Math.round((result.confidence ?? 0) * 100)}%) ${result.message}`)
       if (result.status === 'registered') registered += 1
       else if (result.status === 'cleared') cleared += 1
