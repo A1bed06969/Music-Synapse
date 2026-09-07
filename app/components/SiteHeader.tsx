@@ -3,8 +3,11 @@
 import Link from 'next/link'
 import { useState } from 'react'
 import type { SiteStats } from '@/utils/stats'
+import { useJunkieDig } from './record-digging/JunkieDigContext'
 
-const NAV_LINKS = [
+type NavLink = { href: string; label: string }
+
+const NAV_LINKS: NavLink[] = [
   { href: '/', label: 'ホーム' },
   { href: '/search', label: '検索' },
   { href: '/relations', label: '相関図' },
@@ -30,6 +33,7 @@ const STAT_ITEMS: { key: keyof SiteStats; label: string; href?: string }[] = [
 
 export default function SiteHeader({ stats }: { stats: SiteStats }) {
   const [menuOpen, setMenuOpen] = useState(false)
+  const { openJunkieDig } = useJunkieDig()
 
   return (
     <header className="sticky top-0 z-20 border-b border-white/10 bg-[#0a0a0a]/90 backdrop-blur">
@@ -91,6 +95,17 @@ export default function SiteHeader({ stats }: { stats: SiteStats }) {
               {link.label}
             </Link>
           ))}
+          {/* フローティングバナーを閉じた人でも、ここから改めてJunkie Digを開けるようにする */}
+          <button
+            type="button"
+            onClick={() => {
+              setMenuOpen(false)
+              openJunkieDig()
+            }}
+            className="rounded-md px-2 py-2.5 text-left text-sm text-white/70 transition hover:bg-white/5 hover:text-white sm:px-3"
+          >
+            Junkie Dig
+          </button>
         </div>
       </nav>
     </header>
