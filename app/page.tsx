@@ -9,6 +9,7 @@ import DiscoverNewMusicBanner from '@/app/components/home/DiscoverNewMusicBanner
 import FesLiveFreakBanner from '@/app/components/home/FesLiveFreakBanner'
 import MonthlyNextBreakBanner from '@/app/components/home/MonthlyNextBreakBanner'
 import NewArrivalsBanner from '@/app/components/home/NewArrivalsBanner'
+import HeroBackgroundVideo from '@/app/components/home/HeroBackgroundVideo'
 
 const NEWS_PREVIEW_COUNT = 8
 const UPCOMING_ALBUM_COUNT = 18
@@ -33,6 +34,7 @@ export default async function Home() {
 
   return (
     <div className="py-12">
+      <HeroBackgroundVideo />
       <div className="mx-auto max-w-[1600px] px-6">
         <section className="text-center">
           <h1>
