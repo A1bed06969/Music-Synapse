@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import SiteHeader from "./components/SiteHeader";
 import SiteFooter from "./components/SiteFooter";
 import { PreviewPlayerProvider } from "./components/PreviewPlayerContext";
+import { JunkieDigProvider } from "./components/record-digging/JunkieDigContext";
 import RecordDiggingLauncher from "./components/record-digging/RecordDiggingLauncher";
 import { getStats } from "@/utils/stats";
 import "./globals.css";
@@ -35,12 +36,14 @@ export default async function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-[#0a0a0a] text-white" suppressHydrationWarning>
-        <SiteHeader stats={stats} />
-        <PreviewPlayerProvider>
-          <main className="flex-1">{children}</main>
-          <RecordDiggingLauncher />
-        </PreviewPlayerProvider>
-        <SiteFooter />
+        <JunkieDigProvider>
+          <SiteHeader stats={stats} />
+          <PreviewPlayerProvider>
+            <main className="flex-1">{children}</main>
+            <RecordDiggingLauncher />
+          </PreviewPlayerProvider>
+          <SiteFooter />
+        </JunkieDigProvider>
       </body>
     </html>
   );
