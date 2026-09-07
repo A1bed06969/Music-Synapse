@@ -207,8 +207,8 @@ export async function fetchAlbumById(collectionId: number): Promise<ItunesAlbum 
  * バルク登録UIで使う。iTunes Search APIの上限は200件だが、検索候補表示用に
  * limitを絞って明示的に指定する
  */
-export async function searchAlbums(term: string, limit = 10): Promise<ItunesAlbum[]> {
-  const url = `https://itunes.apple.com/search?term=${encodeURIComponent(term)}&entity=album&limit=${limit}&country=JP`
+export async function searchAlbums(term: string, limit = 10, country = 'JP'): Promise<ItunesAlbum[]> {
+  const url = `https://itunes.apple.com/search?term=${encodeURIComponent(term)}&entity=album&limit=${limit}&country=${country}`
   const data = await fetchItunes(url, 'album search')
   return (data.results ?? []).filter((r: any) => r.wrapperType === 'collection')
 }

@@ -79,10 +79,12 @@ async function searchAppleMusicCandidates(
   // タイトルの強い一致がまだ見つかっていない場合のみ、アーティストを特定して
   // フルディスコグラフィ(最大200件)から探す一段構えのフォールバックを行う
   // (呼び出し回数を抑えるため、強い一致が既にあるときは行わない)。
-  const hasStrongTitleMatch = Array.from(merged.values()).some(
-    (r) => normalizedTitle && normalizeForMatch(r.collectionName) === normalizedTitle
-  );
-  if (!hasStrongTitleMatch) {
+  const hasStrongTitleMatch = () =>
+    Array.from(merged.values()).some(
+      (r) => normalizedTitle && normalizeForMatch(r.collectionName) === normalizedTitle
+    );
+
+  if (!hasStrongTitleMatch()) {
     const artistMatches = await searchArtist(artistName).catch(() => []);
     for (const am of artistMatches.slice(0, 2)) {
       const { albums } = await fetchArtistWithAlbums(String(am.artistId)).catch(() => ({
@@ -92,6 +94,22 @@ async function searchAppleMusicCandidates(
       for (const album of albums) {
         merged.set(album.collectionId, album);
       }
+    }
+  }
+
+  // 洋楽の古典的名盤は、Apple Music日本版だとアーティスト名がカタカナ表記
+  // (例: Nirvana→「ニルヴァーナ」)で登録されていることがあり、英語表記での
+  // 検索がここまでの日本版検索すべてで空振りすることがある(実例: Rolling Stone誌
+  // 「歴代最高のアルバム500」の取込で、Nirvana/Radiohead等の有名作が軒並み
+  // 候補0件になった)。日本版で強い一致が無ければ米国版でも検索する
+  // (実際の登録・トラック取得は常に日本版で行うため、ここで見つけたIDが
+  // そのまま日本版のカタログ情報として使われる。米国版はIDを見つけるための
+  // 手がかりに過ぎない)。
+  if (!hasStrongTitleMatch()) {
+    const usCombined = await searchAlbums(`${artistName} ${title}`, 5, 'US').catch(() => [] as ItunesAlbum[]);
+    const usArtistOnly = await searchAlbums(artistName, 10, 'US').catch(() => [] as ItunesAlbum[]);
+    for (const r of [...usCombined, ...usArtistOnly]) {
+      merged.set(r.collectionId, r);
     }
   }
 
@@ -210,19 +228,30 @@ export async function findAppleMusicAlbumMatch(artistName: string, title: string
   // タイトルもアーティスト名もどちらも空判定にならないようここで弾く。
   if (!normalizedTitle || !normalizedArtist) return null
 
-  let candidates: ItunesAlbum[]
-  try {
-    candidates = await searchAlbums(`${artistName} ${title}`, 10)
-  } catch {
-    return null
+  const findExactMatch = async (country: string): Promise<ItunesAlbum | null> => {
+    let candidates: ItunesAlbum[]
+    try {
+      candidates = await searchAlbums(`${artistName} ${title}`, 10, country)
+    } catch {
+      return null
+    }
+
+    const matches = candidates.filter(
+      (c) =>
+        normalizeForMatch(c.collectionName) === normalizedTitle &&
+        (normalizeForMatch(c.artistName).includes(normalizedArtist) ||
+          normalizedArtist.includes(normalizeForMatch(c.artistName)))
+    )
+
+    return matches.length === 1 ? matches[0] : null
   }
 
-  const matches = candidates.filter(
-    (c) =>
-      normalizeForMatch(c.collectionName) === normalizedTitle &&
-      (normalizeForMatch(c.artistName).includes(normalizedArtist) ||
-        normalizedArtist.includes(normalizeForMatch(c.artistName)))
-  )
+  const jpMatch = await findExactMatch('JP')
+  if (jpMatch) return jpMatch
 
-  return matches.length === 1 ? matches[0] : null
+  // 洋楽の古典的名盤は日本版だとアーティスト名がカタカナ表記(例:
+  // Nirvana→「ニルヴァーナ」)のことがあり、英語表記での検索が空振りする
+  // ことがある(searchAppleMusicCandidatesと同じ理由)。米国版で見つけた
+  // IDでも、実際の登録・トラック取得は常に日本版で行われる。
+  return findExactMatch('US')
 }

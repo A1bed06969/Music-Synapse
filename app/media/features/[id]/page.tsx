@@ -98,7 +98,7 @@ export default async function MediaFeatureDetailPage({
 
   const { data: ranking, error } = await supabase
     .from('ranking')
-    .select('id, name, source, description, list_type, media:media_id(id, name)')
+    .select('id, name, source, description, list_type, image_url, source_url, media:media_id(id, name)')
     .eq('id', id)
     .single()
 
@@ -140,9 +140,26 @@ export default async function MediaFeatureDetailPage({
         ← キュレーションコンテンツ
       </Link>
 
+      {ranking.image_url && (
+        <div className="mt-4 aspect-[21/9] w-full overflow-hidden rounded-lg bg-white/5">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={ranking.image_url} alt={ranking.name} className="h-full w-full object-cover" />
+        </div>
+      )}
+
       <p className="mt-4 text-xs text-white/40">{media?.name ?? ranking.source ?? 'メディア企画'}</p>
       <h1 className="mt-1 text-2xl font-bold">{ranking.name}</h1>
       {ranking.description && <p className="mt-3 text-sm leading-relaxed text-white/70">{ranking.description}</p>}
+      {ranking.source_url && (
+        <a
+          href={ranking.source_url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-2 inline-block text-xs text-white/40 underline hover:text-white/70"
+        >
+          公式サイトを見る →
+        </a>
+      )}
 
       {!entries || entries.length === 0 ? (
         <p className="mt-10 text-sm text-white/40">
