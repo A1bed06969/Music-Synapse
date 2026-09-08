@@ -20,7 +20,9 @@ import { fetchAllNews, findRelatedNews, formatRelativeTime } from '@/utils/newsP
 import { ALBUM_TYPE_LABEL_JA, ALBUM_TYPE_ORDER, type AlbumType } from '@/utils/albumType'
 import { fetchArtistMediaSelections } from '@/utils/fetchArtistMediaSelections'
 import ArtistTimeline from './ArtistTimeline'
-import CurationTags from '@/app/components/CurationTags'
+import DetailHeader from '@/app/components/detail/DetailHeader'
+import VisualSlot, { hasVisualContent } from '@/app/components/detail/VisualSlot'
+import StickyMiniHeader from '@/app/components/detail/StickyMiniHeader'
 
 type ArtistAlbumRow = {
   id: string
@@ -39,16 +41,6 @@ type ArtistAppearanceRow = {
   display_name: string | null
   start_time: string | null
   event_edition: { year: number | null; venue: string | null; event: { name: string } | { name: string }[] | null } | { year: number | null; venue: string | null; event: { name: string } | { name: string }[] | null }[] | null
-}
-
-function SectionDivider({ label }: { label: string }) {
-  return (
-    <div className="mt-10 flex items-center gap-3">
-      <span className="h-1 w-1 rounded-full bg-white/40" />
-      <span className="flex-1 border-t border-white/10" />
-      <h2 className="text-xs uppercase tracking-wide text-white/40">{label}</h2>
-    </div>
-  )
 }
 
 export default async function ArtistDetailPage({
@@ -228,208 +220,286 @@ export default async function ArtistDetailPage({
     })
     .sort((a, b) => b.year - a.year)
 
+  // 見開き右の「代表曲」。パワープレイ実績と選出の件数が多い順に最大5曲。
+  // どちらも無いアーティストではセクションごと出さない。
+  const { data: artistTracks } = await supabase
+    .from('track')
+    .select('id, title, album:album_id(id, jacket_url)')
+    .eq('artist_id', id)
+    .limit(200)
+
+  const trackIds = (artistTracks ?? []).map((t) => t.id)
+  const [{ data: rotationCounts }, { data: rankingCounts }] =
+    trackIds.length > 0
+      ? await Promise.all([
+          supabase.from('radio_rotation').select('track_id').in('track_id', trackIds),
+          supabase.from('ranking_entry').select('track_id').in('track_id', trackIds),
+        ])
+      : [{ data: [] }, { data: [] }]
+
+  const scoreByTrackId = new Map<string, number>()
+  for (const row of [...(rotationCounts ?? []), ...(rankingCounts ?? [])]) {
+    if (!row.track_id) continue
+    scoreByTrackId.set(row.track_id, (scoreByTrackId.get(row.track_id) ?? 0) + 1)
+  }
+  const topTracks = (artistTracks ?? [])
+    .map((t) => ({ ...t, score: scoreByTrackId.get(t.id) ?? 0 }))
+    .filter((t) => t.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 5)
+
   return (
     <div className="mx-auto max-w-[1600px] px-6 py-12">
       <Link href="/search" className="text-xs text-white/40 hover:text-white/70">
         ← 検索に戻る
       </Link>
 
-      <div className="mt-4 flex items-start gap-6">
-        {artist.image_url ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={artist.image_url}
-            alt={artist.name}
-            className="h-28 w-28 rounded-full object-cover"
-          />
-        ) : (
-          <div className="flex h-28 w-28 shrink-0 items-center justify-center rounded-full bg-white/5 text-3xl">
-            🎤
-          </div>
-        )}
-
-        <div>
-          <h1 className="text-2xl font-bold">{artist.name}</h1>
-          <div className="mt-1 flex flex-wrap gap-x-3 text-sm text-white/50">
-            {artist.name_kana && <span>{artist.name_kana}</span>}
-            {artist.name_en && <span>{artist.name_en}</span>}
-          </div>
-
-          <div className="mt-3 flex flex-wrap gap-2 text-xs text-white/60">
-            {artist.artist_type && (
-              <span className="rounded-full border border-white/15 px-2.5 py-0.5">
-                {ARTIST_TYPE_LABEL[artist.artist_type as keyof typeof ARTIST_TYPE_LABEL] ?? artist.artist_type}
-              </span>
-            )}
-            {artist.formed_year && (
-              <span className="rounded-full border border-white/15 px-2.5 py-0.5">
-                結成 {artist.formed_year}年
-              </span>
-            )}
-            {(artist.origin_prefecture || artist.hometown_city) && (
-              <span className="rounded-full border border-white/15 px-2.5 py-0.5">
-                {artist.hometown_city ?? artist.origin_prefecture}
-              </span>
-            )}
-            {artist.streaming_status && (
-              <span className="rounded-full border border-white/15 px-2.5 py-0.5">
-                配信: {ARTIST_STREAMING_STATUS_LABEL[artist.streaming_status]}
-              </span>
-            )}
-            {belongsToBands.map((band) => (
-              <Link
-                key={band.id}
-                href={`/artists/${band.id}`}
-                className="rounded-full border border-white/15 px-2.5 py-0.5 hover:bg-white/5"
-              >
-                🎤 {band.name} のメンバー
-              </Link>
-            ))}
-            <CurationTags rankings={curationRankings} />
-          </div>
-
-          <ArtistLinkIcons
-            artistName={artist.name}
-            officialSiteUrl={artist.official_site_url}
-            snsXUrl={artist.sns_x_url}
-            snsInstagramUrl={artist.sns_instagram_url}
-            appleMusicArtistId={artist.apple_music_artist_id}
-            spotifyArtistId={artist.spotify_artist_id}
-            externalLinks={externalLinks ?? []}
-          />
-        </div>
-      </div>
-
-      {artist.bio && (
-        <>
-          <SectionDivider label="Biography" />
-          <p className="mt-4 text-sm leading-relaxed text-white/70">{artist.bio}</p>
-        </>
-      )}
-
-      <SectionDivider label="Live & Festivals" />
-      <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <div className="rounded-lg border border-white/10 bg-white/[0.02] p-4">
-          <p className="text-xs uppercase tracking-wide text-white/40">Live Info</p>
-          {!musicEvents || musicEvents.length === 0 ? (
-            <p className="mt-3 text-sm text-white/40">まだライブ情報がありません。</p>
-          ) : (
-            <ul className="mt-3 space-y-2 text-sm">
-              {musicEvents.map((live) => (
-                <li key={live.id}>
-                  <p className="font-medium">{live.name}</p>
-                  <p className="text-xs text-white/40">
-                    {formatDate(live.event_date)}
-                    {live.venue ? ` ・ ${live.venue}` : ''}
-                  </p>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-        <div className="rounded-lg border border-white/10 bg-white/[0.02] p-4">
-          <p className="text-xs uppercase tracking-wide text-white/40">Festival Appearances</p>
-          {appearances.length === 0 ? (
-            <p className="mt-3 text-sm text-white/40">まだフェス出演歴がありません。</p>
-          ) : (
-            <ul className="mt-3 space-y-2 text-sm">
-              {appearances.map((a) => (
-                <li key={a.id}>
-                  <p className="font-medium">
-                    {a.eventName}
-                    {a.year > 0 ? `(${a.year})` : ''}
-                  </p>
-                  <p className="text-xs text-white/40">
-                    {a.stage ?? ''}
-                    {a.venue ? ` @ ${a.venue}` : ''}
-                    {a.isHeadliner ? ' ・ ★ヘッドライナー' : ''}
-                  </p>
-                  {a.displayName && <p className="text-xs text-white/30">{a.displayName} 名義で出演</p>}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </div>
-
-      <SectionDivider label="Discography" />
-      {!albums || albums.length === 0 ? (
-        <p className="mt-4 text-sm text-white/40">まだアルバムが登録されていません。</p>
-      ) : (
-        <>
-          {ALBUM_TYPE_ORDER.map((type) => {
-            const albumsForType = albums.filter((album) => ((album.album_type as AlbumType | null) ?? 'Album') === type)
-            if (albumsForType.length === 0) return null
-            return (
-              <div key={type} className="mt-6 first:mt-4">
-                <h3 className="text-xs uppercase tracking-wide text-white/40">
-                  {ALBUM_TYPE_LABEL_JA[type]} <span className="text-white/25">({albumsForType.length})</span>
-                </h3>
-                <div className="mt-2 flex gap-4 overflow-x-auto pb-2">
-                  {albumsForType.map((album) => {
-                    // Apple Music限定(apple_only)は自動判定できず手動設定でしか付かないため、
-                    // ここでは自動検知される「配信なし(未解禁・配信停止)」のみバッジ表示する
-                    const status = album.streaming_status === 'none' ? STREAMING_STATUS_LABEL.none : null
-                    return (
-                      <Link key={album.id} href={`/albums/${album.id}`} className="group block w-28 flex-shrink-0">
-                        <div className="relative aspect-square overflow-hidden rounded-md bg-white/5">
-                          {album.jacket_url ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img
-                              src={album.jacket_url}
-                              alt={album.title}
-                              className={`h-full w-full object-cover transition group-hover:scale-105 ${
-                                status ? 'opacity-60' : ''
-                              }`}
-                            />
-                          ) : (
-                            <div className="flex h-full w-full items-center justify-center text-white/20">
-                              No Art
-                            </div>
-                          )}
-                        </div>
-                        <p className="mt-2 truncate text-sm font-medium">{album.title}</p>
-                        <p className="text-xs text-white/40">{formatDate(album.release_date)}</p>
-                        {status && (
-                          <p className="mt-0.5 text-xs text-white/40">
-                            {status.icon} {status.label}
-                          </p>
-                        )}
-                      </Link>
-                    )
-                  })}
-                </div>
-              </div>
-            )
-          })}
-        </>
-      )}
-
-      <SectionDivider label="Timeline" />
-      <ArtistTimeline
-        albums={(albums ?? []).filter((a) => ['Album', 'Best'].includes((a.album_type as AlbumType | null) ?? 'Album'))}
-        musicEvents={musicEvents ?? []}
-        eventAppearances={eventAppearances ?? []}
-        tieUps={tieUps ?? []}
-        mediaSelections={mediaSelections}
-        awards={(awardEntries ?? []).map((row) => {
-          const award = Array.isArray(row.award) ? row.award[0] : row.award
-          return {
-            id: row.id,
-            year: row.year,
-            awardName: award?.name ?? '',
-            category: row.category,
-            result: row.result === 'winner' ? '受賞' : 'ノミネート',
-          }
-        })}
+      <StickyMiniHeader
+        watchElementId="artist-header"
+        imageUrl={artist.image_url}
+        title={artist.name}
+        subtitle={artist.name_kana ?? artist.name_en ?? null}
       />
-      <Link href={`/artists/${id}/timeline`} className="mt-3 inline-block text-xs text-white/40 hover:text-white/70">
-        年表をすべて見る(シングル・EPを含む全リリース) →
-      </Link>
+
+      <div className="mt-4">
+        <DetailHeader
+          id="artist-header"
+          imageUrl={artist.image_url}
+          imageAlt={artist.name}
+          imageShape="circle"
+          title={artist.name}
+          subtitle={
+            <span className="flex flex-wrap items-center gap-x-2">
+              {artist.name_kana && <span>{artist.name_kana}</span>}
+              {artist.name_en && <span className="text-white/40">{artist.name_en}</span>}
+            </span>
+          }
+          metaLine={
+            <span className="flex flex-wrap items-center gap-x-2">
+              {artist.artist_type && (
+                <span>
+                  {ARTIST_TYPE_LABEL[artist.artist_type as keyof typeof ARTIST_TYPE_LABEL] ?? artist.artist_type}
+                </span>
+              )}
+              {artist.formed_year && (
+                <>
+                  <span>·</span>
+                  <span>結成 {artist.formed_year}年</span>
+                </>
+              )}
+              {(artist.origin_prefecture || artist.hometown_city) && (
+                <>
+                  <span>·</span>
+                  <span>{artist.hometown_city ?? artist.origin_prefecture}</span>
+                </>
+              )}
+              {artist.streaming_status && (
+                <>
+                  <span>·</span>
+                  <span>配信: {ARTIST_STREAMING_STATUS_LABEL[artist.streaming_status]}</span>
+                </>
+              )}
+              {belongsToBands.map((band) => (
+                <span key={band.id} className="flex items-center gap-x-2">
+                  <span>·</span>
+                  <Link href={`/artists/${band.id}`} className="hover:text-white">
+                    🎤 {band.name} のメンバー
+                  </Link>
+                </span>
+              ))}
+            </span>
+          }
+          actions={
+            <ArtistLinkIcons
+              artistName={artist.name}
+              officialSiteUrl={artist.official_site_url}
+              snsXUrl={artist.sns_x_url}
+              snsInstagramUrl={artist.sns_instagram_url}
+              appleMusicArtistId={artist.apple_music_artist_id}
+              spotifyArtistId={artist.spotify_artist_id}
+              externalLinks={externalLinks ?? []}
+            />
+          }
+          rankings={curationRankings}
+        />
+      </div>
+
+      {(() => {
+        const showVisual = hasVisualContent({
+          review: artist.bio,
+          youtubeVideoId: mvVideoId,
+          imageUrl: artist.image_url,
+        })
+        // `appearances` は既存コード(eventAppearancesを整形した変数)をそのまま使う
+        const hasRightContent = topTracks.length > 0 || (musicEvents && musicEvents.length > 0) || appearances.length > 0
+
+        if (!showVisual && !hasRightContent) return null
+
+        return (
+          <div className={showVisual && hasRightContent ? 'mt-10 flex flex-col gap-10 lg:flex-row' : 'mt-10'}>
+            {showVisual && (
+              <div className={hasRightContent ? 'lg:w-[46%] lg:shrink-0' : ''}>
+                <VisualSlot
+                  review={artist.bio}
+                  youtubeVideoId={mvVideoId}
+                  imageUrl={artist.image_url}
+                  imageAlt={artist.name}
+                  imageShape="circle"
+                />
+              </div>
+            )}
+            {hasRightContent && (
+              <div className="min-w-0 flex-1 space-y-8">
+                {topTracks.length > 0 && (
+                  <section>
+                    <h2 className="text-[11px] font-medium uppercase tracking-[0.14em] text-white/35">代表曲</h2>
+                    <ol className="mt-3 divide-y divide-white/10">
+                      {topTracks.map((t) => {
+                        const tAlbum = Array.isArray(t.album) ? t.album[0] : t.album
+                        return (
+                          <li key={t.id}>
+                            <Link href={`/tracks/${t.id}`} className="flex items-center gap-3 py-2.5 text-sm hover:opacity-70">
+                              <div className="h-9 w-9 shrink-0 overflow-hidden rounded bg-white/5">
+                                {tAlbum?.jacket_url && (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img src={tAlbum.jacket_url} alt="" className="h-full w-full object-cover" />
+                                )}
+                              </div>
+                              <span className="flex-1 truncate">{t.title}</span>
+                            </Link>
+                          </li>
+                        )
+                      })}
+                    </ol>
+                  </section>
+                )}
+
+                {musicEvents && musicEvents.length > 0 && (
+                  <section>
+                    <h2 className="text-[11px] font-medium uppercase tracking-[0.14em] text-white/35">ライブ情報</h2>
+                    <ul className="mt-3 space-y-2 text-sm">
+                      {musicEvents.map((live) => (
+                        <li key={live.id}>
+                          <p className="font-medium">{live.name}</p>
+                          <p className="text-xs text-white/40">
+                            {formatDate(live.event_date)}
+                            {live.venue ? ` ・ ${live.venue}` : ''}
+                          </p>
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                )}
+
+                {appearances.length > 0 && (
+                  <section>
+                    <h2 className="text-[11px] font-medium uppercase tracking-[0.14em] text-white/35">フェス出演</h2>
+                    <ul className="mt-3 space-y-3 text-sm">
+                      {appearances.map((a) => (
+                        <li key={a.id}>
+                          <p className="font-medium">
+                            {a.eventName}
+                            {a.year > 0 ? `(${a.year})` : ''}
+                          </p>
+                          <p className="text-xs text-white/40">
+                            {a.stage ?? ''}
+                            {a.venue ? ` @ ${a.venue}` : ''}
+                            {a.isHeadliner ? ' ・ ★ヘッドライナー' : ''}
+                          </p>
+                          {a.displayName && <p className="text-xs text-white/30">{a.displayName} 名義で出演</p>}
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                )}
+              </div>
+            )}
+          </div>
+        )
+      })()}
+
+      <section className="mt-14">
+        <h2 className="text-[11px] font-medium uppercase tracking-[0.14em] text-white/35">Discography</h2>
+        {!albums || albums.length === 0 ? (
+          <p className="mt-4 text-sm text-white/40">まだアルバムが登録されていません。</p>
+        ) : (
+          <>
+            {ALBUM_TYPE_ORDER.map((type) => {
+              const albumsForType = albums.filter((album) => ((album.album_type as AlbumType | null) ?? 'Album') === type)
+              if (albumsForType.length === 0) return null
+              return (
+                <div key={type} className="mt-6 first:mt-4">
+                  <h3 className="text-xs uppercase tracking-wide text-white/40">
+                    {ALBUM_TYPE_LABEL_JA[type]} <span className="text-white/25">({albumsForType.length})</span>
+                  </h3>
+                  <div className="mt-2 flex gap-4 overflow-x-auto pb-2">
+                    {albumsForType.map((album) => {
+                      // Apple Music限定(apple_only)は自動判定できず手動設定でしか付かないため、
+                      // ここでは自動検知される「配信なし(未解禁・配信停止)」のみバッジ表示する
+                      const status = album.streaming_status === 'none' ? STREAMING_STATUS_LABEL.none : null
+                      return (
+                        <Link key={album.id} href={`/albums/${album.id}`} className="group block w-28 flex-shrink-0">
+                          <div className="relative aspect-square overflow-hidden rounded-md bg-white/5">
+                            {album.jacket_url ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={album.jacket_url}
+                                alt={album.title}
+                                className={`h-full w-full object-cover transition group-hover:scale-105 ${
+                                  status ? 'opacity-60' : ''
+                                }`}
+                              />
+                            ) : (
+                              <div className="flex h-full w-full items-center justify-center text-white/20">
+                                No Art
+                              </div>
+                            )}
+                          </div>
+                          <p className="mt-2 truncate text-sm font-medium">{album.title}</p>
+                          <p className="text-xs text-white/40">{formatDate(album.release_date)}</p>
+                          {status && (
+                            <p className="mt-0.5 text-xs text-white/40">
+                              {status.icon} {status.label}
+                            </p>
+                          )}
+                        </Link>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            })}
+          </>
+        )}
+      </section>
+
+      <section className="mt-14">
+        <h2 className="text-[11px] font-medium uppercase tracking-[0.14em] text-white/35">Timeline</h2>
+        <ArtistTimeline
+          albums={(albums ?? []).filter((a) => ['Album', 'Best'].includes((a.album_type as AlbumType | null) ?? 'Album'))}
+          musicEvents={musicEvents ?? []}
+          eventAppearances={eventAppearances ?? []}
+          tieUps={tieUps ?? []}
+          mediaSelections={mediaSelections}
+          awards={(awardEntries ?? []).map((row) => {
+            const award = Array.isArray(row.award) ? row.award[0] : row.award
+            return {
+              id: row.id,
+              year: row.year,
+              awardName: award?.name ?? '',
+              category: row.category,
+              result: row.result === 'winner' ? '受賞' : 'ノミネート',
+            }
+          })}
+        />
+        <Link href={`/artists/${id}/timeline`} className="mt-3 inline-block text-xs text-white/40 hover:text-white/70">
+          年表をすべて見る(シングル・EPを含む全リリース) →
+        </Link>
+      </section>
 
       {members.length > 0 && (
-        <>
-          <SectionDivider label="Members" />
+        <section className="mt-14">
+          <h2 className="text-[11px] font-medium uppercase tracking-[0.14em] text-white/35">Members</h2>
           <div className="mt-4 flex flex-wrap gap-4">
             {members.map((member) => (
               <Link
@@ -454,12 +524,12 @@ export default async function ArtistDetailPage({
               </Link>
             ))}
           </div>
-        </>
+        </section>
       )}
 
       {awardEntries && awardEntries.length > 0 && (
-        <>
-          <SectionDivider label="Awards" />
+        <section className="mt-14">
+          <h2 className="text-[11px] font-medium uppercase tracking-[0.14em] text-white/35">Awards</h2>
           <ul className="mt-4 space-y-2 text-sm">
             {awardEntries.map((row) => {
               const award = Array.isArray(row.award) ? row.award[0] : row.award
@@ -480,47 +550,33 @@ export default async function ArtistDetailPage({
               )
             })}
           </ul>
-        </>
+        </section>
       )}
 
-      {mvVideoId && (
-        <>
-          <SectionDivider label="Latest MV" />
-          <div className="mt-4 aspect-video overflow-hidden rounded-md bg-black">
-            <iframe
-              src={`https://www.youtube.com/embed/${mvVideoId}`}
-              title={`${artist.name} Latest MV`}
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              allowFullScreen
-              loading="lazy"
-              className="h-full w-full"
-            />
-          </div>
-        </>
-      )}
-
-      <SectionDivider label="Relation Graph" />
-      <div className="mt-4 overflow-hidden rounded-lg border border-white/10 bg-white/[0.02]">
-        <ArtistCreditQuadrantGraph
-          centerName={artist.name}
-          centerImageUrl={artist.image_url}
-          quadrants={creditQuadrants}
-        />
-      </div>
-      {hasCreditQuadrantData && (
-        <div>
-          <Link
-            href={`/artists/${artist.id}/relations`}
-            className="mt-2 block text-right text-xs text-white/40 hover:text-white/70"
-          >
-            相関図を全画面で見る →
-          </Link>
+      <section className="mt-14">
+        <h2 className="text-[11px] font-medium uppercase tracking-[0.14em] text-white/35">Relation Graph</h2>
+        <div className="mt-4 overflow-hidden rounded-lg border border-white/10 bg-white/[0.02]">
+          <ArtistCreditQuadrantGraph
+            centerName={artist.name}
+            centerImageUrl={artist.image_url}
+            quadrants={creditQuadrants}
+          />
         </div>
-      )}
+        {hasCreditQuadrantData && (
+          <div>
+            <Link
+              href={`/artists/${artist.id}/relations`}
+              className="mt-2 block text-right text-xs text-white/40 hover:text-white/70"
+            >
+              相関図を全画面で見る →
+            </Link>
+          </div>
+        )}
+      </section>
 
       {relatedNews.length > 0 && (
-        <div className="mt-10">
-          <h2 className="text-lg font-semibold">関連ニュース</h2>
+        <section className="mt-14">
+          <h2 className="text-[11px] font-medium uppercase tracking-[0.14em] text-white/35">関連ニュース</h2>
           <div className="mt-3 space-y-2 sm:grid sm:grid-cols-3 sm:gap-4 sm:space-y-0">
             {relatedNews.map((item) => (
               <a
@@ -555,7 +611,7 @@ export default async function ArtistDetailPage({
               </a>
             ))}
           </div>
-        </div>
+        </section>
       )}
     </div>
   )
