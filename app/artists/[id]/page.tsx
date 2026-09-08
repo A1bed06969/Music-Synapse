@@ -343,7 +343,6 @@ export default async function ArtistDetailPage({
         const showVisual = hasVisualContent({
           review: artist.bio,
           youtubeVideoId: mvVideoId,
-          imageUrl: artist.image_url,
         })
         // `appearances` は既存コード(eventAppearancesを整形した変数)をそのまま使う
         const hasRightContent = topTracks.length > 0 || (musicEvents && musicEvents.length > 0) || appearances.length > 0
@@ -357,9 +356,7 @@ export default async function ArtistDetailPage({
                 <VisualSlot
                   review={artist.bio}
                   youtubeVideoId={mvVideoId}
-                  imageUrl={artist.image_url}
-                  imageAlt={artist.name}
-                  imageShape="circle"
+                  title={artist.name}
                   layout={hasRightContent ? 'spread' : 'full'}
                 />
               </div>

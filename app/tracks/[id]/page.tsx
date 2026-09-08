@@ -236,7 +236,6 @@ export default async function TrackDetailPage({
         const showVisual = hasVisualContent({
           review: track.track_review,
           youtubeVideoId: track.youtube_video_id,
-          imageUrl: album?.jacket_url ?? null,
         })
         const hasRightContent =
           (rotations && rotations.length > 0) || (syncEntries && syncEntries.length > 0) || instrumentGroups.length > 0
@@ -250,8 +249,7 @@ export default async function TrackDetailPage({
                 <VisualSlot
                   review={track.track_review}
                   youtubeVideoId={track.youtube_video_id}
-                  imageUrl={album?.jacket_url ?? null}
-                  imageAlt={track.title}
+                  title={track.title}
                   layout={hasRightContent ? 'spread' : 'full'}
                 />
               </div>

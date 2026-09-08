@@ -214,19 +214,11 @@ export default async function AlbumDetailPage({
       </div>
 
       {(() => {
-        const mosaic = (otherWorks ?? []).map((w) => ({
-          id: w.id,
-          href: `/albums/${w.id}`,
-          imageUrl: w.jacket_url,
-          title: w.title,
-        }))
         // 判定は必ずhasVisualContentで行う。<VisualSlot/>の戻り値はJSX要素なので
         // 中身が空でも常にtruthyになり、見開き解除が効かなくなる
         const showVisual = hasVisualContent({
           review: album.album_review,
           youtubeVideoId: mvTrack?.youtube_video_id ?? null,
-          imageUrl: album.jacket_url,
-          mosaicCount: mosaic.length,
         })
 
         return (
@@ -236,9 +228,7 @@ export default async function AlbumDetailPage({
                 <VisualSlot
                   review={album.album_review}
                   youtubeVideoId={mvTrack?.youtube_video_id ?? null}
-                  imageUrl={album.jacket_url}
-                  imageAlt={album.title}
-                  mosaic={mosaic}
+                  title={album.title}
                   layout="spread"
                 />
               </div>
