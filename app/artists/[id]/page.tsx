@@ -112,10 +112,12 @@ export default async function ArtistDetailPage({
         .eq('relation_type', 'membership')
         .or(`artist_id_a.eq.${id},artist_id_b.eq.${id}`),
       // artist_id直指定のranking_entry(タワレコメン等のトラック/アルバム起点とは別、
-      // Fender NEXTのようなアーティストそのものが選出対象のキュレーションコンテンツ)
+      // Fender NEXTのようなアーティストそのものが選出対象のキュレーションコンテンツ)。
+      // selection型・ranked型の両方を表示する(3ページで方針を統一)。他の2ページと
+      // 揃えて!innerにする(埋め込み先が無い行を素通りさせない)
       supabase
         .from('ranking_entry')
-        .select('id, period_date, ranking:ranking_id(id, name, list_type, source)')
+        .select('id, period_date, ranking:ranking_id!inner(id, name, list_type, source)')
         .eq('artist_id', id)
         .order('period_date', { ascending: false }),
     ]),
@@ -222,29 +224,42 @@ export default async function ArtistDetailPage({
 
   // 見開き右の「代表曲」。パワープレイ実績と選出の件数が多い順に最大5曲。
   // どちらも無いアーティストではセクションごと出さない。
-  const { data: artistTracks } = await supabase
-    .from('track')
-    .select('id, title, album:album_id(id, jacket_url)')
-    .eq('artist_id', id)
-    .limit(200)
-
-  const trackIds = (artistTracks ?? []).map((t) => t.id)
-  const [{ data: rotationCounts }, { data: rankingCounts }] =
-    trackIds.length > 0
-      ? await Promise.all([
-          supabase.from('radio_rotation').select('track_id').in('track_id', trackIds),
-          supabase.from('ranking_entry').select('track_id').in('track_id', trackIds),
-        ])
-      : [{ data: [] }, { data: [] }]
+  // 以前はtrackを`.limit(200)`(orderなし=Postgresが返す200件は不定)でサンプリングし、
+  // そのサンプル内でしかスコアを数えていなかったため、200曲を超えるアーティスト
+  // (最も情報が充実したアーティストほど該当しやすい)で表示が毎回変わる/出ない
+  // 不具合になっていた。track側を絞り込むのではなく、radio_rotation/ranking_entryを
+  // artist_idでtrackに紐付けて(SQL側の埋め込みフィルタで)実際にスコアを持つ行だけを
+  // 取得するように直す。この2テーブルの行数はトラック総数よりずっと少ないため、
+  // 全件走査してもtrackを200件に切り詰めるより安全に全アーティストをカバーできる。
+  type ScoredTrackRow = { track_id: string; track: { id: string; title: string; album: { id: string; jacket_url: string | null } | { id: string; jacket_url: string | null }[] | null } | { id: string; title: string; album: { id: string; jacket_url: string | null } | { id: string; jacket_url: string | null }[] | null }[] | null }
+  const [{ data: rotationRows }, { data: rankingRows }] = await Promise.all([
+    supabase
+      .from('radio_rotation')
+      .select('track_id, track:track_id!inner(id, title, album:album_id(id, jacket_url))')
+      .eq('track.artist_id', id)
+      .overrideTypes<ScoredTrackRow[], { merge: false }>(),
+    supabase
+      .from('ranking_entry')
+      .select('track_id, track:track_id!inner(id, title, album:album_id(id, jacket_url))')
+      .eq('track.artist_id', id)
+      .overrideTypes<ScoredTrackRow[], { merge: false }>(),
+  ])
 
   const scoreByTrackId = new Map<string, number>()
-  for (const row of [...(rotationCounts ?? []), ...(rankingCounts ?? [])]) {
+  const trackById = new Map<string, { id: string; title: string; album: { id: string; jacket_url: string | null } | null }>()
+  for (const row of [...(rotationRows ?? []), ...(rankingRows ?? [])]) {
     if (!row.track_id) continue
     scoreByTrackId.set(row.track_id, (scoreByTrackId.get(row.track_id) ?? 0) + 1)
+    if (!trackById.has(row.track_id)) {
+      const t = Array.isArray(row.track) ? row.track[0] : row.track
+      if (t) {
+        const album = Array.isArray(t.album) ? t.album[0] : t.album
+        trackById.set(row.track_id, { id: t.id, title: t.title, album: album ?? null })
+      }
+    }
   }
-  const topTracks = (artistTracks ?? [])
+  const topTracks = Array.from(trackById.values())
     .map((t) => ({ ...t, score: scoreByTrackId.get(t.id) ?? 0 }))
-    .filter((t) => t.score > 0)
     .sort((a, b) => b.score - a.score)
     .slice(0, 5)
 

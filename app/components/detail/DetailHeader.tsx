@@ -29,8 +29,8 @@ export default function DetailHeader({
   const rounded = imageShape === 'circle' ? 'rounded-full' : 'rounded-lg'
 
   return (
-    <div id={id} className="flex flex-col gap-5 border-b border-white/10 pb-8 sm:flex-row sm:gap-6">
-      <div className={`h-32 w-32 shrink-0 overflow-hidden bg-white/5 sm:h-40 sm:w-40 ${rounded}`}>
+    <div id={id} className="flex flex-col gap-5 border-b border-white/10 pb-8 lg:flex-row lg:gap-6">
+      <div className={`h-32 w-32 shrink-0 overflow-hidden bg-white/5 lg:h-40 lg:w-40 ${rounded}`}>
         {imageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={imageUrl} alt={imageAlt} className="h-full w-full object-cover" />
@@ -47,9 +47,9 @@ export default function DetailHeader({
       </div>
 
       {rankings.length > 0 && (
-        <div className="shrink-0 sm:w-52 sm:border-l sm:border-white/10 sm:pl-6">
+        <div className="shrink-0 lg:w-52 lg:border-l lg:border-white/10 lg:pl-6">
           <h2 className="text-[11px] font-medium uppercase tracking-[0.14em] text-white/35">選出・表彰</h2>
-          <div className="mt-2 flex flex-wrap gap-1.5 text-xs sm:flex-col sm:items-start">
+          <div className="mt-2 flex flex-wrap gap-1.5 text-xs lg:flex-col lg:items-start">
             <CurationTags rankings={rankings} />
           </div>
         </div>

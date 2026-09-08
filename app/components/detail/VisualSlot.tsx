@@ -41,13 +41,19 @@ export default function VisualSlot({
   const hasReview = Boolean(review && review.trim())
   const hasVideo = Boolean(youtubeVideoId)
 
+  // 見開き解除時(右カラムが空)は呼び出し側から幅の制約が一切来ないため、
+  // ここで上限を持たせる。646pxは見開き時の左カラム実測値(1440px viewport)に
+  // 揃えた値で、データが揃っているページの見た目は変えず、右カラムが空のときに
+  // 大判アートワークが全幅(最大1552px)に広がるのを防ぐ。
+  const capClassName = 'max-w-[646px]'
+
   if (hasReview || hasVideo) {
     return (
-      <div className="space-y-6">
+      <div className={`space-y-6 ${capClassName}`}>
         {hasReview && (
           <div>
             <h2 className="text-[11px] font-medium uppercase tracking-[0.14em] text-white/35">紹介</h2>
-            <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-white/75">{review}</p>
+            <p className="mt-2 max-w-prose whitespace-pre-wrap text-sm leading-relaxed text-white/75">{review}</p>
           </div>
         )}
         {hasVideo && (
@@ -73,7 +79,7 @@ export default function VisualSlot({
 
   if (imageUrl) {
     return (
-      <div>
+      <div className={capClassName}>
         <h2 className="text-[11px] font-medium uppercase tracking-[0.14em] text-white/35">アートワーク</h2>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
@@ -89,7 +95,7 @@ export default function VisualSlot({
 
   if (mosaic.length > 0) {
     return (
-      <div>
+      <div className={capClassName}>
         <h2 className="text-[11px] font-medium uppercase tracking-[0.14em] text-white/35">関連作品</h2>
         <div className="mt-2 grid grid-cols-3 gap-2">
           {mosaic.slice(0, 9).map((item) => (

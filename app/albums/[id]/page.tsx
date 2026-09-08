@@ -46,14 +46,16 @@ export default async function AlbumDetailPage({
         .select('artist_id, role, billing_order, artist:artist_id(id, name)')
         .eq('album_id', id)
         .order('billing_order', { ascending: true, nullsFirst: false }),
-      // タワレコメン等の「順位のない選出企画」に選ばれているかどうか。
+      // タワレコメン等の「順位のない選出企画」だけでなく、直近取り込んだ
+      // Rolling Stone 500のような「順位あり」企画も含めて選出バッジを出す
+      // (3ページとも selection型・ranked型の両方を表示する方針で統一)。
+      // ranked型のrankはCurationTagsの表示に含めない(スコープを広げない)。
       // ranking_entryはtrack_id経由でも紐づき得るが、選出系企画はアルバム単位が
       // ほとんどのためalbum_idでの紐付けのみを対象にする
       supabase
         .from('ranking_entry')
         .select('ranking:ranking_id!inner(id, name, list_type, source)')
-        .eq('album_id', id)
-        .eq('ranking.list_type', 'selection'),
+        .eq('album_id', id),
     ])
 
   const groupAnchorId = album.primary_album_id ?? album.id
@@ -74,13 +76,17 @@ export default async function AlbumDetailPage({
     ? await supabase.from('track').select('youtube_video_id').eq('id', mvTrackId).maybeSingle()
     : { data: null }
 
-  // 棚:同じアーティストの他の作品(このアルバムと別バージョン群は除く)
+  // 棚:同じアーティストの他の作品(このアルバムと別バージョン群は除く)。
+  // 除外対象は`id`ではなく`groupAnchorId`にする必要がある。`primary_album_id IS NULL`
+  // で拾われるのはバージョン群の代表盤(id === groupAnchorId)で、このアルバム自身が
+  // 別バージョン側(id !== groupAnchorId)のときは`.neq('id', id)`だけでは代表盤を
+  // 除外できず、「他の作品」と「その他のバージョン」の両方に同じ盤が出てしまう
   const { data: otherWorks } = artist
     ? await supabase
         .from('album')
         .select('id, title, jacket_url, release_date')
         .eq('artist_id', artist.id)
-        .neq('id', id)
+        .neq('id', groupAnchorId)
         .is('primary_album_id', null)
         .order('release_date', { ascending: false, nullsFirst: false })
         .limit(20)
@@ -147,7 +153,7 @@ export default async function AlbumDetailPage({
           metaLine={
             <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
               {album.album_type && <span>{ALBUM_TYPE_LABEL_JA[album.album_type as AlbumType] ?? album.album_type}</span>}
-              <span>·</span>
+              {album.album_type && <span>·</span>}
               <span>{formatDate(album.release_date)}</span>
               {label && (
                 <>
@@ -157,7 +163,7 @@ export default async function AlbumDetailPage({
                   </Link>
                 </>
               )}
-              {album.track_count && (
+              {album.track_count > 0 && (
                 <>
                   <span>·</span>
                   <span>{album.track_count}曲</span>
@@ -192,7 +198,13 @@ export default async function AlbumDetailPage({
                 ...(album.tower_url ? [{ label: 'TOWER RECORDS', href: album.tower_url }] : []),
                 ...(album.discogs_url ? [{ label: 'Discogs', href: album.discogs_url }] : []),
                 ...(album.jan_code
-                  ? [{ label: 'Amazonで探す', href: `https://www.amazon.co.jp/s?k=${album.jan_code}` }]
+                  ? [
+                      { label: 'Amazonで探す', href: `https://www.amazon.co.jp/s?k=${album.jan_code}` },
+                      {
+                        label: 'Discogsで探す',
+                        href: `https://www.discogs.com/search/?q=${album.jan_code}&type=release`,
+                      },
+                    ]
                   : []),
               ]}
             />

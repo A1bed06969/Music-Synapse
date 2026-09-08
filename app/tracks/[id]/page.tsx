@@ -38,13 +38,18 @@ export default async function TrackDetailPage({
     notFound()
   }
 
+  // クレジットはalbum_id経由。track.album_idがnullだと`album_id=eq.null`で
+  // uuidキャストエラーになり(エラーは握りつぶされ)クレジットが黙って消えるため、
+  // 兄弟トラック取得(下のsiblingTracks)と同じくnullガードする
   const [{ data: credits }, { data: trackInstruments }, { data: syncEntries }, { data: rotations }, { data: coArtistRows }, { data: curationSelections }] =
     await Promise.all([
-      supabase
-        .from('artist_credit')
-        .select('role, credit_person:credit_person_id(id, name), instrument:instrument_id(id, name)')
-        .eq('album_id', track.album_id)
-        .or(`track_id.eq.${id},track_id.is.null`),
+      track.album_id
+        ? supabase
+            .from('artist_credit')
+            .select('role, credit_person:credit_person_id(id, name), instrument:instrument_id(id, name)')
+            .eq('album_id', track.album_id)
+            .or(`track_id.eq.${id},track_id.is.null`)
+        : Promise.resolve({ data: [] as { role: string; credit_person: { id: string; name: string } | { id: string; name: string }[] | null; instrument: { id: string; name: string } | { id: string; name: string }[] | null }[], error: null }),
       supabase.from('track_instrument').select('instrument:instrument_id(id, name)').eq('track_id', id),
       supabase
         .from('sync_entry')
@@ -63,12 +68,13 @@ export default async function TrackDetailPage({
         .eq('track_id', id)
         .order('billing_order', { ascending: true, nullsFirst: false }),
       // トラック単位で選出されるキュレーションコンテンツ(将来のTSUTAYA名盤の
-      // トラック起点選出等)向け。album/artist詳細ページと同じ🏆選出タグを表示する
+      // トラック起点選出等)向け。album/artist詳細ページと同じ🏆選出タグを表示する。
+      // selection型・ranked型の両方を表示する(3ページで方針を統一。ranked型の
+      // rankはCurationTagsの表示に含めない)
       supabase
         .from('ranking_entry')
         .select('ranking:ranking_id!inner(id, name, list_type, source)')
-        .eq('track_id', id)
-        .eq('ranking.list_type', 'selection'),
+        .eq('track_id', id),
     ])
 
   // 棚:このアルバムの他の曲(前後の曲へ移動できる導線)
@@ -171,6 +177,7 @@ export default async function TrackDetailPage({
         imageUrl={album?.jacket_url ?? null}
         title={track.title}
         subtitle={allArtists[0]?.name ?? null}
+        action={<PreviewButton previewUrl={track.preview_url} trackId={track.id} size="sm" />}
       />
 
       <div className="mt-4">
@@ -326,8 +333,10 @@ export default async function TrackDetailPage({
 
       {creditGroups.length > 0 && (
         <details className="mt-14 border-t border-white/10 pt-6">
-          <summary className="cursor-pointer text-[11px] font-medium uppercase tracking-[0.14em] text-white/35 hover:text-white/60">
-            クレジット({creditGroups.length}件)
+          <summary className="cursor-pointer text-white/35 hover:text-white/60">
+            <h2 className="inline text-[11px] font-medium uppercase tracking-[0.14em]">
+              クレジット({creditGroups.reduce((total, g) => total + g.people.length, 0)}件)
+            </h2>
           </summary>
           <ul className="mt-3 space-y-1.5 text-sm">
             {creditGroups.map((group) => (

@@ -1,21 +1,26 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import type { ReactNode } from 'react'
 
 /** スマホでヘッダー行が画面外に出たときだけ、上部に出る縮小版のバー。
  * ジャケットとタイトルを常に見える状態に保つ(設計書「レスポンシブ」参照)。
  * SiteHeaderが sticky top-0 z-20 なので、その下に潜り込まないよう top-14 z-10 に置く。
- * PCでは見開きの高さを稼ぐため表示しない(lg:hidden)。 */
+ * PCでは見開きの高さを稼ぐため表示しない(lg:hidden)。
+ * `action`は任意のReactNodeスロット(例: トラックページの再生ボタン)。
+ * このコンポーネント自体は再生の実装を知らないままにする。 */
 export default function StickyMiniHeader({
   watchElementId,
   imageUrl,
   title,
   subtitle,
+  action,
 }: {
   watchElementId: string
   imageUrl: string | null
   title: string
   subtitle?: string | null
+  action?: ReactNode
 }) {
   const [pinned, setPinned] = useState(false)
 
@@ -44,10 +49,11 @@ export default function StickyMiniHeader({
             <img src={imageUrl} alt="" className="h-full w-full object-cover" />
           )}
         </div>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold">{title}</p>
           {subtitle && <p className="truncate text-[11px] text-white/45">{subtitle}</p>}
         </div>
+        {action && <div className="shrink-0">{action}</div>}
       </div>
     </div>
   )
