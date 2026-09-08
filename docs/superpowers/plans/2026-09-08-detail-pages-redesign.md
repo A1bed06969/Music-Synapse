@@ -1160,7 +1160,9 @@ import StickyMiniHeader from '@/app/components/detail/StickyMiniHeader'
           youtubeVideoId: mvVideoId,
           imageUrl: artist.image_url,
         })
-        const hasRightContent = topTracks.length > 0 || festivalAppearances.length > 0
+        // `appearances` は既存コード(app/artists/[id]/page.tsx の215行目付近)で
+        // eventAppearances を整形した変数名。新しく作らずそのまま使う
+        const hasRightContent = topTracks.length > 0 || appearances.length > 0
 
         if (!showVisual && !hasRightContent) return null
 
@@ -1211,7 +1213,9 @@ import StickyMiniHeader from '@/app/components/detail/StickyMiniHeader'
       })()}
 ```
 
-**注意:** `festivalAppearances` は既存の変数名に合わせること(既存コードで使っている名前を確認して置き換える)。
+**既存の変数名(確認済み・そのまま使う):** `appearances`(フェス出演の整形済み配列、215行目付近) /
+`mvVideoId`(146行目) / `externalLinks`(83行目) / `curationRankings`(206行目) / `artist`。
+新しい変数を作らず、これらをそのまま参照すること。
 
 - [ ] **Step 5: 棚(ディスコグラフィ・年表・相関図)はそのまま残す**
 
