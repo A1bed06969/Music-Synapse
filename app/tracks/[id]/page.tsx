@@ -1,10 +1,13 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/utils/Supabase/server'
-import { formatDuration, extractYoutubeVideoId, CREDIT_ROLE_LABEL } from '@/utils/format'
+import { formatDuration, CREDIT_ROLE_LABEL } from '@/utils/format'
 import PreviewButton from '@/app/components/PreviewButton'
 import RotationModal from '@/app/components/track/RotationModal'
-import CurationTags from '@/app/components/CurationTags'
+import DetailHeader from '@/app/components/detail/DetailHeader'
+import VisualSlot, { hasVisualContent } from '@/app/components/detail/VisualSlot'
+import ListenLinks from '@/app/components/detail/ListenLinks'
+import StickyMiniHeader from '@/app/components/detail/StickyMiniHeader'
 
 const WORK_TYPE_LABEL: Record<string, string> = {
   cm: 'CM',
@@ -68,6 +71,17 @@ export default async function TrackDetailPage({
         .eq('ranking.list_type', 'selection'),
     ])
 
+  // 棚:このアルバムの他の曲(前後の曲へ移動できる導線)
+  const { data: siblingTracks } = track.album_id
+    ? await supabase
+        .from('track')
+        .select('id, track_no, title, duration_seconds')
+        .eq('album_id', track.album_id)
+        .neq('id', id)
+        .order('track_no', { ascending: true })
+        .limit(50)
+    : { data: null }
+
   const album = Array.isArray(track.album) ? track.album[0] : track.album
   const artist = Array.isArray(track.artist) ? track.artist[0] : track.artist
 
@@ -130,10 +144,6 @@ export default async function TrackDetailPage({
       people: performersByInstrumentId.get(instrument.id) ?? [],
     }))
 
-  const youtubeVideoId = track.youtube_video_id ? extractYoutubeVideoId(track.youtube_video_id) : null
-  const youtubeSrc = youtubeVideoId ? `https://www.youtube.com/embed/${youtubeVideoId}` : null
-  const hasPlayer = Boolean(youtubeSrc)
-
   return (
     <div className="mx-auto max-w-[1600px] px-6 py-12">
       {success && (
@@ -156,109 +166,169 @@ export default async function TrackDetailPage({
         </Link>
       </div>
 
-      <div className="mt-4 flex items-start gap-5">
-        {album?.jacket_url ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={album.jacket_url} alt={album.title} className="h-24 w-24 shrink-0 rounded-md object-cover" />
-        ) : (
-          <div className="flex h-24 w-24 shrink-0 items-center justify-center rounded-md bg-white/5 text-white/20">
-            No Art
-          </div>
-        )}
+      <StickyMiniHeader
+        watchElementId="track-header"
+        imageUrl={album?.jacket_url ?? null}
+        title={track.title}
+        subtitle={allArtists[0]?.name ?? null}
+      />
 
-        <div>
-          <h1 className="text-2xl font-bold">{track.title}</h1>
-          {curationRankings.length > 0 && (
-            <div className="mt-1.5 flex flex-wrap gap-1.5 text-xs">
-              <CurationTags rankings={curationRankings} />
-            </div>
-          )}
-          {allArtists.length > 0 && (
-            <p className="mt-1 flex flex-wrap items-center gap-x-1 text-sm text-white/60">
-              {allArtists.map((a, i) => (
-                <span key={a.id} className="flex items-center">
-                  <Link href={`/artists/${a.id}`} className="hover:text-white">
-                    {a.name}
+      <div className="mt-4">
+        <DetailHeader
+          id="track-header"
+          imageUrl={album?.jacket_url ?? null}
+          imageAlt={track.title}
+          title={track.title}
+          subtitle={
+            allArtists.length > 0 ? (
+              <span className="flex flex-wrap items-center gap-x-1">
+                {allArtists.map((a, i) => (
+                  <span key={a.id} className="flex items-center">
+                    <Link href={`/artists/${a.id}`} className="hover:text-white">
+                      {a.name}
+                    </Link>
+                    {i < allArtists.length - 1 && <span className="text-white/40">,</span>}
+                  </span>
+                ))}
+              </span>
+            ) : null
+          }
+          metaLine={
+            <span className="flex flex-wrap items-center gap-x-2">
+              {album && (
+                <>
+                  <Link href={`/albums/${album.id}`} className="hover:text-white">
+                    {album.title}
                   </Link>
-                  {i < allArtists.length - 1 && <span className="text-white/40">,</span>}
-                </span>
-              ))}
-            </p>
-          )}
-          <div className="mt-3 flex items-center gap-3">
-            <PreviewButton previewUrl={track.preview_url} trackId={track.id} size="lg" />
-            <p className="text-sm text-white/40">{formatDuration(track.duration_seconds)}</p>
-          </div>
-        </div>
+                  <span>·</span>
+                </>
+              )}
+              <span>{formatDuration(track.duration_seconds)}</span>
+            </span>
+          }
+          actions={
+            <div className="flex flex-wrap items-center gap-3">
+              <PreviewButton previewUrl={track.preview_url} trackId={track.id} size="lg" />
+              <ListenLinks
+                kind="track"
+                ids={{
+                  appleMusicId: track.apple_music_track_id,
+                  spotifyId: track.spotify_track_id,
+                  youtubeMusicId: track.youtube_music_track_id,
+                  amazonMusicId: track.amazon_music_track_id,
+                }}
+                extraLinks={track.lyric_url ? [{ label: '歌詞を見る', href: track.lyric_url }] : []}
+              />
+            </div>
+          }
+          rankings={curationRankings}
+        />
       </div>
 
-      {(track.track_review || hasPlayer) && (
-        <div
-          className={
-            track.track_review && hasPlayer ? 'mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2' : 'mt-6'
-          }
-        >
-          {track.track_review && <p className="text-sm leading-relaxed text-white/70">{track.track_review}</p>}
-          {hasPlayer && (
-            <div className="space-y-3">
-              {youtubeSrc && (
-                <div className="aspect-video overflow-hidden rounded-md bg-black">
-                  <iframe
-                    src={youtubeSrc}
-                    title={track.title}
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                    allowFullScreen
-                    loading="lazy"
-                    className="h-full w-full"
-                  />
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
+      {(() => {
+        const showVisual = hasVisualContent({
+          review: track.track_review,
+          youtubeVideoId: track.youtube_video_id,
+          imageUrl: album?.jacket_url ?? null,
+        })
+        const hasRightContent =
+          (rotations && rotations.length > 0) || (syncEntries && syncEntries.length > 0) || instrumentGroups.length > 0
 
-      {track.lyric_url && (
-        <a
-          href={track.lyric_url}
-          target="_blank"
-          rel="noreferrer"
-          className="mt-6 inline-block rounded-full border border-white/15 px-3 py-1 text-xs text-white/60 hover:text-white"
-        >
-          歌詞を見る
-        </a>
-      )}
+        if (!showVisual && !hasRightContent) return null
 
-      {instrumentGroups.length > 0 && (
-        <section className="mt-8">
-          <h2 className="text-xs font-medium uppercase tracking-wide text-white/40">使用楽器</h2>
-          <ul className="mt-3 space-y-1.5 text-sm">
-            {instrumentGroups.map((group) => (
-              <li key={group.instrumentId} className="flex flex-wrap items-baseline gap-x-2 text-white/70">
-                <Link href={`/tracks/instrument/${group.instrumentId}`} className="text-white/40 hover:text-white">
-                  {group.instrumentName}
-                </Link>
-                {group.people.length > 0 && (
-                  <span>
-                    {group.people.map((person, i) => (
-                      <span key={person.id}>
-                        {i > 0 && '、'}
-                        <Link href={`/people/${person.id}`} className="hover:text-white">
-                          {person.name}
-                        </Link>
-                      </span>
-                    ))}
-                  </span>
+        return (
+          <div className={showVisual && hasRightContent ? 'mt-10 flex flex-col gap-10 lg:flex-row' : 'mt-10'}>
+            {showVisual && (
+              <div className={hasRightContent ? 'lg:w-[46%] lg:shrink-0' : ''}>
+                <VisualSlot
+                  review={track.track_review}
+                  youtubeVideoId={track.youtube_video_id}
+                  imageUrl={album?.jacket_url ?? null}
+                  imageAlt={track.title}
+                />
+              </div>
+            )}
+            {hasRightContent && (
+              <div className="min-w-0 flex-1 space-y-8">
+                {rotations && rotations.length > 0 && <RotationModal rotations={rotations} />}
+
+                {syncEntries && syncEntries.length > 0 && (
+                  <section>
+                    <h2 className="text-[11px] font-medium uppercase tracking-[0.14em] text-white/35">タイアップ実績</h2>
+                    <ul className="mt-3 space-y-1.5 text-sm text-white/70">
+                      {syncEntries.map((row) => {
+                        const work = Array.isArray(row.sync_work) ? row.sync_work[0] : row.sync_work
+                        if (!work) return null
+                        return (
+                          <li key={row.id}>
+                            {work.title}
+                            {work.work_type && (
+                              <span className="text-white/40"> ({WORK_TYPE_LABEL[work.work_type] ?? work.work_type})</span>
+                            )}
+                            {row.usage_detail && <span className="text-white/40"> ・ {row.usage_detail}</span>}
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  </section>
                 )}
+
+                {instrumentGroups.length > 0 && (
+                  <section>
+                    <h2 className="text-[11px] font-medium uppercase tracking-[0.14em] text-white/35">使用楽器</h2>
+                    <ul className="mt-3 space-y-1.5 text-sm">
+                      {instrumentGroups.map((group) => (
+                        <li key={group.instrumentId} className="flex flex-wrap items-baseline gap-x-2 text-white/70">
+                          <Link href={`/tracks/instrument/${group.instrumentId}`} className="text-white/40 hover:text-white">
+                            {group.instrumentName}
+                          </Link>
+                          {group.people.length > 0 && (
+                            <span>
+                              {group.people.map((person, i) => (
+                                <span key={person.id}>
+                                  {i > 0 && '、'}
+                                  <Link href={`/people/${person.id}`} className="hover:text-white">
+                                    {person.name}
+                                  </Link>
+                                </span>
+                              ))}
+                            </span>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                )}
+              </div>
+            )}
+          </div>
+        )
+      })()}
+
+      {siblingTracks && siblingTracks.length > 0 && album && (
+        <section className="mt-14">
+          <h2 className="text-[11px] font-medium uppercase tracking-[0.14em] text-white/35">
+            {album.title}の他の曲
+          </h2>
+          <ol className="mt-3 divide-y divide-white/10">
+            {siblingTracks.map((t) => (
+              <li key={t.id}>
+                <Link href={`/tracks/${t.id}`} className="flex items-center gap-4 py-2.5 text-sm hover:opacity-70">
+                  <span className="w-5 shrink-0 text-right text-white/30">{t.track_no ?? '-'}</span>
+                  <span className="flex-1 truncate">{t.title}</span>
+                  <span className="text-white/30">{formatDuration(t.duration_seconds)}</span>
+                </Link>
               </li>
             ))}
-          </ul>
+          </ol>
         </section>
       )}
 
       {creditGroups.length > 0 && (
-        <section className="mt-8">
-          <h2 className="text-xs font-medium uppercase tracking-wide text-white/40">クレジット</h2>
+        <details className="mt-14 border-t border-white/10 pt-6">
+          <summary className="cursor-pointer text-[11px] font-medium uppercase tracking-[0.14em] text-white/35 hover:text-white/60">
+            クレジット({creditGroups.length}件)
+          </summary>
           <ul className="mt-3 space-y-1.5 text-sm">
             {creditGroups.map((group) => (
               <li key={group.role} className="flex flex-wrap items-baseline gap-x-2 text-white/70">
@@ -276,31 +346,8 @@ export default async function TrackDetailPage({
               </li>
             ))}
           </ul>
-        </section>
+        </details>
       )}
-
-      {syncEntries && syncEntries.length > 0 && (
-        <section className="mt-8">
-          <h2 className="text-xs font-medium uppercase tracking-wide text-white/40">タイアップ実績</h2>
-          <ul className="mt-3 space-y-1.5 text-sm text-white/70">
-            {syncEntries.map((row) => {
-              const work = Array.isArray(row.sync_work) ? row.sync_work[0] : row.sync_work
-              if (!work) return null
-              return (
-                <li key={row.id}>
-                  {work.title}
-                  {work.work_type && (
-                    <span className="text-white/40"> ({WORK_TYPE_LABEL[work.work_type] ?? work.work_type})</span>
-                  )}
-                  {row.usage_detail && <span className="text-white/40"> ・ {row.usage_detail}</span>}
-                </li>
-              )
-            })}
-          </ul>
-        </section>
-      )}
-
-      {rotations && rotations.length > 0 && <RotationModal rotations={rotations} />}
     </div>
   )
 }
