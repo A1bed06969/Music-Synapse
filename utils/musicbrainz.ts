@@ -130,6 +130,15 @@ const DOMAIN_SERVICE_LABEL: Record<string, string> = {
   'allmusic.com': 'AllMusic',
   'wikidata.org': 'Wikidata',
   'imdb.com': 'IMDb',
+  // ブランドアイコン(utils/serviceIcons.tsのHOSTNAME_ICON)は既に持っているのに
+  // こちらに無かったため、ラベルだけ汎用の"SNS"にフォールバックしていた
+  // (ArtistLinkIconsがラベルを常時表示するまでは気づかれていなかった)
+  'facebook.com': 'Facebook',
+  'tiktok.com': 'TikTok',
+  'x.com': 'X',
+  'twitter.com': 'X',
+  'instagram.com': 'Instagram',
+  'soundcloud.com': 'SoundCloud',
 }
 
 /**

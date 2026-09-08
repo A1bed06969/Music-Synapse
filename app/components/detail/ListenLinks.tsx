@@ -1,3 +1,6 @@
+import ServiceLinkPill from '@/app/components/ServiceLinkPill'
+import { getServiceIcon, getFaviconUrl } from '@/utils/serviceIcons'
+
 export type ListenLinkIds = {
   appleMusicId?: string | null
   spotifyId?: string | null
@@ -8,8 +11,9 @@ export type ListenLinkIds = {
 type Item = { key: string; label: string; href: string }
 
 /** アルバム/トラック詳細ページのヘッダーに並べる配信サービスへのリンク。
- * yoynが小さい丸アイコンを並べるのに対し、こちらはサービス名を出したボタンにして
- * 見た目を分ける(設計書「①ヘッダー行」参照)。値が無いサービスは出さない。 */
+ * ブランドアイコン(Apple Music/Spotify/YouTube Music等)+サービス名で表示し、
+ * ブランドアイコンが無いサービス(Amazon Music・TOWER RECORDS等)はファビコンで
+ * 代用する(utils/serviceIcons.ts参照)。値が無いサービスは出さない。 */
 export default function ListenLinks({
   kind,
   ids,
@@ -71,15 +75,13 @@ export default function ListenLinks({
   return (
     <div className="flex flex-wrap gap-2">
       {items.map((item) => (
-        <a
+        <ServiceLinkPill
           key={item.key}
           href={item.href}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="rounded-full border border-white/20 px-3 py-1 text-xs text-white/70 transition hover:border-white/40 hover:text-white"
-        >
-          {item.label}
-        </a>
+          label={item.label}
+          icon={getServiceIcon(item.href)}
+          faviconUrl={getFaviconUrl(item.href)}
+        />
       ))}
     </div>
   )

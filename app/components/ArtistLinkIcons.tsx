@@ -1,6 +1,7 @@
 import { siApplemusic, siSpotify, siX, siInstagram } from 'simple-icons'
-import { getServiceIcon, GENERIC_LINK_ICON_PATH, type ServiceIcon } from '@/utils/serviceIcons'
+import { getServiceIcon, getFaviconUrl, type ServiceIcon } from '@/utils/serviceIcons'
 import { getLinkLabel } from '@/utils/musicbrainz'
+import ServiceLinkPill from '@/app/components/ServiceLinkPill'
 
 export type ArtistLinkIconsProps = {
   artistName: string
@@ -48,40 +49,6 @@ function dedupeByUrl(items: LinkItem[]): LinkItem[] {
   return result
 }
 
-function IconBadge({ item }: { item: LinkItem }) {
-  if (item.icon) {
-    return (
-      <a
-        href={item.href}
-        target="_blank"
-        rel="noreferrer"
-        title={item.label}
-        aria-label={item.label}
-        className="flex h-9 w-9 items-center justify-center rounded-xl transition hover:opacity-80"
-        style={{ backgroundColor: `#${item.icon.hex}` }}
-      >
-        <svg viewBox="0 0 24 24" className="h-5 w-5" fill="#fff">
-          <path d={item.icon.path} />
-        </svg>
-      </a>
-    )
-  }
-  return (
-    <a
-      href={item.href}
-      target="_blank"
-      rel="noreferrer"
-      title={item.label}
-      aria-label={item.label}
-      className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/15 bg-white/5 text-white/60 transition hover:bg-white/10"
-    >
-      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor">
-        <path d={GENERIC_LINK_ICON_PATH} />
-      </svg>
-    </a>
-  )
-}
-
 function CategoryRow({ label, items }: { label: string; items: LinkItem[] }) {
   if (items.length === 0) return null
   return (
@@ -89,7 +56,13 @@ function CategoryRow({ label, items }: { label: string; items: LinkItem[] }) {
       <p className="text-xs uppercase tracking-wide text-white/40">{label}</p>
       <div className="mt-2 flex flex-wrap gap-2">
         {items.map((item) => (
-          <IconBadge key={item.key} item={item} />
+          <ServiceLinkPill
+            key={item.key}
+            href={item.href}
+            label={item.label}
+            icon={item.icon}
+            faviconUrl={item.icon ? null : getFaviconUrl(item.href)}
+          />
         ))}
       </div>
     </div>
