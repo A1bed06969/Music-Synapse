@@ -23,7 +23,7 @@ export type WikipediaGenreInfo = {
   derivatives: string[]
 }
 
-async function fetchWikitext(
+export async function fetchWikitext(
   lang: 'ja' | 'en',
   title: string
 ): Promise<{ wikitext: string; resolvedTitle: string } | null> {
