@@ -48,3 +48,4 @@ next-env.d.ts
 
 # superpowers brainstorming visual companion scratch files
 .superpowers/
+.worktrees/
