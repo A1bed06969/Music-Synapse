@@ -239,6 +239,7 @@ export default async function AlbumDetailPage({
                   imageUrl={album.jacket_url}
                   imageAlt={album.title}
                   mosaic={mosaic}
+                  layout="spread"
                 />
               </div>
             )}

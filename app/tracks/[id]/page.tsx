@@ -252,6 +252,7 @@ export default async function TrackDetailPage({
                   youtubeVideoId={track.youtube_video_id}
                   imageUrl={album?.jacket_url ?? null}
                   imageAlt={track.title}
+                  layout={hasRightContent ? 'spread' : 'full'}
                 />
               </div>
             )}

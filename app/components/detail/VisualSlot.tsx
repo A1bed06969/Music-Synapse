@@ -30,6 +30,7 @@ export default function VisualSlot({
   imageAlt,
   imageShape = 'square',
   mosaic = [],
+  layout = 'spread',
 }: {
   review?: string | null
   youtubeVideoId?: string | null
@@ -37,15 +38,17 @@ export default function VisualSlot({
   imageAlt: string
   imageShape?: 'square' | 'circle'
   mosaic?: MosaicItem[]
+  /** 'spread': 見開き時の左カラム。呼び出し側が `lg:w-[46%]` などで幅を制約するため、
+   *  ここでは上限を持たせない。
+   *  'full': 見開き解除時(右カラムが空)。呼び出し側から幅の制約が一切来ないため、
+   *  ここで上限を持たせる。646pxは見開き時の左カラム実測値(1440px viewport)に
+   *  揃えた値で、大判アートワークが全幅(最大1552px)に広がるのを防ぐ。 */
+  layout?: 'spread' | 'full'
 }) {
   const hasReview = Boolean(review && review.trim())
   const hasVideo = Boolean(youtubeVideoId)
 
-  // 見開き解除時(右カラムが空)は呼び出し側から幅の制約が一切来ないため、
-  // ここで上限を持たせる。646pxは見開き時の左カラム実測値(1440px viewport)に
-  // 揃えた値で、データが揃っているページの見た目は変えず、右カラムが空のときに
-  // 大判アートワークが全幅(最大1552px)に広がるのを防ぐ。
-  const capClassName = 'max-w-[646px]'
+  const capClassName = layout === 'full' ? 'max-w-[646px]' : ''
 
   if (hasReview || hasVideo) {
     return (

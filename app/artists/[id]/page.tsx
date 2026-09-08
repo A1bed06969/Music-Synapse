@@ -360,6 +360,7 @@ export default async function ArtistDetailPage({
                   imageUrl={artist.image_url}
                   imageAlt={artist.name}
                   imageShape="circle"
+                  layout={hasRightContent ? 'spread' : 'full'}
                 />
               </div>
             )}
