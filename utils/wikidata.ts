@@ -116,3 +116,27 @@ export async function fetchImageUrl(qid: string): Promise<string | null> {
     return null
   }
 }
+
+export type WikipediaSitelink = { lang: 'ja' | 'en'; title: string }
+
+/**
+ * Wikidataのsitelinksから、日本語版を優先しWikipedia記事タイトルを解決する。
+ * jawikiが無ければenwikiにフォールバックする(アーティスト紹介文生成において、
+ * 邦楽アーティストはja版、洋楽アーティストはen版が充実している想定)。
+ * どちらも無ければnull。
+ */
+export async function fetchWikipediaSitelink(qid: string): Promise<WikipediaSitelink | null> {
+  if (!/^Q\d+$/.test(qid)) return null
+  await sleep(300)
+  const url = `${WIKIDATA_API_BASE}?action=wbgetentities&ids=${qid}&props=sitelinks&format=json`
+  const res = await fetch(url, { headers: { 'User-Agent': USER_AGENT } })
+  if (!res.ok) {
+    throw new Error(`Wikidata API error (sitelinks): ${res.status}`)
+  }
+  const data = await res.json()
+  const sitelinks = data.entities?.[qid]?.sitelinks
+  if (!sitelinks) return null
+  if (sitelinks.jawiki?.title) return { lang: 'ja', title: sitelinks.jawiki.title }
+  if (sitelinks.enwiki?.title) return { lang: 'en', title: sitelinks.enwiki.title }
+  return null
+}
