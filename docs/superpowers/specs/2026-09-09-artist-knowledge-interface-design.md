@@ -100,10 +100,10 @@ Editorial Index形式(Number・Label・Countのみ、大きなボタンにしな
 | 03 | TIMELINE | タイムライン項目数(後述) |
 | 04 | FESTIVAL & LIVE | `buildArtistAppearanceQuery`の件数 |
 | 05 | NETWORK | `artist_relation`(membership/production)の件数 |
-| 06 | MEDIA | `fetchArtistMediaSelections`+ニュース関連付け件数 |
+| 06 | MEDIA | `findRelatedNews`によるニュース関連付け件数 |
 | 07 | RANKING | `ranking_entry`(直接+アルバム/トラック経由)の件数 |
-| 08 | AWARDS | `award_entry`の件数 |
-| 09 | RADIO ROTATION | `radio_rotation`の件数 |
+| 08 | AWARDS | `award_entry`(直接+アルバム/トラック経由)の件数 |
+| 09 | RADIO ROTATION | `fetchArtistMediaSelections`(`radio_rotation`ベース)の件数 |
 
 カウントは`layout.tsx`で1回だけ取得し、Navigationとレイアウト全体で共有する(各セクションページが個別に数え直さない)。
 
@@ -144,7 +144,7 @@ Editorial Index形式(Number・Label・Countのみ、大きなボタンにしな
 
 ### 06. Media
 
-`fetchArtistMediaSelections`(既存、選出コンテンツ)と、既存の`findRelatedNews`(アーティスト名でのニュースタイトル一致)を統合したEditorial List。日付・媒体・種別・タイトル・サムネイル。
+既存の`findRelatedNews`(アーティスト名でのニュースタイトル一致)によるニュース記事のEditorial List。日付・媒体・タイトル。(`fetchArtistMediaSelections`は名称に反してニュースではなくラジオのパワープレイ等選出データを返すユーティリティであり、09. Radio Rotationのデータ源として使う。実装調査で判明し、本スペックはこの対応に修正済み)
 
 ### 07. Ranking
 
@@ -156,7 +156,7 @@ Editorial Index形式(Number・Label・Countのみ、大きなボタンにしな
 
 ### 09. Radio Rotation
 
-`radio_rotation`(このアーティストの`artist_id`、または関連アルバム/トラック経由)。日付・局名・番組・種別(ヘビーローテーション/パワープレイ等)・曲名のリスト。
+`fetchArtistMediaSelections`(既存、`radio_rotation`をtrack/album/artist直接指定の3方向から合算するユーティリティ)。日付・局名・番組・曲名のリスト。
 
 ## Streaming Status の扱い
 
