@@ -4,9 +4,6 @@
 -- pg_trgmの適用外(3文字未満)となり、track 812,813行の全走査で
 -- statement timeoutになっていた。20260909_add_browse_search_indexes.sql で
 -- 張ったPGroongaインデックス(2-gram)を使う形に置き換える。
---
--- 注意: このファイルの適用は Supabase の SQL Editor から手動で行った。
--- 作業時にMCP接続が読み取り専用に切り替わり、ツール経由でDDLを流せなかったため。
 
 DROP FUNCTION IF EXISTS browse_track_artists(text, integer, integer);
 
@@ -25,12 +22,19 @@ RETURNS TABLE (
 LANGUAGE sql
 STABLE
 AS $$
-  WITH title_matched AS (
-    SELECT DISTINCT t.artist_id
+  WITH title_scan AS (
+    -- 「LOVE」のように26,000曲以上ヒットする語では、全ヒット行を取り出して
+    -- DISTINCTすると3秒の制限に触れる。PGroongaのインデックス順に走査を
+    -- 打ち切ることで、該当アーティストの取りこぼしを許容しつつ応答を保証する。
+    SELECT t.artist_id
     FROM track t
     WHERE p_query IS NOT NULL AND p_query <> ''
       AND t.artist_id IS NOT NULL
       AND t.title &@ p_query
+    LIMIT 8000
+  ),
+  title_matched AS (
+    SELECT DISTINCT artist_id FROM title_scan
   )
   SELECT
     a.id, a.name, a.image_url,
@@ -47,7 +51,9 @@ AS $$
   LIMIT p_limit OFFSET p_offset;
 $$;
 
-CREATE OR REPLACE FUNCTION browse_albums(
+DROP FUNCTION IF EXISTS browse_albums(text, text, text, integer, integer);
+
+CREATE FUNCTION browse_albums(
   p_query TEXT DEFAULT NULL,
   p_status TEXT DEFAULT 'all',
   p_sort TEXT DEFAULT 'kana',
@@ -67,6 +73,18 @@ RETURNS TABLE (
 LANGUAGE sql
 STABLE
 AS $$
+  WITH matched AS (
+    -- 検索語ごとにPGroongaインデックスが効くようUNIONで分ける。
+    -- 1本のORにまとめると album 128,739行の全走査になる(実測624ms〜3.2秒で不安定)。
+    SELECT al.id FROM album al
+      WHERE p_query IS NOT NULL AND p_query <> '' AND al.primary_album_id IS NULL AND al.title &@ p_query
+    UNION
+    SELECT al.id FROM album al
+      WHERE p_query IS NOT NULL AND p_query <> '' AND al.primary_album_id IS NULL AND al.title_kana &@ p_query
+    UNION
+    SELECT al.id FROM album al JOIN artist ar ON ar.id = al.artist_id
+      WHERE p_query IS NOT NULL AND p_query <> '' AND al.primary_album_id IS NULL AND ar.name &@ p_query
+  )
   SELECT
     al.id, al.title, al.title_kana, al.jacket_url, al.release_date, al.streaming_status,
     ar.name AS artist_name,
@@ -76,9 +94,7 @@ AS $$
   WHERE al.primary_album_id IS NULL
     AND (
       p_query IS NULL OR p_query = ''
-      OR al.title &@ p_query
-      OR al.title_kana &@ p_query
-      OR ar.name &@ p_query
+      OR al.id IN (SELECT id FROM matched)
     )
     AND (
       p_status IS NULL OR p_status = 'all'
