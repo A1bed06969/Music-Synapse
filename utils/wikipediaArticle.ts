@@ -5,14 +5,24 @@
 // action=parse&prop=wikitext&section=0で取得する仕組み)をそのまま再利用し、
 // ここではGeminiに渡すための平文化だけを担当する。
 //
-// wikipediaGenre.tsのfindMatchingClose相当のネスト対応はここでは行わない
-// (テンプレートが入れ子でも、生成プロンプトの参考テキストとしては多少の
-// 取りこぼしが許容範囲。Geminiには供給テキストに無い情報を書き加えないよう
-// 別途指示するため、整形漏れが事実の誤りには直結しない)。
-import { fetchWikitext } from './wikipediaGenre.ts'
+// section=0には常にInfobox(例: {{Infobox musician | ... }})が含まれ、
+// その中には{{hlist|...}}のようなテンプレートが入れ子で現れる。以降の
+// テンプレート除去(非入れ子対応の正規表現)ではこれを綺麗に消せず、
+// 生の`|`やフィールド名が残ってGeminiへのプロンプトを汚してしまうため、
+// wikipediaGenre.tsのfindMatchingClose(入れ子対応の波括弧マッチング)を
+// 使ってInfobox全体を先に丸ごと除去しておく。
+import { fetchWikitext, findMatchingClose } from './wikipediaGenre.ts'
+
+function stripInfobox(wikitext: string): string {
+  const match = wikitext.match(/\{\{\s*Infobox\b/i)
+  if (!match || match.index === undefined) return wikitext
+  const end = findMatchingClose(wikitext, match.index)
+  if (end === -1) return wikitext
+  return wikitext.slice(0, match.index) + wikitext.slice(end)
+}
 
 export function stripWikitextMarkup(wikitext: string): string {
-  return wikitext
+  return stripInfobox(wikitext)
     .replace(/<ref[^>]*\/>/gi, '')
     .replace(/<ref[^>]*>[\s\S]*?<\/ref>/gi, '')
     .replace(/\{\{[^{}]*\}\}/g, '')

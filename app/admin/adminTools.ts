@@ -63,6 +63,11 @@ export const ADMIN_TOOL_GROUPS: AdminToolGroup[] = [
         label: '画像を一括更新',
         description: 'Wikidata ID登録済みで画像未設定のアーティストに、Wikimedia Commonsの画像を一括で付与する。',
       },
+      {
+        href: '/admin/data/artists/bio-generation',
+        label: 'Gemini紹介文の確認・取消',
+        description: 'Geminiで自動生成された紹介文(bio)の一覧を確認し、不適切なものは生成前の状態に取り消す。',
+      },
     ],
   },
   {

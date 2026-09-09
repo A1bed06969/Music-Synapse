@@ -12,6 +12,7 @@ describe('fetchWikipediaLeadText', () => {
     const text = await fetchWikipediaLeadText('ja', '藤井風')
     assert.ok(text, 'expected lead text')
     assert.ok(!text!.includes('[['), 'should not contain leftover wikilink brackets')
+    assert.ok(!text!.includes('{{'), 'should not contain leftover template braces (e.g. from the infobox)')
     assert.ok(text!.length > 30)
   })
 

@@ -45,7 +45,7 @@ export async function fetchWikitext(
 // {{...}}はネストしうる(インフォボックス内に{{hlist|...}}や{{cite news|...}}が
 // 入れ子で現れる)ため、単純な非貪欲正規表現では閉じタグを取り違える。
 // 開き位置から深さを数えて対応する閉じ位置を探す。
-function findMatchingClose(text: string, openIndex: number): number {
+export function findMatchingClose(text: string, openIndex: number): number {
   let depth = 0
   for (let i = openIndex; i < text.length; i++) {
     if (text.startsWith('{{', i)) {

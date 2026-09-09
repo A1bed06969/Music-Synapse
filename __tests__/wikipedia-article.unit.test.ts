@@ -38,4 +38,14 @@ describe('stripWikitextMarkup', () => {
     const input = '一行目。\n\n\n二行目。'
     assert.equal(stripWikitextMarkup(input), '一行目。\n二行目。')
   })
+
+  test('removes a nested infobox entirely, leaving only the trailing prose', () => {
+    const input =
+      '{{Infobox musician\n| name = Test\n| genre = {{hlist|Pop|Rock}}\n}}\nActual prose about the artist here.'
+    const result = stripWikitextMarkup(input)
+    assert.equal(result, 'Actual prose about the artist here.')
+    assert.ok(!result.includes('{{'), 'should not contain leftover template open braces')
+    assert.ok(!result.includes('}}'), 'should not contain leftover template close braces')
+    assert.ok(!result.includes('|'), 'should not contain leftover field separators')
+  })
 })
