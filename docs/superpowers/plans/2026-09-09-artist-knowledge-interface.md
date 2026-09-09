@@ -500,10 +500,12 @@ git commit -m "feat: add artist detail RIGHT column (navigation)"
 - Create: `app/artists/[id]/layout.tsx`
 
 **Interfaces:**
-- Consumes: `ArtistIdentityPanel`/`ArtistIdentityData`(Task 2)、`ArtistNav`(Task 3)、`fetchArtistSectionCounts`(Task 1)、`resolveArtistPageKind`/`hasOwnRelease`(既存`utils/artistPageKind.ts`)、`MemberProfile`(既存)。
+- Consumes: `ArtistIdentityPanel`/`ArtistIdentityData`(Task 2)、`ArtistNav`(Task 3)、`fetchArtistSectionCounts`(Task 1)、`artist.browse_kind`(既存の生成列。`utils/artistPageKind.ts`の`resolveArtistPageKind`と同じ判定をDB側で常時最新に保持している。詳細は下記)、`MemberProfile`(既存)。
 - Produces: LEFT/RIGHT付き3カラムグリッドのレイアウト。`{children}`がCENTERに入る。以降の全セクション`page.tsx`(Task 5〜13)はこのlayout配下に置かれる。
 
 メンバー個別ページ(自身名義のリリースを持たないアーティスト)は、この3カラムシェルの対象外。layout側で判定し、対象外なら既存`MemberProfile`をそのまま描画して`children`を描画しない(=セクションルートに到達させない)。
+
+`artist`テーブルには`browse_kind`という生成列(GENERATED ALWAYS AS ... STORED)が既に存在し、`page_override`優先・`has_own_release`(album/track/album_artistをトリガーで常時追跡するbooleanの生成列)フォールバックという、`utils/artistPageKind.ts`の`resolveArtistPageKind`+`hasOwnRelease`とまったく同じ判定を`'artist'`/`'member'`として持っている(`supabase/migrations/20260909_add_artist_browse_kind.sql`参照)。`resolveArtistPageKind`/`hasOwnRelease`をこのページで呼び出すと`hasOwnRelease`だけで3本の追加COUNTクエリが走るため、`select('*')`で一緒に取れる`artist.browse_kind`を直接読む。
 
 - [ ] **Step 1: `layout.tsx`を実装**
 
@@ -511,7 +513,6 @@ git commit -m "feat: add artist detail RIGHT column (navigation)"
 // app/artists/[id]/layout.tsx
 import { notFound } from 'next/navigation'
 import { createClient } from '@/utils/Supabase/server'
-import { resolveArtistPageKind, hasOwnRelease } from '@/utils/artistPageKind'
 import { fetchArtistSectionCounts } from '@/utils/artistDetailCounts'
 import ArtistIdentityPanel, { type ArtistIdentityData } from '@/app/components/artist-detail/ArtistIdentityPanel'
 import ArtistNav from '@/app/components/artist-detail/ArtistNav'
@@ -537,7 +538,7 @@ type ArtistRow = {
   sns_instagram_url: string | null
   apple_music_artist_id: string | null
   spotify_artist_id: string | null
-  page_override: string | null
+  browse_kind: string | null
 }
 
 export default async function ArtistDetailLayout({
@@ -550,9 +551,8 @@ export default async function ArtistDetailLayout({
   const { id } = await params
   const supabase = await createClient()
 
-  const [{ data: artist, error }, ownsRelease, { data: genreRows }, { data: externalLinks }] = await Promise.all([
+  const [{ data: artist, error }, { data: genreRows }, { data: externalLinks }] = await Promise.all([
     supabase.from('artist').select('*').eq('id', id).single<ArtistRow>(),
-    hasOwnRelease(supabase, id),
     supabase.from('artist_genre').select('genre:genre_id(name)').eq('artist_id', id),
     supabase
       .from('artist_external_link')
@@ -566,8 +566,7 @@ export default async function ArtistDetailLayout({
     notFound()
   }
 
-  const pageKind = resolveArtistPageKind(artist.page_override, ownsRelease)
-  if (pageKind === 'member') {
+  if (artist.browse_kind === 'member') {
     const { data: membershipRows } = await supabase
       .from('artist_relation')
       .select('id, description, band:artist_id_a(id, name, image_url), member:artist_id_b(id, name, image_url)')
@@ -1249,21 +1248,76 @@ git commit -m "feat: add artist detail Discography section"
 - Modify: `app/artists/[id]/ArtistTimeline.tsx`(変更不要な想定だが、`groupByYear`prop等の呼び出し方法をこのタスクで確認する)
 
 **Interfaces:**
-- Consumes: `ArtistTimeline`(既存)、`buildArtistAlbumQuery`/`buildArtistAppearanceQuery`(既存)、`fetchArtistMediaSelections`(既存)。
+- Consumes: `ArtistTimeline`(既存)、`buildArtistAlbumQuery`/`buildArtistAppearanceQuery`(既存)、`fetchArtistMediaSelections`(既存)、`buildArtistRankingAwardFilter`(Task 1、`utils/artistDetailCounts.ts`)。
 - Produces: なし(末端ページ)。
 
-- [ ] **Step 1: 既存の`timeline/page.tsx`を読み、現在のデータ取得ロジックを確認**
+既存の`timeline/page.tsx`(92行)は、このタスクの新シェル向けに全面書き換えする。単なる外枠除去ではなく、以下3点の変更を含む:
+1. `layout.tsx`(Task 4)がすでにアーティスト取得・404判定・`BackLink`を描画しているため、このページ自身の`artist`取得・`notFound()`・`BackLink`・`<h1>`は削除する(残すと`artist`が未使用変数になりTypeScript/ESLintエラーになる)
+2. `award_entry`クエリは既存の`artist_id`直接一致のみ(`.eq('artist_id', id)`)から、`buildArtistRankingAwardFilter`による間接一致込みのフィルターに変更する(Task 11/12と同じ理由: 本番データでartist_idが直接一致しない受賞歴を取りこぼすため)
+3. 外側ラッパー(`<div className="mx-auto max-w-[1600px] px-6 py-12">`)をCENTERカラム向けの素の`<div>`に置き換える
 
-Run: `cat "app/artists/[id]/timeline/page.tsx"` で全文を確認する(92行)。既存実装は独立した`BackLink`・`<div className="mx-auto max-w-[1600px] ...">`ラッパーを持っているはずなので、これらを新シェル(`layout.tsx`が既に持っている)と重複させないよう、Step 2で除去する。
-
-- [ ] **Step 2: 新シェル向けに書き換え**
-
-既存ファイルの中身(データ取得のPromise.all部分)はそのまま活かし、JSXの外側ラッパー(`<div className="mx-auto max-w-[1600px] px-6 py-12">` と`BackLink`)だけを取り除いて、`<ArtistTimeline ... groupByYear />`の呼び出しをそのまま返すようにする。具体的な差分は以下の形になる(既存のPromise.all・型定義は変更しない。returnブロックのみ変更する):
+- [ ] **Step 1: `timeline/page.tsx`を全面書き換え**
 
 ```tsx
-// app/artists/[id]/timeline/page.tsx の return 部分を以下に変更する
-// (import文からPromise.allまでの既存コードはそのまま残す。
-//  Link, notFound, BackLink 由来の外枠だけを外す)
+// app/artists/[id]/timeline/page.tsx
+import { createClient } from '@/utils/Supabase/server'
+import { fetchArtistMediaSelections } from '@/utils/fetchArtistMediaSelections'
+import { buildArtistAlbumQuery } from '@/utils/artistAlbumQuery'
+import { buildArtistAppearanceQuery } from '@/utils/artistAppearanceQuery'
+import { buildArtistRankingAwardFilter } from '@/utils/artistDetailCounts'
+import ArtistTimeline from '../ArtistTimeline'
+
+type TimelineAlbumRow = { id: string; title: string; jacket_url: string | null; release_date: string | null }
+type TimelineAppearanceRow = {
+  id: number
+  venue: string | null
+  start_time: string | null
+  event_edition: { venue: string | null; event: { name: string } | { name: string }[] | null } | { venue: string | null; event: { name: string } | { name: string }[] | null }[] | null
+}
+
+/** アーティスト年表の詳細表示。アーティスト詳細ページの簡易版年表(主要リリースのみ)
+ * と違い、シングル・EPも含めた全リリースを年ごとにまとめて表示する。表示形式は
+ * ArtistTimelineをgroupByYear付きで再利用し、簡易版と統一する。 */
+export default async function ArtistTimelinePage({
+  params,
+}: {
+  params: Promise<{ id: string }>
+}) {
+  const { id } = await params
+  const supabase = await createClient()
+
+  const rankingAwardFilter = await buildArtistRankingAwardFilter(supabase, id)
+
+  const [
+    { data: albums },
+    { data: musicEvents },
+    { data: eventAppearances },
+    { data: tieUps },
+    { data: awardEntries },
+    mediaSelections,
+  ] = await Promise.all([
+    buildArtistAlbumQuery<TimelineAlbumRow>(supabase, id, 'id, title, jacket_url, release_date'),
+    supabase
+      .from('music_event')
+      .select('id, name, event_date, venue')
+      .eq('artist_id', id)
+      .order('event_date', { ascending: false, nullsFirst: false }),
+    buildArtistAppearanceQuery<TimelineAppearanceRow>(
+      supabase,
+      id,
+      'id, venue, start_time, event_edition:event_edition_id(venue, event:event_id(name))'
+    ),
+    supabase
+      .from('sync_entry')
+      .select('id, usage_detail, sync_work:sync_work_id(title, work_type, year), track:track_id!inner(title, album_id, artist_id)')
+      .eq('track.artist_id', id),
+    supabase
+      .from('award_entry')
+      .select('id, year, category, result, award:award_id(name)')
+      .or(rankingAwardFilter)
+      .order('year', { ascending: false }),
+    fetchArtistMediaSelections(supabase, id),
+  ])
 
   return (
     <div>
@@ -1275,25 +1329,33 @@ Run: `cat "app/artists/[id]/timeline/page.tsx"` で全文を確認する(92行)�
         eventAppearances={eventAppearances ?? []}
         tieUps={tieUps ?? []}
         mediaSelections={mediaSelections}
-        awards={awards ?? []}
+        awards={(awardEntries ?? []).map((row) => {
+          const award = Array.isArray(row.award) ? row.award[0] : row.award
+          return {
+            id: row.id,
+            year: row.year,
+            awardName: award?.name ?? '',
+            category: row.category,
+            result: row.result === 'winner' ? '受賞' : 'ノミネート',
+          }
+        })}
         groupByYear
       />
     </div>
   )
+}
 ```
 
-既存ファイルの冒頭にある`<h1>`や`BackLink`呼び出しの行は削除する(新シェルの`layout.tsx`が`BackLink`を1回だけ描画するため、セクションページ側では不要)。
-
-- [ ] **Step 3: 型チェック**
+- [ ] **Step 2: 型チェック**
 
 Run: `npx tsc --noEmit`
 Expected: エラーなし
 
-- [ ] **Step 4: ローカルで表示確認**
+- [ ] **Step 3: ローカルで表示確認**
 
 `http://localhost:3000/artists/MS_ART_yu7eev56/timeline`を開き、年ごとにグルーピングされた年表がCENTERカラムに表示されることを確認する。
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
 git add "app/artists/[id]/timeline/page.tsx"
@@ -1573,7 +1635,7 @@ export default async function NetworkPage({ params }: { params: Promise<{ id: st
         {relations.length === 0 ? (
           <p className="text-sm text-white/40">登録されている関係性はありません。</p>
         ) : (
-          <RelationGraph nodes={nodes} edges={edges} />
+          <RelationGraph nodes={nodes} edges={edges} centerId={id} />
         )}
       </div>
       <div className="lg:hidden">
@@ -1584,16 +1646,13 @@ export default async function NetworkPage({ params }: { params: Promise<{ id: st
 }
 ```
 
-- [ ] **Step 3: `RelationGraph`の実際のprops名を確認し、必要なら合わせる**
+`centerId`を渡すことで、`RelationGraph`は(`/relations`で使われるジャンル/リレーション切り替え付きの汎用グラフではなく)指定したノードを中心に据えた`EgoTree`表示に切り替わる(`app/components/RelationGraph.tsx`の`centerId`分岐で確認済み)。これはまさに仕様が求める「このアーティストが誰と、なぜつながっているか」を中心に見せる表示であり、centerIdを省略した汎用モードより適している。
 
-Run: `grep -n "export default function RelationGraph" -A 15 app/components/RelationGraph.tsx`
-このタスクを実装する担当者は、上記コードの`<RelationGraph nodes={nodes} edges={edges} />`呼び出しが実際のprops名(`nodes`/`edges`という命名でない場合はその名前)と一致するか確認し、必要に応じて呼び出し側を実際のシグネチャに合わせて修正すること。
-
-- [ ] **Step 4: 型チェックとローカル確認**
+- [ ] **Step 3: 型チェックとローカル確認**
 
 Run: `npx tsc --noEmit`。`http://localhost:3000/artists/MS_ART_yu7eev56/network`(または関係性を持つ別のアーティストID)で、Desktop幅ではグラフ、Mobile幅(devtoolsで確認)ではリストが表示されることを確認する。
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
 git add "app/artists/[id]/network/page.tsx" app/components/artist-detail/ArtistNetworkList.tsx
