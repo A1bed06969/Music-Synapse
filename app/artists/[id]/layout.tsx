@@ -7,6 +7,7 @@ import { fetchCachedNews } from '@/utils/newsCache'
 import ArtistIdentityPanel, { type ArtistIdentityData } from '@/app/components/artist-detail/ArtistIdentityPanel'
 import ArtistNav from '@/app/components/artist-detail/ArtistNav'
 import ArtistNavMobile from '@/app/components/artist-detail/ArtistNavMobile'
+import StickyMiniHeader from '@/app/components/detail/StickyMiniHeader'
 import BackLink from '@/app/components/navigation/BackLink'
 import MemberProfile from './MemberProfile'
 
@@ -137,6 +138,7 @@ export default async function ArtistDetailLayout({
   return (
     <div className="mx-auto max-w-[1600px] px-6 py-8">
       <BackLink fallbackHref="/search" fallbackLabel="検索に戻る" />
+      <StickyMiniHeader watchElementId="artist-header" imageUrl={identity.imageUrl} title={identity.name} />
       <div className="mt-6 grid grid-cols-1 gap-8 lg:grid-cols-[minmax(280px,4fr)_minmax(320px,4fr)_minmax(180px,2fr)]">
         <div className="lg:sticky lg:top-20 lg:self-start">
           <ArtistIdentityPanel data={identity} />

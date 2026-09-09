@@ -39,18 +39,20 @@ export default function ArtistIdentityPanel({ data }: { data: ArtistIdentityData
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="aspect-square w-full overflow-hidden rounded-lg bg-white/5">
-        {data.imageUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={data.imageUrl} alt={data.name} className="h-full w-full object-cover" />
-        ) : null}
-      </div>
+      <div id="artist-header">
+        <div className="aspect-square w-full overflow-hidden rounded-lg bg-white/5">
+          {data.imageUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={data.imageUrl} alt={data.name} className="h-full w-full object-cover" />
+          ) : null}
+        </div>
 
-      <div>
-        <h1 className="text-2xl font-bold leading-tight">{data.name}</h1>
-        {(data.nameKana || data.nameEn) && (
-          <p className="mt-1 text-sm text-white/50">{[data.nameKana, data.nameEn].filter(Boolean).join(' / ')}</p>
-        )}
+        <div className="mt-5">
+          <h1 className="text-2xl font-bold leading-tight">{data.name}</h1>
+          {(data.nameKana || data.nameEn) && (
+            <p className="mt-1 text-sm text-white/50">{[data.nameKana, data.nameEn].filter(Boolean).join(' / ')}</p>
+          )}
+        </div>
       </div>
 
       {(originLabel || activeYears) && (
