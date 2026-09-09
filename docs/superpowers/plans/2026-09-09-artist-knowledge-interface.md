@@ -1420,6 +1420,7 @@ export default function LiveTabs({ tab }: { tab: 'upcoming' | 'past' }) {
 
 ```tsx
 // app/artists/[id]/live/page.tsx
+import { Suspense } from 'react'
 import { createClient } from '@/utils/Supabase/server'
 import { buildArtistAppearanceQuery } from '@/utils/artistAppearanceQuery'
 import { formatDate } from '@/utils/format'
@@ -1463,7 +1464,9 @@ export default async function LivePage({
     <div>
       <h2 className="text-xs uppercase tracking-wide text-white/40">Festival & Live</h2>
       <div className="mt-3">
-        <LiveTabs tab={tab} />
+        <Suspense fallback={null}>
+          <LiveTabs tab={tab} />
+        </Suspense>
       </div>
 
       {rows.length === 0 ? (
@@ -1477,7 +1480,7 @@ export default async function LivePage({
               <li key={row.id} className="py-3 text-sm">
                 <p className="font-medium">{event?.name ?? '—'}</p>
                 <p className="mt-0.5 text-xs text-white/40">
-                  {row.start_time ? formatDate(row.start_time) : edition?.year ? `${edition.year}年` : ''}
+                  {row.start_time ? formatDate(row.start_time.slice(0, 10)) : edition?.year ? `${edition.year}年` : ''}
                   {(row.venue ?? edition?.venue) ? ` · ${row.venue ?? edition?.venue}` : ''}
                 </p>
               </li>
