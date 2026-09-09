@@ -30,25 +30,32 @@ export type NewArrivalsSummary = {
   curationCount: number
 }
 
-/** ホーム画面ウィジェット用。件数だけを軽量に取得する。 */
+type NewArrivalsCountsRpcRow = {
+  artist_count: number
+  album_count: number
+  track_count: number
+  event_count: number
+  curation_count: number
+}
+
+/** ホーム画面ウィジェット用。件数だけを軽量に取得する。
+ * 以前は5テーブルへ`count:exact`を並列発行していたが、ホームページは
+ * 他のカードと合わせて1リクエストで10件以上のSupabase呼び出しを同時に
+ * 発火しており、トップページの完了までの時間が実測3〜4秒に膨らむ原因の
+ * 一つになっていた。1本のRPC(new_arrivals_counts)にまとめて往復を減らす。 */
 export async function fetchNewArrivalsSummary(supabase: Supabase): Promise<NewArrivalsSummary> {
   const boundary = mostRecentEightAmJST()
 
-  const [artist, album, track, event, curation] = await Promise.all([
-    supabase.from('artist').select('id', { count: 'exact', head: true }).gte('created_at', boundary),
-    supabase.from('album').select('id', { count: 'exact', head: true }).gte('created_at', boundary),
-    supabase.from('track').select('id', { count: 'exact', head: true }).gte('created_at', boundary),
-    supabase.from('event_appearance_artist').select('id', { count: 'exact', head: true }).gte('created_at', boundary),
-    supabase.from('ranking_entry').select('id', { count: 'exact', head: true }).gte('created_at', boundary),
-  ])
+  const { data } = await supabase.rpc('new_arrivals_counts', { p_boundary: boundary })
+  const row = (data as NewArrivalsCountsRpcRow[] | null)?.[0]
 
   return {
     boundary,
-    artistCount: artist.count ?? 0,
-    albumCount: album.count ?? 0,
-    trackCount: track.count ?? 0,
-    eventCount: event.count ?? 0,
-    curationCount: curation.count ?? 0,
+    artistCount: row?.artist_count ?? 0,
+    albumCount: row?.album_count ?? 0,
+    trackCount: row?.track_count ?? 0,
+    eventCount: row?.event_count ?? 0,
+    curationCount: row?.curation_count ?? 0,
   }
 }
 
@@ -86,16 +93,10 @@ const DETAIL_LIST_LIMIT = 300
 export async function fetchNewArrivalsDetail(supabase: Supabase): Promise<NewArrivalsDetail> {
   const boundary = mostRecentEightAmJST()
 
-  const [artistCountRes, albumCountRes, trackCountRes, eventCountRes, curationCountRes, artistRes, albumRes, trackRes, eventRes, curationRes] =
+  // 件数の5並列(count:exact)は1本のRPCにまとめる(fetchNewArrivalsSummaryと同じ理由)。
+  const [countsRes, artistRes, albumRes, trackRes, eventRes, curationRes] =
     await Promise.all([
-      supabase.from('artist').select('id', { count: 'exact', head: true }).gte('created_at', boundary),
-      supabase.from('album').select('id', { count: 'exact', head: true }).gte('created_at', boundary),
-      supabase.from('track').select('id', { count: 'exact', head: true }).gte('created_at', boundary),
-      supabase
-        .from('event_appearance_artist')
-        .select('id', { count: 'exact', head: true })
-        .gte('created_at', boundary),
-      supabase.from('ranking_entry').select('id', { count: 'exact', head: true }).gte('created_at', boundary),
+      supabase.rpc('new_arrivals_counts', { p_boundary: boundary }),
       supabase
         .from('artist')
         .select('id, name, image_url')
@@ -132,12 +133,13 @@ export async function fetchNewArrivalsDetail(supabase: Supabase): Promise<NewArr
         .limit(DETAIL_LIST_LIMIT),
     ])
 
+  const countsRow = (countsRes.data as NewArrivalsCountsRpcRow[] | null)?.[0]
   const counts: NewArrivalsCounts = {
-    artist: artistCountRes.count ?? 0,
-    album: albumCountRes.count ?? 0,
-    track: trackCountRes.count ?? 0,
-    event: eventCountRes.count ?? 0,
-    curation: curationCountRes.count ?? 0,
+    artist: countsRow?.artist_count ?? 0,
+    album: countsRow?.album_count ?? 0,
+    track: countsRow?.track_count ?? 0,
+    event: countsRow?.event_count ?? 0,
+    curation: countsRow?.curation_count ?? 0,
   }
 
   const artists: NewArtistItem[] = (artistRes.data ?? []).map((a) => ({
