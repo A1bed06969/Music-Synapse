@@ -40,11 +40,18 @@ export default function ArtistIdentityPanel({ data }: { data: ArtistIdentityData
   return (
     <div className="flex flex-col gap-5">
       <div id="artist-header">
-        <div className="aspect-square w-full overflow-hidden rounded-lg bg-white/5">
+        <div className="w-full overflow-hidden rounded-lg bg-white/5">
           {data.imageUrl ? (
+            // アーティスト画像は正方形とは限らない(横長のキャンバス画像であることも
+            // 多い)ため、正方形に切り抜かず実際の縦横比のまま幅いっぱいに表示する。
+            // ただし縦長・正方形の画像がLEFTカラムの縦方向を占領してスクロールを
+            // 要求してしまわないよう、高さの上限だけは設ける(横長画像はこの上限より
+            // 低いので影響しない。上限にかかる画像だけobject-coverで中央を切り抜く)。
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={data.imageUrl} alt={data.name} className="h-full w-full object-cover" />
-          ) : null}
+            <img src={data.imageUrl} alt={data.name} className="max-h-64 w-full object-cover" />
+          ) : (
+            <div className="aspect-square w-full" />
+          )}
         </div>
 
         <div className="mt-5">
