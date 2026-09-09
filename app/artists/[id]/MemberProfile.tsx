@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import BackLink from '@/app/components/navigation/BackLink'
 
 type Band = { id: string; name: string; description: string | null }
 type Production = { id: number; artistId: string; artistName: string; description: string | null }
@@ -22,9 +23,7 @@ export default function MemberProfile({
 }) {
   return (
     <div className="mx-auto max-w-[1600px] px-6 py-12">
-      <Link href="/search" className="text-xs text-white/40 hover:text-white/70">
-        ← 検索に戻る
-      </Link>
+      <BackLink fallbackHref="/search" fallbackLabel="検索に戻る" />
 
       <div className="mt-4 flex items-start gap-6">
         {imageUrl ? (

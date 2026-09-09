@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { createClient } from '@/utils/Supabase/server'
 import { notFound } from 'next/navigation'
+import BackLink from '@/app/components/navigation/BackLink'
 import {
   formatDate,
   extractYoutubeVideoId,
@@ -265,9 +266,7 @@ export default async function ArtistDetailPage({
 
   return (
     <div className="mx-auto max-w-[1600px] px-6 py-12">
-      <Link href="/search" className="text-xs text-white/40 hover:text-white/70">
-        ← 検索に戻る
-      </Link>
+      <BackLink fallbackHref="/search" fallbackLabel="検索に戻る" />
 
       <StickyMiniHeader
         watchElementId="artist-header"

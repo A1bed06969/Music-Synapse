@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/utils/Supabase/server'
+import BackLink from '@/app/components/navigation/BackLink'
 
 export default async function LivehouseDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -22,9 +23,7 @@ export default async function LivehouseDetailPage({ params }: { params: Promise<
 
   return (
     <div className="mx-auto max-w-[1600px] px-6 py-12">
-      <Link href="/map" className="text-xs text-white/40 hover:text-white/70">
-        ← 地図に戻る
-      </Link>
+      <BackLink fallbackHref="/map" fallbackLabel="地図に戻る" />
 
       <h1 className="mt-4 text-2xl font-bold">{livehouse.name}</h1>
 

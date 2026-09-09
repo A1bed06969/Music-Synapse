@@ -1,10 +1,10 @@
-import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/utils/Supabase/server'
 import { fetchArtistMediaSelections } from '@/utils/fetchArtistMediaSelections'
 import { buildArtistAlbumQuery } from '@/utils/artistAlbumQuery'
 import { buildArtistAppearanceQuery } from '@/utils/artistAppearanceQuery'
 import ArtistTimeline from '../ArtistTimeline'
+import BackLink from '@/app/components/navigation/BackLink'
 
 type TimelineAlbumRow = { id: string; title: string; jacket_url: string | null; release_date: string | null }
 type TimelineAppearanceRow = {
@@ -64,9 +64,7 @@ export default async function ArtistTimelinePage({
 
   return (
     <div className="mx-auto max-w-[1600px] px-6 py-12">
-      <Link href={`/artists/${id}`} className="text-xs text-white/40 hover:text-white/70">
-        ← {artist.name}のページに戻る
-      </Link>
+      <BackLink fallbackHref={`/artists/${id}`} fallbackLabel={`${artist.name}のページに戻る`} />
 
       <h1 className="mt-4 text-2xl font-bold">{artist.name} 年表</h1>
       <p className="mt-1 text-xs text-white/40">シングル・EPを含む全リリースを年ごとに表示しています。</p>

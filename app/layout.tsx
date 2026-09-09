@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { Geist, Geist_Mono } from "next/font/google";
 import SiteHeader from "./components/SiteHeader";
 import SiteFooter from "./components/SiteFooter";
 import { PreviewPlayerProvider } from "./components/PreviewPlayerContext";
 import { JunkieDigProvider } from "./components/record-digging/JunkieDigContext";
 import RecordDiggingLauncher from "./components/record-digging/RecordDiggingLauncher";
+import NavHistoryTracker from "./components/navigation/NavHistoryTracker";
 import { getStats } from "@/utils/stats";
 import "./globals.css";
 
@@ -37,6 +39,11 @@ export default async function RootLayout({
     >
       <body className="min-h-full flex flex-col bg-[#0a0a0a] text-white" suppressHydrationWarning>
         <JunkieDigProvider>
+          {/* useSearchParamsを使うためSuspenseで包む(静的生成時のビルドエラー回避)。
+              画面には何も描画しない、サイト内履歴の記録専用コンポーネント。 */}
+          <Suspense fallback={null}>
+            <NavHistoryTracker />
+          </Suspense>
           <SiteHeader stats={stats} />
           <PreviewPlayerProvider>
             <main className="flex-1">{children}</main>

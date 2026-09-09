@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/utils/Supabase/server'
 import { formatDuration } from '@/utils/format'
+import BackLink from '@/app/components/navigation/BackLink'
 
 export default async function InstrumentTracksPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -25,9 +26,7 @@ export default async function InstrumentTracksPage({ params }: { params: Promise
 
   return (
     <div className="mx-auto max-w-[1600px] px-6 py-12">
-      <Link href="/tracks" className="text-xs text-white/40 hover:text-white/70">
-        ← トラック一覧に戻る
-      </Link>
+      <BackLink fallbackHref="/tracks" fallbackLabel="トラック一覧に戻る" />
 
       <h1 className="mt-4 text-2xl font-bold">🎸 {instrument.name}</h1>
       <p className="mt-2 text-sm text-white/50">この楽器が使われているトラック{tracks.length}曲</p>

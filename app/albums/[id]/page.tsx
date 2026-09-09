@@ -8,6 +8,7 @@ import DetailHeader from '@/app/components/detail/DetailHeader'
 import VisualSlot, { hasVisualContent } from '@/app/components/detail/VisualSlot'
 import ListenLinks from '@/app/components/detail/ListenLinks'
 import StickyMiniHeader from '@/app/components/detail/StickyMiniHeader'
+import BackLink from '@/app/components/navigation/BackLink'
 
 export default async function AlbumDetailPage({
   params,
@@ -117,11 +118,10 @@ export default async function AlbumDetailPage({
 
   return (
     <div className="mx-auto max-w-[1600px] px-6 py-12">
-      {artist && (
-        <Link href={`/artists/${artist.id}`} className="text-xs text-white/40 hover:text-white/70">
-          ← {artist.name}
-        </Link>
-      )}
+      <BackLink
+        fallbackHref={artist ? `/artists/${artist.id}` : '/albums'}
+        fallbackLabel={artist ? artist.name : 'アルバム一覧に戻る'}
+      />
 
       <StickyMiniHeader
         watchElementId="album-header"

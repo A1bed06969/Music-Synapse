@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { createClient } from '@/utils/Supabase/server'
 import { fetchNewArrivalsDetail } from '@/utils/newArrivals'
+import BackLink from '@/app/components/navigation/BackLink'
 
 function formatBoundary(iso: string): string {
   const jst = new Date(new Date(iso).getTime() + 9 * 60 * 60 * 1000)
@@ -47,9 +48,7 @@ export default async function NewArrivalsPage({
 
   return (
     <div className="mx-auto max-w-[1600px] px-6 py-12">
-      <Link href="/" className="text-xs text-white/40 hover:text-white/70">
-        ← ホームに戻る
-      </Link>
+      <BackLink fallbackHref="/" fallbackLabel="ホームに戻る" />
 
       <h1 className="mt-4 text-2xl font-bold">新着情報</h1>
       <p className="mt-2 text-sm text-white/50">

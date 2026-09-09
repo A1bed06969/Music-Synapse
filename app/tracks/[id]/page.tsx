@@ -8,6 +8,7 @@ import DetailHeader from '@/app/components/detail/DetailHeader'
 import VisualSlot, { hasVisualContent } from '@/app/components/detail/VisualSlot'
 import ListenLinks from '@/app/components/detail/ListenLinks'
 import StickyMiniHeader from '@/app/components/detail/StickyMiniHeader'
+import BackLink from '@/app/components/navigation/BackLink'
 
 const WORK_TYPE_LABEL: Record<string, string> = {
   cm: 'CM',
@@ -160,13 +161,10 @@ export default async function TrackDetailPage({
       )}
 
       <div className="flex items-center justify-between">
-        {album ? (
-          <Link href={`/albums/${album.id}`} className="text-xs text-white/40 hover:text-white/70">
-            ← {album.title}
-          </Link>
-        ) : (
-          <span />
-        )}
+        <BackLink
+          fallbackHref={album ? `/albums/${album.id}` : '/tracks'}
+          fallbackLabel={album ? album.title : 'トラック一覧に戻る'}
+        />
         <Link href={`/admin/data/tracks/${id}/edit`} className="text-xs text-white/40 hover:text-white/70">
           編集
         </Link>

@@ -1,8 +1,8 @@
-import Link from 'next/link'
 import { createClient } from '@/utils/Supabase/server'
 import { tomorrowJST } from '@/utils/homeCards'
 import CalendarView, { type CalendarAlbum } from './CalendarView'
 import RecentReleasesCarousel, { type RecentReleaseAlbum } from './RecentReleasesCarousel'
+import BackLink from '@/app/components/navigation/BackLink'
 
 function monthRange(month: string) {
   const [y, m] = month.split('-').map(Number)
@@ -133,9 +133,7 @@ export default async function AlbumCalendarPage({
             リリース日ごとに新譜をカレンダー表示します。日付をクリックすると詳細が表示されます。
           </p>
         </div>
-        <Link href="/albums" className="text-xs text-white/40 hover:text-white/70">
-          ← アルバム一覧に戻る
-        </Link>
+        <BackLink fallbackHref="/albums" fallbackLabel="アルバム一覧に戻る" />
       </div>
 
       <RecentReleasesCarousel albums={recentReleases} />
