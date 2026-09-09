@@ -1,10 +1,10 @@
-import { notFound } from 'next/navigation'
+// app/artists/[id]/timeline/page.tsx
 import { createClient } from '@/utils/Supabase/server'
 import { fetchArtistMediaSelections } from '@/utils/fetchArtistMediaSelections'
 import { buildArtistAlbumQuery } from '@/utils/artistAlbumQuery'
 import { buildArtistAppearanceQuery } from '@/utils/artistAppearanceQuery'
+import { buildArtistRankingAwardFilter } from '@/utils/artistDetailCounts'
 import ArtistTimeline from '../ArtistTimeline'
-import BackLink from '@/app/components/navigation/BackLink'
 
 type TimelineAlbumRow = { id: string; title: string; jacket_url: string | null; release_date: string | null }
 type TimelineAppearanceRow = {
@@ -25,8 +25,9 @@ export default async function ArtistTimelinePage({
   const { id } = await params
   const supabase = await createClient()
 
+  const rankingAwardFilter = await buildArtistRankingAwardFilter(supabase, id)
+
   const [
-    { data: artist, error },
     { data: albums },
     { data: musicEvents },
     { data: eventAppearances },
@@ -34,7 +35,6 @@ export default async function ArtistTimelinePage({
     { data: awardEntries },
     mediaSelections,
   ] = await Promise.all([
-    supabase.from('artist').select('id, name').eq('id', id).single(),
     buildArtistAlbumQuery<TimelineAlbumRow>(supabase, id, 'id, title, jacket_url, release_date'),
     supabase
       .from('music_event')
@@ -53,22 +53,15 @@ export default async function ArtistTimelinePage({
     supabase
       .from('award_entry')
       .select('id, year, category, result, award:award_id(name)')
-      .eq('artist_id', id)
+      .or(rankingAwardFilter)
       .order('year', { ascending: false }),
     fetchArtistMediaSelections(supabase, id),
   ])
 
-  if (error || !artist) {
-    notFound()
-  }
-
   return (
-    <div className="mx-auto max-w-[1600px] px-6 py-12">
-      <BackLink fallbackHref={`/artists/${id}`} fallbackLabel={`${artist.name}のページに戻る`} />
-
-      <h1 className="mt-4 text-2xl font-bold">{artist.name} 年表</h1>
-      <p className="mt-1 text-xs text-white/40">シングル・EPを含む全リリースを年ごとに表示しています。</p>
-
+    <div>
+      <h2 className="text-xs uppercase tracking-wide text-white/40">Timeline</h2>
+      <p className="mt-1 text-xs text-white/40">シングル・EPを含む全リリース、ライブ、フェス出演、タイアップ、メディア選出、受賞歴を年ごとに表示しています。</p>
       <ArtistTimeline
         albums={albums ?? []}
         musicEvents={musicEvents ?? []}
