@@ -2,19 +2,17 @@
 
 import Link from 'next/link'
 import { useEffect, useRef, useState } from 'react'
-import { search } from '@/app/search/actions'
+import { search, type SearchArtist, type SearchAlbum, type SearchTrack } from '@/app/search/actions'
 
 const DEBOUNCE_MS = 300
-const MIN_QUERY_LENGTH = 2
+// 「愛」「桜」のような1文字の日本語検索も意味を持つため1文字から検索する。
+// DB側はPGroongaの2-gramインデックスで引いており、候補を200件で打ち切るため
+// ヒット数の多い語でも応答が保証される(supabase/migrations/20260909_add_search_catalog.sql)。
+const MIN_QUERY_LENGTH = 1
 
-type Artist = { id: string; name: string; name_kana: string | null; name_en: string | null }
-type Album = {
-  id: string
-  title: string
-  title_kana: string | null
-  jacket_url: string | null
-  artist: { id: string; name: string } | { id: string; name: string }[] | null
-}
+type Artist = SearchArtist
+type Album = SearchAlbum
+type Track = SearchTrack
 
 const inputClass =
   'flex-1 rounded-md border border-white/15 bg-white/5 px-4 py-2.5 text-sm text-white placeholder:text-white/30 focus:border-white/30 focus:outline-none'
@@ -36,6 +34,7 @@ export default function CatalogSearchBox({
   const [query, setQuery] = useState(initialQuery)
   const [artists, setArtists] = useState<Artist[]>([])
   const [albums, setAlbums] = useState<Album[]>([])
+  const [tracks, setTracks] = useState<Track[]>([])
   const [loading, setLoading] = useState(false)
   const [searched, setSearched] = useState(false)
   const [focused, setFocused] = useState(false)
@@ -50,6 +49,7 @@ export default function CatalogSearchBox({
     const result = await search(q)
     setArtists(result.artists ?? [])
     setAlbums(result.albums ?? [])
+    setTracks(result.tracks ?? [])
     setLoading(false)
     setSearched(true)
   }
@@ -78,7 +78,8 @@ export default function CatalogSearchBox({
 
   const activeArtists = queryTooShort ? [] : artists
   const activeAlbums = queryTooShort ? [] : albums
-  const hasResults = activeArtists.length > 0 || activeAlbums.length > 0
+  const activeTracks = queryTooShort ? [] : tracks
+  const hasResults = activeArtists.length > 0 || activeAlbums.length > 0 || activeTracks.length > 0
   const showOverlayPanel = variant === 'overlay' && focused && !queryTooShort
 
   return (
@@ -96,7 +97,7 @@ export default function CatalogSearchBox({
           onChange={(e) => setQuery(e.target.value)}
           onFocus={() => setFocused(true)}
           onBlur={() => setTimeout(() => setFocused(false), 150)}
-          placeholder="アーティスト・アルバムを検索(2文字以上)"
+          placeholder="アーティスト・アルバム・曲を検索"
           className={inputClass}
           autoFocus={autoFocus}
         />
@@ -116,7 +117,7 @@ export default function CatalogSearchBox({
               <p className="px-2 py-1.5 text-sm text-white/40">該当する結果が見つかりませんでした。</p>
             )}
             {!loading && hasResults && (
-              <SearchResultsList artists={activeArtists} albums={activeAlbums} dense />
+              <SearchResultsList artists={activeArtists} albums={activeAlbums} tracks={activeTracks} dense />
             )}
           </div>
         )
@@ -126,14 +127,26 @@ export default function CatalogSearchBox({
           {!loading && searched && !queryTooShort && !hasResults && (
             <p className="text-sm text-white/40">該当する結果が見つかりませんでした。</p>
           )}
-          {!loading && hasResults && <SearchResultsList artists={activeArtists} albums={activeAlbums} dense={false} />}
+          {!loading && hasResults && (
+            <SearchResultsList artists={activeArtists} albums={activeAlbums} tracks={activeTracks} dense={false} />
+          )}
         </div>
       )}
     </div>
   )
 }
 
-function SearchResultsList({ artists, albums, dense }: { artists: Artist[]; albums: Album[]; dense: boolean }) {
+function SearchResultsList({
+  artists,
+  albums,
+  tracks,
+  dense,
+}: {
+  artists: Artist[]
+  albums: Album[]
+  tracks: Track[]
+  dense: boolean
+}) {
   const headingClass = `text-xs font-medium uppercase tracking-wide text-white/40 ${dense ? 'px-2 pt-2' : ''}`
   const itemClass = dense
     ? 'flex items-baseline justify-between gap-3 rounded-md px-2 py-2 transition hover:bg-white/5'
@@ -161,17 +174,30 @@ function SearchResultsList({ artists, albums, dense }: { artists: Artist[]; albu
         <section className={dense ? 'mt-1' : 'mt-8'}>
           <h2 className={headingClass}>アルバム</h2>
           <ul className={dense ? 'mt-1' : 'mt-3 divide-y divide-white/10'}>
-            {albums.map((album) => {
-              const artist = Array.isArray(album.artist) ? album.artist[0] : album.artist
-              return (
-                <li key={album.id}>
-                  <Link href={`/albums/${album.id}`} className={itemClass}>
-                    <span className="font-medium">{album.title}</span>
-                    {artist && <span className="text-xs text-white/40">{artist.name}</span>}
-                  </Link>
-                </li>
-              )
-            })}
+            {albums.map((album) => (
+              <li key={album.id}>
+                <Link href={`/albums/${album.id}`} className={itemClass}>
+                  <span className="font-medium">{album.title}</span>
+                  {album.artist && <span className="text-xs text-white/40">{album.artist.name}</span>}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {tracks.length > 0 && (
+        <section className={dense ? 'mt-1' : 'mt-8'}>
+          <h2 className={headingClass}>曲</h2>
+          <ul className={dense ? 'mt-1' : 'mt-3 divide-y divide-white/10'}>
+            {tracks.map((track) => (
+              <li key={track.id}>
+                <Link href={`/tracks/${track.id}`} className={itemClass}>
+                  <span className="font-medium">{track.title}</span>
+                  {track.artist && <span className="shrink-0 text-xs text-white/40">{track.artist.name}</span>}
+                </Link>
+              </li>
+            ))}
           </ul>
         </section>
       )}
