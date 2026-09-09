@@ -130,12 +130,12 @@ export default async function ArtistDetailLayout({
         <div className="lg:sticky lg:top-20 lg:self-start">
           <ArtistIdentityPanel data={identity} />
         </div>
+        <div className="lg:hidden">
+          <ArtistNavMobile artistId={id} counts={counts} />
+        </div>
         <div className="min-w-0">{children}</div>
         <div className="hidden lg:sticky lg:top-20 lg:block lg:self-start">
           <ArtistNav artistId={id} counts={counts} />
-        </div>
-        <div className="lg:hidden">
-          <ArtistNavMobile artistId={id} counts={counts} />
         </div>
       </div>
     </div>
