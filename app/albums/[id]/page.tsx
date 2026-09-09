@@ -117,7 +117,7 @@ export default async function AlbumDetailPage({
     })
 
   return (
-    <div className="mx-auto max-w-[1600px] px-6 py-12">
+    <div className="mx-auto max-w-[1600px] px-6 py-4 lg:py-12">
       <BackLink
         fallbackHref={artist ? `/artists/${artist.id}` : '/albums'}
         fallbackLabel={artist ? artist.name : 'アルバム一覧に戻る'}

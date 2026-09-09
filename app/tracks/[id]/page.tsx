@@ -152,7 +152,7 @@ export default async function TrackDetailPage({
     }))
 
   return (
-    <div className="mx-auto max-w-[1600px] px-6 py-12">
+    <div className="mx-auto max-w-[1600px] px-6 py-4 lg:py-12">
       {success && (
         <div className="mb-4 rounded-md border border-green-500/30 bg-green-500/5 px-4 py-3 text-sm">{success}</div>
       )}
