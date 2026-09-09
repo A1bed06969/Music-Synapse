@@ -3,8 +3,8 @@ import { notFound } from 'next/navigation'
 import { createClient } from '@/utils/Supabase/server'
 import { extractYoutubeVideoId } from '@/utils/format'
 import type { MapMarker } from '@/app/map/LeafletMap'
-import { NEWS_SOURCES } from '@/utils/newsFeeds'
-import { fetchAllNews, findRelatedNews, formatRelativeTime } from '@/utils/newsParser'
+import { findRelatedNews, formatRelativeTime } from '@/utils/newsParser'
+import { fetchCachedNews } from '@/utils/newsCache'
 import EventScheduleView, { type Appearance, type EditionDateEntry } from './EventScheduleView'
 
 const EVENT_TYPE_LABEL: Record<string, string> = {
@@ -121,10 +121,9 @@ export default async function EventDetailPage({
     notFound()
   }
 
-  // イベント名をタイトルに含む記事をRSS記事から拾う。既存の/media/newsページと
-  // 同じfetchAllNewsを再利用する(fetchはnext:{revalidate:1800}でキャッシュされるため、
-  // イベントページ側で毎回叩いても実質追加の外部通信は増えない)
-  const relatedNewsPromise = fetchAllNews(NEWS_SOURCES).then(({ items }) =>
+  // イベント名をタイトルに含む記事を拾う。Vercel Cronが定期取得しDBへ
+  // 書き込んだnews_itemテーブルを読むだけ(utils/newsCache.ts参照)
+  const relatedNewsPromise = fetchCachedNews().then(({ items }) =>
     findRelatedNews(items, [event.name, event.name_ja].filter((k): k is string => Boolean(k)), 3)
   )
 

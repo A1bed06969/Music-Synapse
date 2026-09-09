@@ -1,14 +1,16 @@
-import { NEWS_SOURCES } from '@/utils/newsFeeds'
-import { fetchAllNews, formatRelativeTime } from '@/utils/newsParser'
+import { formatRelativeTime } from '@/utils/newsParser'
+import { fetchCachedNews } from '@/utils/newsCache'
 
 const NEWS_PREVIEW_COUNT = 8
 
-/** トップページのニュース一覧。9媒体のRSSを外部から取得するため、
- * ページ本体のレンダリングを待たせないようSuspense境界の内側に置く
- * (取得に失敗する媒体があるとタイムアウトまで待つことになり、
- * 以前はトップページ全体が3.9秒かかっていた)。 */
+/** トップページのニュース一覧。Vercel Cronが定期的に取得しDBへ書き込んだ
+ * news_itemテーブルを読むだけ(app/api/cron/refresh-news/route.ts参照)。
+ * 以前はリクエストのたびに9媒体のRSSを取得しており、失敗する媒体がある
+ * とタイムアウトまで待たされ、トップページ全体で3.9秒かかっていた。
+ * DB読み取りだけなので待たせる要素は無いが、他ページとの共通コンポーネント
+ * 構成に合わせてSuspense境界はそのまま残す。 */
 export default async function LatestNews() {
-  const { items } = await fetchAllNews(NEWS_SOURCES)
+  const { items } = await fetchCachedNews()
   const latestNews = items.slice(0, NEWS_PREVIEW_COUNT)
 
   if (latestNews.length === 0) {

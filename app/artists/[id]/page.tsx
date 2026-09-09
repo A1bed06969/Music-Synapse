@@ -16,8 +16,8 @@ import { resolveArtistPageKind, hasOwnRelease } from '@/utils/artistPageKind'
 import { buildArtistAlbumQuery } from '@/utils/artistAlbumQuery'
 import { buildArtistAppearanceQuery } from '@/utils/artistAppearanceQuery'
 import MemberProfile from './MemberProfile'
-import { NEWS_SOURCES } from '@/utils/newsFeeds'
-import { fetchAllNews, findRelatedNews, formatRelativeTime } from '@/utils/newsParser'
+import { findRelatedNews, formatRelativeTime } from '@/utils/newsParser'
+import { fetchCachedNews } from '@/utils/newsCache'
 import { ALBUM_TYPE_LABEL_JA, ALBUM_TYPE_ORDER, type AlbumType } from '@/utils/albumType'
 import { fetchArtistMediaSelections } from '@/utils/fetchArtistMediaSelections'
 import ArtistTimeline from './ArtistTimeline'
@@ -52,10 +52,10 @@ export default async function ArtistDetailPage({
   const { id } = await params
   const supabase = await createClient()
 
-  // 既存の/media/newsページやイベント詳細ページと同じfetchAllNewsを再利用する
-  // (next:{revalidate:1800}でキャッシュされるため、ここで叩いても実質追加の外部通信は増えない)。
-  // アーティスト名に依存しないためPromise.allと並行して先行取得しておく
-  const newsItemsPromise = fetchAllNews(NEWS_SOURCES)
+  // Vercel Cronが定期取得しDBへ書き込んだnews_itemテーブルを読むだけ
+  // (utils/newsCache.ts参照)。アーティスト名に依存しないためPromise.allと
+  // 並行して先行取得しておく
+  const newsItemsPromise = fetchCachedNews()
 
   // ディスコグラフィーに、代表アーティスト(album.artist_id)だけでなく
   // album_artist経由で追加アーティストとして紐づいているアルバムも含める。
