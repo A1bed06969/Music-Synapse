@@ -1,5 +1,6 @@
 // app/artists/[id]/discography/page.tsx
 import Link from 'next/link'
+import { Suspense } from 'react'
 import { createClient } from '@/utils/Supabase/server'
 import { buildArtistAlbumQuery } from '@/utils/artistAlbumQuery'
 import { STREAMING_STATUS_LABEL } from '@/utils/format'
@@ -58,7 +59,10 @@ export default async function DiscographyPage({
     <div>
       <h2 className="text-xs uppercase tracking-wide text-white/40">Discography</h2>
       <div className="mt-3">
-        <DiscographyFilters type={type} status={status} />
+        {/* useSearchParamsを使うためSuspenseで包む(静的生成時のビルドエラー回避)。 */}
+        <Suspense fallback={null}>
+          <DiscographyFilters type={type} status={status} />
+        </Suspense>
       </div>
       <p className="mt-3 text-xs text-white/40">{totalCount}件</p>
 
