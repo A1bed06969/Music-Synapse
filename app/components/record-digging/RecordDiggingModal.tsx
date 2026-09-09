@@ -96,6 +96,10 @@ export default function RecordDiggingModal({ onClose }: { onClose: () => void })
   const [navigating, setNavigating] = useState(false)
   const [isPending, startTransition] = useTransition()
   const wasPendingRef = useRef(false)
+  // 下のoverflow:hidden解除エフェクトはmount時に1回だけ登録され(空の依存配列)、
+  // アンマウント時のクリーンアップでnavigatingの最新値を読みたいのでrefにも保持する
+  const navigatingRef = useRef(false)
+  navigatingRef.current = navigating
 
   // しきい値に達する前のドラッグ量。手前のジャケットをリアルタイムに指へ
   // 追従させ、離した時にしきい値未満ならスプリングバックさせる。
@@ -230,6 +234,20 @@ export default function RecordDiggingModal({ onClose }: { onClose: () => void })
     document.body.style.overflow = 'hidden'
     return () => {
       document.body.style.overflow = prevOverflow
+      // アルバムを選んでrouter.push()した場合、Next.jsが遷移先ページを
+      // トップへスクロールしようとするタイミングはまだこのモーダルが
+      // マウントされたまま(body.overflow:hiddenが効いたまま)なので、
+      // そのスクロールリセットが反映されないことがある(overflow:hiddenの
+      // 要素はscrollTopの変更を受け付けないブラウザがあるため)。結果、
+      // overflowを戻した瞬間に遷移前ページの古いスクロール位置が
+      // 「復活」して見え、アルバム/トラック詳細ページの最初の表示が
+      // ページ上部ではなく中央あたりになる不具合につながっていた。
+      // overflowを戻した直後に改めてトップへ強制する(ただの閉じる操作では
+      // navigatingがfalseのままなので、この場合は何もしない=通常の
+      // スクロール位置を保つ)。
+      if (navigatingRef.current) {
+        window.scrollTo(0, 0)
+      }
     }
   }, [])
 
