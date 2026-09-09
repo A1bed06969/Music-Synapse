@@ -27,9 +27,9 @@ export default async function Home() {
     fetchUpcomingFestivals(supabase, UPCOMING_FESTIVAL_COUNT),
     fetchMonthlyPowerPlayTop(supabase, POWER_PLAY_TOP_COUNT),
     fetchNewArrivalsSummary(supabase),
-    // news_itemはVercel CronならぬGitHub Actionsが定期取得済みのキャッシュを読むだけ
-    // (utils/newsCache.ts)なので、以前のRSS直取得(失敗時タイムアウト待ちで
-    // 最大3.9秒)と違い、他のカードと並行取得して問題ない速さ(実測0.2〜0.5秒)。
+    // news_itemはGitHub Actionsが定期取得済みのキャッシュを読むだけ(utils/newsCache.ts)
+    // なので、以前のRSS直取得(失敗時タイムアウト待ちで最大3.9秒)と違い、
+    // 他のカードと並行取得して問題ない速さ(実測0.2〜0.5秒)。
     fetchCachedNews(),
   ])
   const latestNews = newsItems.slice(0, NEWS_PREVIEW_COUNT)
