@@ -1,9 +1,25 @@
+import { unstable_cache } from 'next/cache'
 import { createClient } from '@/utils/Supabase/server'
 import AlbumBrowseClient from './AlbumBrowseClient'
 
-const PAGE_SIZE = 1000
+// 以前はアルバム全件(135,937行)を取得してブラウザ側で絞り込んでいたため、
+// HTMLが107.9MB・完了まで36秒かかっていた。DB側で絞ってページ単位で返す。
+const PAGE_SIZE = 60
 
-type AlbumRow = {
+const UNRELEASED_VALUES = ['none', 'unreleased']
+
+type AlbumRpcRow = {
+  id: string
+  title: string
+  title_kana: string | null
+  jacket_url: string | null
+  release_date: string | null
+  streaming_status: string | null
+  artist_name: string | null
+  total_count: number
+}
+
+type AlbumTableRow = {
   id: string
   title: string
   title_kana: string | null
@@ -13,45 +29,98 @@ type AlbumRow = {
   artist: { name: string } | { name: string }[] | null
 }
 
-async function fetchAllAlbums(supabase: Awaited<ReturnType<typeof createClient>>): Promise<AlbumRow[]> {
-  // PostgRESTは1回のクエリで最大1000件しか返さないため、アルバム全件(26,000件超)は
-  // ページ単位で取得する必要がある。以前はoffsetをずらしながら逐次awaitしており、
-  // 27回前後の往復が直列に発生してページ生成が重くなっていた(/artistsで実際に
-  // 発生した52秒バグと同じ原因)。まず件数だけ取得してページ数を決め、
-  // 各ページを並列に取得することで、往復回数はそのままでも合計の待ち時間を
-  // ほぼ1往復分まで縮める。
-  const { count } = await supabase
-    .from('album')
-    .select('id', { count: 'exact', head: true })
-    .is('primary_album_id', null)
-  const totalCount = count ?? 0
-  const pageCount = Math.max(1, Math.ceil(totalCount / PAGE_SIZE))
-
-  const pages = await Promise.all(
-    Array.from({ length: pageCount }, (_, i) =>
-      supabase
-        .from('album')
-        .select('id, title, title_kana, jacket_url, release_date, streaming_status, artist:artist_id(name)')
-        .is('primary_album_id', null)
-        .order('id', { ascending: true })
-        .range(i * PAGE_SIZE, i * PAGE_SIZE + PAGE_SIZE - 1)
+/** 絞り込み無しのときの総件数。128,739件を毎リクエスト数えると3秒近くかかり
+ * statement timeoutに触れるため、10分キャッシュする(表示用の件数なので
+ * 多少古くても実害がない)。 */
+const getTotalAlbumCount = unstable_cache(
+  async (status: string): Promise<number> => {
+    const { createClient: createAnonClient } = await import('@supabase/supabase-js')
+    const supabase = createAnonClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
     )
-  )
-  return pages.flatMap((p) => (p.data ?? []) as AlbumRow[])
-}
+    let request = supabase
+      .from('album')
+      .select('id', { count: 'exact', head: true })
+      .is('primary_album_id', null)
+    if (status === 'unreleased') request = request.in('streaming_status', UNRELEASED_VALUES)
+    else if (status === 'streaming') {
+      request = request.or(
+        `streaming_status.is.null,streaming_status.not.in.(${UNRELEASED_VALUES.join(',')})`
+      )
+    }
+    const { count } = await request
+    return count ?? 0
+  },
+  ['album-total-count'],
+  { revalidate: 600 }
+)
 
 export default async function AlbumsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ sort?: string }>
+  searchParams: Promise<{ sort?: string; q?: string; status?: string; page?: string }>
 }) {
-  const { sort } = await searchParams
+  const params = await searchParams
+  const sort = params.sort === 'release' ? 'release' : 'kana'
+  const status = params.status === 'streaming' || params.status === 'unreleased' ? params.status : 'all'
+  const query = (params.q ?? '').trim()
+  const page = Math.max(0, Number(params.page ?? 0) || 0)
+  const offset = page * PAGE_SIZE
+
   const supabase = await createClient()
 
-  const data = await fetchAllAlbums(supabase)
+  let albums: {
+    id: string
+    title: string
+    title_kana: string | null
+    jacket_url: string | null
+    releaseDate: string | null
+    streamingStatus: string | null
+    artistName: string | null
+  }[] = []
+  let totalCount = 0
 
-  const albums = data
-    .map((a) => {
+  if (query) {
+    // 検索時は該当件数が少ないため、件数付きのRPC(タイトル・かな・アーティスト名を横断)を使う
+    const { data } = await supabase.rpc('browse_albums', {
+      p_query: query,
+      p_status: status,
+      p_sort: sort,
+      p_limit: PAGE_SIZE,
+      p_offset: offset,
+    })
+    const rows = (data ?? []) as AlbumRpcRow[]
+    totalCount = rows[0]?.total_count ? Number(rows[0].total_count) : 0
+    albums = rows.map((a) => ({
+      id: a.id,
+      title: a.title,
+      title_kana: a.title_kana,
+      jacket_url: a.jacket_url,
+      releaseDate: a.release_date,
+      streamingStatus: a.streaming_status,
+      artistName: a.artist_name,
+    }))
+  } else {
+    // 絞り込み無しは件数を数えず、並び替えキーのインデックスでページだけ引く
+    let request = supabase
+      .from('album')
+      .select('id, title, title_kana, jacket_url, release_date, streaming_status, artist:artist_id(name)')
+      .is('primary_album_id', null)
+    if (status === 'unreleased') request = request.in('streaming_status', UNRELEASED_VALUES)
+    else if (status === 'streaming') {
+      request = request.or(
+        `streaming_status.is.null,streaming_status.not.in.(${UNRELEASED_VALUES.join(',')})`
+      )
+    }
+    const [{ data }, count] = await Promise.all([
+      sort === 'release'
+        ? request.order('release_date', { ascending: false, nullsFirst: false }).range(offset, offset + PAGE_SIZE - 1)
+        : request.order('sort_key').range(offset, offset + PAGE_SIZE - 1),
+      getTotalAlbumCount(status),
+    ])
+    totalCount = count
+    albums = ((data ?? []) as AlbumTableRow[]).map((a) => {
       const artist = Array.isArray(a.artist) ? a.artist[0] : a.artist
       return {
         id: a.id,
@@ -63,7 +132,17 @@ export default async function AlbumsPage({
         artistName: artist?.name ?? null,
       }
     })
-    .sort((a, b) => (a.title_kana ?? a.title).localeCompare(b.title_kana ?? b.title, 'ja'))
+  }
 
-  return <AlbumBrowseClient albums={albums} initialSort={sort === 'release' ? 'release' : 'kana'} />
+  return (
+    <AlbumBrowseClient
+      albums={albums}
+      sort={sort}
+      status={status}
+      query={query}
+      page={page}
+      pageSize={PAGE_SIZE}
+      totalCount={totalCount}
+    />
+  )
 }

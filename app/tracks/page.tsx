@@ -1,106 +1,100 @@
 import { createClient } from '@/utils/Supabase/server'
 import TrackBrowseClient from './TrackBrowseClient'
 
-const PAGE_SIZE = 1000
+// 以前はトラック全件(812,813行)を1000件ずつ813回逐次取得してからブラウザ側で
+// 絞り込んでいたため、ページ生成に232秒かかっていた。表示がアーティスト単位の
+// グループなので、アーティストでページングし、そのページ分の曲だけを引く。
+const PAGE_SIZE = 20
 
-type TrackRow = {
+// 1アーティストあたりの表示曲数上限。コンピレーション等で数千曲ぶら下がる
+// アーティストがいると、上限なしではPostgRESTの1000行上限に達して後続
+// アーティストの曲が丸ごと欠落する(実際に20組中7組しか表示されない状態が発生した)。
+const TRACKS_PER_ARTIST = 30
+
+type TrackArtistRow = {
+  id: string
+  name: string
+  image_url: string | null
+  matched_by_name: boolean
+  total_count: number
+  results_capped?: boolean
+}
+
+type ArtistTrackRow = {
+  artist_id: string
   id: string
   title: string
-  track_no: number | null
-  artist_id: string | null
   duration_seconds: number | null
+  ranked: boolean
+  on_air: boolean
 }
 
-async function fetchAllTracks(supabase: Awaited<ReturnType<typeof createClient>>): Promise<TrackRow[]> {
-  const rows: TrackRow[] = []
-  let offset = 0
-  // PostgRESTは1回のクエリで最大1000件しか返さないため、トラック全件(4000件超)を
-  // 取得するにはoffsetをずらしながらページ単位で取得する必要がある。
-  while (true) {
-    const { data } = await supabase
-      .from('track')
-      .select('id, title, track_no, artist_id, duration_seconds')
-      .range(offset, offset + PAGE_SIZE - 1)
-    if (!data || data.length === 0) break
-    rows.push(...data)
-    if (data.length < PAGE_SIZE) break
-    offset += PAGE_SIZE
-  }
-  return rows
-}
+export default async function TracksPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string; page?: string }>
+}) {
+  const params = await searchParams
+  const query = (params.q ?? '').trim()
+  const page = Math.max(0, Number(params.page ?? 0) || 0)
 
-type ArtistRow = { id: string; name: string; name_kana: string | null; image_url: string | null }
-
-async function fetchAllArtists(supabase: Awaited<ReturnType<typeof createClient>>): Promise<ArtistRow[]> {
-  const rows: ArtistRow[] = []
-  let offset = 0
-  // アーティスト総数がPostgRESTの1回あたり上限(1000件)を超えたため、trackと同じく
-  // ページングする(この上限のせいで最近登録されたアーティストの曲が一覧に出ない
-  // 不具合が実際に発生した)
-  while (true) {
-    const { data } = await supabase
-      .from('artist')
-      .select('id, name, name_kana, image_url')
-      .range(offset, offset + PAGE_SIZE - 1)
-    if (!data || data.length === 0) break
-    rows.push(...data)
-    if (data.length < PAGE_SIZE) break
-    offset += PAGE_SIZE
-  }
-  return rows
-}
-
-export default async function TracksPage() {
   const supabase = await createClient()
 
-  const [artists, tracks, rankingResult, rotationResult] = await Promise.all([
-    fetchAllArtists(supabase),
-    fetchAllTracks(supabase),
-    supabase.from('ranking_entry').select('track_id').not('track_id', 'is', null),
-    supabase.from('radio_rotation').select('track_id').not('track_id', 'is', null),
-  ])
+  const { data: artistData } = await supabase.rpc('browse_track_artists', {
+    p_query: query || null,
+    p_limit: PAGE_SIZE,
+    p_offset: page * PAGE_SIZE,
+  })
+  const artistRows = (artistData ?? []) as TrackArtistRow[]
+  const totalCount = artistRows[0]?.total_count ? Number(artistRows[0].total_count) : 0
+  const artistIds = artistRows.map((a) => a.id)
 
-  const rankedTrackIds = new Set((rankingResult.data ?? []).map((r) => r.track_id as string))
-  const onAirTrackIds = new Set((rotationResult.data ?? []).map((r) => r.track_id as string))
+  // 曲の取得・並び替え・1組あたりの上限はDB側(browse_artist_tracks)で行う。
+  // アーティスト名でヒットした場合はその人の全曲、曲名だけでヒットした場合は
+  // 一致した曲だけを出す(従来のブラウザ側フィルタと同じ挙動)。
+  const hasNameMatch = artistRows.some((a) => a.matched_by_name)
+  let tracks: ArtistTrackRow[] = []
+  if (artistIds.length > 0) {
+    const { data: trackData } = await supabase.rpc('browse_artist_tracks', {
+      p_artist_ids: artistIds,
+      p_query: query || null,
+      p_only_matching: Boolean(query) && !hasNameMatch,
+      p_per_artist: TRACKS_PER_ARTIST,
+    })
+    tracks = (trackData ?? []) as ArtistTrackRow[]
+  }
 
-  const tracksByArtist = new Map<string, TrackRow[]>()
+  const tracksByArtist = new Map<string, ArtistTrackRow[]>()
   for (const track of tracks) {
-    if (!track.artist_id) continue
     const list = tracksByArtist.get(track.artist_id) ?? []
     list.push(track)
     tracksByArtist.set(track.artist_id, list)
   }
 
-  const sortedArtists = artists.sort((a, b) =>
-    (a.name_kana ?? a.name).localeCompare(b.name_kana ?? b.name, 'ja')
-  )
-
-  const groups = sortedArtists
-    .map((artist) => {
-      const artistTracks = tracksByArtist.get(artist.id) ?? []
-      const sorted = [...artistTracks].sort((a, b) => {
-        const aFeatured = rankedTrackIds.has(a.id) || onAirTrackIds.has(a.id)
-        const bFeatured = rankedTrackIds.has(b.id) || onAirTrackIds.has(b.id)
-        if (aFeatured !== bFeatured) return aFeatured ? -1 : 1
-        const aNo = a.track_no ?? Number.MAX_SAFE_INTEGER
-        const bNo = b.track_no ?? Number.MAX_SAFE_INTEGER
-        if (aNo !== bNo) return aNo - bNo
-        return a.title.localeCompare(b.title, 'ja')
-      })
-      return {
-        id: artist.id,
-        name: artist.name,
-        image_url: artist.image_url,
-        tracks: sorted.map((t) => ({
-          id: t.id,
-          title: t.title,
-          duration_seconds: t.duration_seconds,
-          ranked: rankedTrackIds.has(t.id),
-          onAir: onAirTrackIds.has(t.id),
-        })),
-      }
-    })
+  const groups = artistRows
+    .map((artist) => ({
+      id: artist.id,
+      name: artist.name,
+      image_url: artist.image_url,
+      tracks: (tracksByArtist.get(artist.id) ?? []).map((t) => ({
+        id: t.id,
+        title: t.title,
+        duration_seconds: t.duration_seconds,
+        ranked: t.ranked,
+        onAir: t.on_air,
+      })),
+    }))
     .filter((g) => g.tracks.length > 0)
 
-  return <TrackBrowseClient groups={groups} />
+  return (
+    <TrackBrowseClient
+      groups={groups}
+      query={query}
+      page={page}
+      pageSize={PAGE_SIZE}
+      totalCount={totalCount}
+      resultsCapped={Boolean(artistRows[0]?.results_capped)}
+      tracksPerArtist={TRACKS_PER_ARTIST}
+    />
+  )
 }
