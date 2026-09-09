@@ -99,14 +99,13 @@ export default function ArtistTimeline({
     return <p className="mt-4 text-sm text-white/40">まだ年表に表示できる出来事が登録されていません。</p>
   }
 
-  let previousYear: string | null = null
+  const years = entries.map((entry) => entry.date.slice(0, 4))
 
   return (
     <div className="mt-4 divide-y divide-white/5">
       {entries.map((entry, i) => {
-        const year = entry.date.slice(0, 4)
-        const showYearHeading = groupByYear && year !== previousYear
-        previousYear = year
+        const year = years[i]
+        const showYearHeading = groupByYear && year !== years[i - 1]
 
         return (
           <div key={i}>
