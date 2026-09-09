@@ -1,5 +1,4 @@
 import { createClient } from '@/utils/Supabase/server'
-import RelationGraph, { type RelationNode, type RelationEdge } from '@/app/components/RelationGraph'
 import ArtistNetworkList, { type NetworkRelation } from '@/app/components/artist-detail/ArtistNetworkList'
 
 type RelationRow = {
@@ -20,7 +19,6 @@ export default async function NetworkPage({ params }: { params: Promise<{ id: st
   const { id } = await params
   const supabase = await createClient()
 
-  const { data: artist } = await supabase.from('artist').select('id, name, image_url').eq('id', id).single()
   const { data: relationRows } = await supabase
     .from('artist_relation')
     .select('id, relation_type, description, artist_id_a, artist_id_b, a:artist_id_a(id, name, image_url), b:artist_id_b(id, name, image_url)')
@@ -45,32 +43,13 @@ export default async function NetworkPage({ params }: { params: Promise<{ id: st
     })
     .filter((r): r is NetworkRelation => r !== null)
 
-  const nodes: RelationNode[] = artist
-    ? [
-        { id: artist.id, name: artist.name, imageUrl: artist.image_url, type: 'artist' },
-        ...relations.map((r) => ({ id: r.otherArtistId, name: r.otherArtistName, imageUrl: r.otherArtistImageUrl, type: 'artist' as const })),
-      ]
-    : []
-  const edges: RelationEdge[] = relations.map((r) => ({
-    source: id,
-    target: r.otherArtistId,
-    style: 'solid',
-    label: r.description,
-  }))
-
   return (
     <div>
       <h2 className="text-xs uppercase tracking-wide text-white/40">Artist Network</h2>
-      <div className="mt-4 hidden lg:block">
-        {relations.length === 0 ? (
-          <p className="text-sm text-white/40">登録されている関係性はありません。</p>
-        ) : (
-          <RelationGraph nodes={nodes} edges={edges} centerId={id} />
-        )}
-      </div>
-      <div className="lg:hidden">
-        <ArtistNetworkList relations={relations} />
-      </div>
+      {/* RelationGraphのEgoTree表示は、このセクションの幅(CENTERカラム)だと
+       * ノードラベルが判読できないほど縮小されてしまう問題があり、対応する
+       * まで一旦リスト表示のみにしている(デスクトップ/モバイル共通)。 */}
+      <ArtistNetworkList relations={relations} />
     </div>
   )
 }
