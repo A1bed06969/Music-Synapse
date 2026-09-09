@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { Suspense } from 'react'
 import { createClient } from '@/utils/Supabase/server'
 import { buildArtistAlbumQuery } from '@/utils/artistAlbumQuery'
-import { STREAMING_STATUS_LABEL } from '@/utils/format'
+import { formatDate, STREAMING_STATUS_LABEL } from '@/utils/format'
 import { ALBUM_TYPE_LABEL_JA, ALBUM_TYPE_ORDER, classifyAlbumType, type AlbumType } from '@/utils/albumType'
 import DiscographyFilters from '@/app/components/artist-detail/DiscographyFilters'
 
@@ -83,7 +83,7 @@ export default async function DiscographyPage({
                 </div>
                 <p className="mt-2 truncate text-sm font-medium">{album.title}</p>
                 <p className="truncate text-xs text-white/40">
-                  {album.release_date ?? ''} · {ALBUM_TYPE_LABEL_JA[album.albumType]}
+                  {formatDate(album.release_date)} · {ALBUM_TYPE_LABEL_JA[album.albumType]}
                 </p>
                 {label && <p className="truncate text-xs text-white/30">{label.name}</p>}
                 {statusInfo && <p className="text-xs text-white/50">{statusInfo.icon} {statusInfo.label}</p>}

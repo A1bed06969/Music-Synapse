@@ -278,7 +278,12 @@ function EgoTree({
 
   return (
     <div className="overflow-auto" style={{ maxHeight: 720 }}>
-      <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="select-none">
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        preserveAspectRatio="xMidYMid meet"
+        style={{ width: '100%', maxWidth: width, height: 'auto', display: 'block' }}
+        className="select-none"
+      >
         <ArrowDefs />
         <g>
           {positioned.map(({ node, cy }) => {
