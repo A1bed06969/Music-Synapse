@@ -133,10 +133,22 @@ async function fetchGenreNames(supabase: AdminClient, artistId: string): Promise
 type ProcessOutcome = 'applied' | 'skipped' | 'error'
 
 async function processArtist(supabase: AdminClient, artist: ArtistRow): Promise<ProcessOutcome> {
-  const source = await resolveSource(supabase, artist)
+  let source: SourceResolution
+  try {
+    source = await resolveSource(supabase, artist)
+  } catch (err) {
+    console.error(`  ソース解決に失敗: ${(err as Error).message}`)
+    return 'error'
+  }
   if (!source) return 'skipped'
 
-  const genreNames = await fetchGenreNames(supabase, artist.id)
+  let genreNames: string[]
+  try {
+    genreNames = await fetchGenreNames(supabase, artist.id)
+  } catch (err) {
+    console.error(`  ジャンル取得に失敗: ${(err as Error).message}`)
+    return 'error'
+  }
   const facts: BioGenerationFacts = {
     artistName: artist.name,
     genreNames,
