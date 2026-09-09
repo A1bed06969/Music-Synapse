@@ -1,25 +1,24 @@
+import type { NewsItem } from '@/utils/newsParser'
 import { formatRelativeTime } from '@/utils/newsParser'
-import { fetchCachedNews } from '@/utils/newsCache'
 
-const NEWS_PREVIEW_COUNT = 8
+export const NEWS_PREVIEW_COUNT = 8
 
-/** トップページのニュース一覧。Vercel Cronが定期的に取得しDBへ書き込んだ
- * news_itemテーブルを読むだけ(app/api/cron/refresh-news/route.ts参照)。
- * 以前はリクエストのたびに9媒体のRSSを取得しており、失敗する媒体がある
- * とタイムアウトまで待たされ、トップページ全体で3.9秒かかっていた。
- * DB読み取りだけなので待たせる要素は無いが、他ページとの共通コンポーネント
- * 構成に合わせてSuspense境界はそのまま残す。 */
-export default async function LatestNews() {
-  const { items } = await fetchCachedNews()
-  const latestNews = items.slice(0, NEWS_PREVIEW_COUNT)
-
-  if (latestNews.length === 0) {
+/** トップページのニュース一覧。データはnews_itemテーブル(utils/newsCache.ts)から
+ * 読むだけなので0.2〜0.5秒程度で済み、他のホームカードと並行取得できる
+ * (app/page.tsx参照)。以前はSuspenseで別枠にして遅延許容していたが、
+ * Suspense境界を通した場合にVercel上で完了までの体感が逆に大幅に悪化する
+ * ことが判明した(サーバー側の処理は同じ0.4秒台で終わっているのに、
+ * ブラウザでの表示完了が4秒以上かかる。原因はNext.js側のストリーミング
+ * 実装とVercelのインフラの組み合わせによるものとみられ、切り分けの結果、
+ * 十分速いデータ取得はSuspenseで分離せず素直にawaitした方が速いと判断した)。 */
+export default function LatestNewsList({ items }: { items: NewsItem[] }) {
+  if (items.length === 0) {
     return <p className="mt-6 text-sm text-white/40">現在ニュースを取得できませんでした。</p>
   }
 
   return (
     <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
-      {latestNews.map((item) => (
+      {items.map((item) => (
         <a key={item.id} href={item.link} target="_blank" rel="noopener noreferrer" className="group block">
           <div className="aspect-video overflow-hidden rounded-md bg-white/5">
             {item.thumbnailUrl ? (
@@ -38,22 +37,6 @@ export default async function LatestNews() {
             {item.source} · {formatRelativeTime(item.publishedAt)}
           </p>
         </a>
-      ))}
-    </div>
-  )
-}
-
-/** ニュース取得中に出すプレースホルダー。実際のカードと同じ形にして
- * 読み込み後のレイアウトのずれを防ぐ。 */
-export function LatestNewsSkeleton() {
-  return (
-    <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
-      {Array.from({ length: NEWS_PREVIEW_COUNT }, (_, i) => (
-        <div key={i}>
-          <div className="aspect-video animate-pulse rounded-md bg-white/5" />
-          <div className="mt-2 h-4 animate-pulse rounded bg-white/5" />
-          <div className="mt-1 h-3 w-2/3 animate-pulse rounded bg-white/5" />
-        </div>
       ))}
     </div>
   )

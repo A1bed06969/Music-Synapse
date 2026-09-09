@@ -1,15 +1,15 @@
 import Link from 'next/link'
-import { Suspense } from 'react'
 import CatalogSearchBox from '@/app/components/CatalogSearchBox'
 import { createClient } from '@/utils/Supabase/server'
 import { fetchUpcomingAlbums, fetchUpcomingFestivals, fetchMonthlyPowerPlayTop } from '@/utils/homeCards'
 import { fetchNewArrivalsSummary } from '@/utils/newArrivals'
+import { fetchCachedNews } from '@/utils/newsCache'
 import DiscoverNewMusicBanner from '@/app/components/home/DiscoverNewMusicBanner'
 import FesLiveFreakBanner from '@/app/components/home/FesLiveFreakBanner'
 import MonthlyNextBreakBanner from '@/app/components/home/MonthlyNextBreakBanner'
 import NewArrivalsBanner from '@/app/components/home/NewArrivalsBanner'
 import HeroBackgroundVideo from '@/app/components/home/HeroBackgroundVideo'
-import LatestNews, { LatestNewsSkeleton } from '@/app/components/home/LatestNews'
+import LatestNewsList, { NEWS_PREVIEW_COUNT } from '@/app/components/home/LatestNews'
 
 const UPCOMING_ALBUM_COUNT = 18
 const UPCOMING_FESTIVAL_COUNT = 15
@@ -22,12 +22,17 @@ function currentMonthLabel() {
 
 export default async function Home() {
   const supabase = await createClient()
-  const [albums, festivals, powerPlay, newArrivals] = await Promise.all([
+  const [albums, festivals, powerPlay, newArrivals, { items: newsItems }] = await Promise.all([
     fetchUpcomingAlbums(supabase, UPCOMING_ALBUM_COUNT),
     fetchUpcomingFestivals(supabase, UPCOMING_FESTIVAL_COUNT),
     fetchMonthlyPowerPlayTop(supabase, POWER_PLAY_TOP_COUNT),
     fetchNewArrivalsSummary(supabase),
+    // news_itemはVercel CronならぬGitHub Actionsが定期取得済みのキャッシュを読むだけ
+    // (utils/newsCache.ts)なので、以前のRSS直取得(失敗時タイムアウト待ちで
+    // 最大3.9秒)と違い、他のカードと並行取得して問題ない速さ(実測0.2〜0.5秒)。
+    fetchCachedNews(),
   ])
+  const latestNews = newsItems.slice(0, NEWS_PREVIEW_COUNT)
 
   return (
     <div className="py-12">
@@ -67,9 +72,7 @@ export default async function Home() {
             </Link>
           </div>
 
-          <Suspense fallback={<LatestNewsSkeleton />}>
-            <LatestNews />
-          </Suspense>
+          <LatestNewsList items={latestNews} />
         </section>
       </div>
     </div>
