@@ -2,6 +2,8 @@
 import { notFound } from 'next/navigation'
 import { createClient } from '@/utils/Supabase/server'
 import { fetchArtistSectionCounts } from '@/utils/artistDetailCounts'
+import { findRelatedNews } from '@/utils/newsParser'
+import { fetchCachedNews } from '@/utils/newsCache'
 import ArtistIdentityPanel, { type ArtistIdentityData } from '@/app/components/artist-detail/ArtistIdentityPanel'
 import ArtistNav from '@/app/components/artist-detail/ArtistNav'
 import ArtistNavMobile from '@/app/components/artist-detail/ArtistNavMobile'
@@ -94,7 +96,16 @@ export default async function ArtistDetailLayout({
     )
   }
 
-  const counts = await fetchArtistSectionCounts(supabase, id)
+  const [counts, { items: newsItemsForCount }] = await Promise.all([
+    fetchArtistSectionCounts(supabase, id),
+    fetchCachedNews(),
+  ])
+  const mediaCount = findRelatedNews(
+    newsItemsForCount,
+    [artist.name, artist.name_kana, artist.name_en].filter((k): k is string => Boolean(k)),
+    30
+  ).length
+  counts.media = mediaCount
 
   const identity: ArtistIdentityData = {
     id: artist.id,
