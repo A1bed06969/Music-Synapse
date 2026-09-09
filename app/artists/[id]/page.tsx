@@ -227,7 +227,7 @@ export default async function ArtistOverviewPage({ params }: { params: Promise<{
                 <li key={row.id} className="py-2 text-sm">
                   <p className="font-medium">{event?.name ?? '—'}</p>
                   <p className="mt-0.5 text-xs text-white/40">
-                    {row.start_time ? formatDate(row.start_time) : ''}
+                    {row.start_time ? formatDate(row.start_time.slice(0, 10)) : ''}
                     {row.venue ? ` · ${row.venue}` : ''}
                   </p>
                 </li>
