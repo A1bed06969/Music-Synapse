@@ -3,7 +3,7 @@ import { createClient } from '@/utils/Supabase/server'
 import { fetchArtistMediaSelections } from '@/utils/fetchArtistMediaSelections'
 import { buildArtistAlbumQuery } from '@/utils/artistAlbumQuery'
 import { buildArtistAppearanceQuery } from '@/utils/artistAppearanceQuery'
-import { buildArtistRankingAwardFilter } from '@/utils/artistDetailCounts'
+import { fetchArtistRankingAwardRows } from '@/utils/artistDetailCounts'
 import ArtistTimeline from '../ArtistTimeline'
 
 type TimelineAlbumRow = { id: string; title: string; jacket_url: string | null; release_date: string | null }
@@ -12,6 +12,13 @@ type TimelineAppearanceRow = {
   venue: string | null
   start_time: string | null
   event_edition: { venue: string | null; event: { name: string } | { name: string }[] | null } | { venue: string | null; event: { name: string } | { name: string }[] | null }[] | null
+}
+type TimelineAwardEntryRow = {
+  id: number
+  year: number | null
+  category: string | null
+  result: string | null
+  award: { name: string } | { name: string }[] | null
 }
 
 /** アーティスト年表の詳細表示。アーティスト詳細ページの簡易版年表(主要リリースのみ)
@@ -25,14 +32,12 @@ export default async function ArtistTimelinePage({
   const { id } = await params
   const supabase = await createClient()
 
-  const rankingAwardFilter = await buildArtistRankingAwardFilter(supabase, id)
-
   const [
     { data: albums },
     { data: musicEvents },
     { data: eventAppearances },
     { data: tieUps },
-    { data: awardEntries },
+    awardEntries,
     mediaSelections,
   ] = await Promise.all([
     buildArtistAlbumQuery<TimelineAlbumRow>(supabase, id, 'id, title, jacket_url, release_date'),
@@ -50,11 +55,13 @@ export default async function ArtistTimelinePage({
       .from('sync_entry')
       .select('id, usage_detail, sync_work:sync_work_id(title, work_type, year), track:track_id!inner(title, album_id, artist_id)')
       .eq('track.artist_id', id),
-    supabase
-      .from('award_entry')
-      .select('id, year, category, result, award:award_id(name)')
-      .or(rankingAwardFilter)
-      .order('year', { ascending: false }),
+    fetchArtistRankingAwardRows<TimelineAwardEntryRow>(
+      supabase,
+      'award_entry',
+      id,
+      'id, year, category, result, award:award_id(name)',
+      { orderBy: { column: 'year', ascending: false } }
+    ),
     fetchArtistMediaSelections(supabase, id),
   ])
 
@@ -68,7 +75,7 @@ export default async function ArtistTimelinePage({
         eventAppearances={eventAppearances ?? []}
         tieUps={tieUps ?? []}
         mediaSelections={mediaSelections}
-        awards={(awardEntries ?? []).map((row) => {
+        awards={awardEntries.map((row) => {
           const award = Array.isArray(row.award) ? row.award[0] : row.award
           return {
             id: row.id,

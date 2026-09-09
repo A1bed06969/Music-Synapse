@@ -7,7 +7,7 @@ import { buildArtistAlbumQuery } from '@/utils/artistAlbumQuery'
 import { buildArtistAppearanceQuery } from '@/utils/artistAppearanceQuery'
 import { findRelatedNews, formatRelativeTime } from '@/utils/newsParser'
 import { fetchCachedNews } from '@/utils/newsCache'
-import { buildArtistRankingAwardFilter } from '@/utils/artistDetailCounts'
+import { fetchArtistRankingAwardRows } from '@/utils/artistDetailCounts'
 
 type FeaturedEntryRow = {
   id: string
@@ -63,16 +63,14 @@ export default async function ArtistOverviewPage({ params }: { params: Promise<{
 
   // ranking_entry/award_entryはartist_id/album_id/track_idのいずれかで紐づく
   // (直接artist_idだけでは本番データの過半数を取り逃す。utils/artistDetailCounts.ts
-  //  のbuildArtistRankingAwardFilter参照)ため、フィルター文字列を先に組み立てる。
-  const rankingAwardFilter = await buildArtistRankingAwardFilter(supabase, id)
-
+  //  のfetchArtistRankingAwardRows参照)ため、専用ヘルパーで3方向の行を集めて使う。
   const [
     { data: albums },
     [{ data: rotationRows }, { data: rankingRows }],
     { data: appearanceRows },
     { items: newsItems },
-    { data: rankingEntries },
-    { data: awardEntries },
+    rankingEntries,
+    awardEntries,
   ] = await Promise.all([
     buildArtistAlbumQuery<OverviewAlbumRow>(supabase, id, 'id, title, jacket_url, release_date, streaming_status'),
     Promise.all([
@@ -93,20 +91,20 @@ export default async function ArtistOverviewPage({ params }: { params: Promise<{
       'id, venue, start_time, event_edition:event_edition_id(year, event:event_id(name))'
     ),
     fetchCachedNews(),
-    supabase
-      .from('ranking_entry')
-      .select('id, period_date, ranking:ranking_id!inner(id, name)')
-      .or(rankingAwardFilter)
-      .order('period_date', { ascending: false })
-      .limit(2)
-      .overrideTypes<OverviewRankingEntryRow[], { merge: false }>(),
-    supabase
-      .from('award_entry')
-      .select('id, year, result, award:award_id(name)')
-      .or(rankingAwardFilter)
-      .order('year', { ascending: false })
-      .limit(2)
-      .overrideTypes<OverviewAwardEntryRow[], { merge: false }>(),
+    fetchArtistRankingAwardRows<OverviewRankingEntryRow>(
+      supabase,
+      'ranking_entry',
+      id,
+      'id, period_date, ranking:ranking_id!inner(id, name)',
+      { orderBy: { column: 'period_date', ascending: false }, limit: 2 }
+    ),
+    fetchArtistRankingAwardRows<OverviewAwardEntryRow>(
+      supabase,
+      'award_entry',
+      id,
+      'id, year, result, award:award_id(name)',
+      { orderBy: { column: 'year', ascending: false }, limit: 2 }
+    ),
   ])
 
   const { data: artistForNews } = await supabase.from('artist').select('name, name_kana, name_en').eq('id', id).single()
@@ -146,7 +144,7 @@ export default async function ArtistOverviewPage({ params }: { params: Promise<{
     .slice(0, 3)
 
   const featuredContent: FeaturedEntryRow[] = [
-    ...(rankingEntries ?? []).map((row) => {
+    ...rankingEntries.map((row) => {
       const ranking = firstOf(row.ranking)
       return {
         id: `ranking-${row.id}`,
@@ -155,7 +153,7 @@ export default async function ArtistOverviewPage({ params }: { params: Promise<{
         periodLabel: row.period_date ? formatDate(row.period_date) : '',
       }
     }),
-    ...(awardEntries ?? []).map((row) => {
+    ...awardEntries.map((row) => {
       const award = firstOf(row.award)
       return {
         id: `award-${row.id}`,

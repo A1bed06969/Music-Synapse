@@ -1,6 +1,6 @@
 // app/artists/[id]/awards/page.tsx
 import { createClient } from '@/utils/Supabase/server'
-import { buildArtistRankingAwardFilter } from '@/utils/artistDetailCounts'
+import { fetchArtistRankingAwardRows } from '@/utils/artistDetailCounts'
 
 type AwardEntryRow = {
   id: string
@@ -18,15 +18,13 @@ export default async function AwardsPage({ params }: { params: Promise<{ id: str
   const { id } = await params
   const supabase = await createClient()
 
-  const rankingAwardFilter = await buildArtistRankingAwardFilter(supabase, id)
-  const { data } = await supabase
-    .from('award_entry')
-    .select('id, year, category, result, award:award_id(name)')
-    .or(rankingAwardFilter)
-    .order('year', { ascending: false })
-    .overrideTypes<AwardEntryRow[], { merge: false }>()
-
-  const rows = data ?? []
+  const rows = await fetchArtistRankingAwardRows<AwardEntryRow>(
+    supabase,
+    'award_entry',
+    id,
+    'id, year, category, result, award:award_id(name)',
+    { orderBy: { column: 'year', ascending: false } }
+  )
 
   return (
     <div>
