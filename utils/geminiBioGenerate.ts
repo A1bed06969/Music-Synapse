@@ -70,6 +70,7 @@ export function parseGeminiBioResponse(text: string): BioGenerationResult {
   } catch {
     return { status: 'declined' }
   }
+  if (typeof parsed !== 'object' || parsed === null) return { status: 'declined' }
   const p = parsed as { status?: unknown; bio?: unknown }
   if (p.status === 'GENERATED' && typeof p.bio === 'string' && p.bio.trim().length > 0) {
     return { status: 'generated', bio: p.bio.trim() }

@@ -26,4 +26,13 @@ describe('parseGeminiBioResponse', () => {
   test('returns declined for invalid JSON', () => {
     assert.deepEqual(parseGeminiBioResponse('not json'), { status: 'declined' })
   })
+
+  test('returns declined for JSON null', () => {
+    assert.deepEqual(parseGeminiBioResponse('null'), { status: 'declined' })
+  })
+
+  test('returns declined for a non-object JSON value', () => {
+    assert.deepEqual(parseGeminiBioResponse('42'), { status: 'declined' })
+    assert.deepEqual(parseGeminiBioResponse('[1,2,3]'), { status: 'declined' })
+  })
 })
