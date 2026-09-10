@@ -1,5 +1,4 @@
 import ArtistLinkIcons from '@/app/components/ArtistLinkIcons'
-import BiographyReadMore from './BiographyReadMore'
 
 export type ArtistIdentityData = {
   id: string
@@ -40,12 +39,12 @@ export default function ArtistIdentityPanel({ data }: { data: ArtistIdentityData
   return (
     <div className="flex flex-col gap-5">
       <div id="artist-header">
-        <div className="w-full overflow-hidden rounded-lg bg-white/5">
+        {/* 幅80%・中央寄せで縮小表示する(バイオグラフィー全文を含めたLEFTカラム全体を
+         * スクロール無しで収めるため、画像の専有面積を意図的に抑えている)。 */}
+        <div className="mx-auto w-3/5 overflow-hidden rounded-lg bg-white/5">
           {data.imageUrl ? (
             // 実データ上、アーティスト画像は現状すべてApple Music由来の600x600正方形。
-            // クロップせず実寸のまま幅いっぱいに表示する(高さの制限はもう設けない
-            // — LEFTカラムはapp/artists/[id]/layout.tsxの固定シェルの中で独立して
-            // overflow-y-autoするため、画像が高くなってもCENTER/RIGHTには影響しない)。
+            // クロップせず実寸のまま表示する。
             // eslint-disable-next-line @next/next/no-img-element
             <img src={data.imageUrl} alt={data.name} className="h-auto w-full" />
           ) : (
@@ -101,9 +100,7 @@ export default function ArtistIdentityPanel({ data }: { data: ArtistIdentityData
       {data.bio && data.bio.trim() && (
         <div>
           <h2 className="text-xs uppercase tracking-wide text-white/40">Biography</h2>
-          <div className="mt-2">
-            <BiographyReadMore text={data.bio} />
-          </div>
+          <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-white/70">{data.bio}</p>
         </div>
       )}
     </div>
