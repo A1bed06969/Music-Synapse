@@ -161,13 +161,15 @@ export default async function ArtistDetailLayout({
       </div>
 
       {/* ===== Desktop(lg:以上): LEFT/RIGHTは固定、CENTERだけが独立スクロールし
-          フッターもCENTERの中にだけ表示する。列比率は3:4:3。 ===== */}
+          フッターもCENTERの中にだけ表示する。RIGHTは9項目のラベル+件数だけで
+          実測166px程度しか必要ないため狭め、その分LEFTを広げて「視聴」リンクが
+          折り返さず1列に収まるようにする(実測、1列に必要な幅は約393px)。 ===== */}
       <div
-        className="hidden lg:block lg:h-[var(--artist-shell-h)] lg:w-[30%] lg:min-w-[260px] lg:shrink-0 lg:overflow-y-auto lg:border-r lg:border-white/5"
+        className="hidden lg:block lg:h-[var(--artist-shell-h)] lg:w-[38%] lg:min-w-[340px] lg:shrink-0 lg:overflow-y-auto lg:border-r lg:border-white/5"
       >
-        <div className="px-8 pt-4">
+        <div className="px-8 pt-3">
           <BackLink fallbackHref="/search" fallbackLabel="検索に戻る" />
-          <div className="mt-4">
+          <div className="mt-3">
             <ArtistIdentityPanel data={identity} />
           </div>
         </div>
@@ -177,7 +179,7 @@ export default async function ArtistDetailLayout({
         <SiteFooter />
       </div>
       <div
-        className="hidden lg:block lg:h-[var(--artist-shell-h)] lg:w-[30%] lg:min-w-[260px] lg:shrink-0 lg:overflow-y-auto lg:border-l lg:border-white/5"
+        className="hidden lg:block lg:h-[var(--artist-shell-h)] lg:w-[18%] lg:min-w-[220px] lg:shrink-0 lg:overflow-y-auto lg:border-l lg:border-white/5"
       >
         <div className="px-8 pt-4">
           <ArtistNav artistId={id} counts={counts} />

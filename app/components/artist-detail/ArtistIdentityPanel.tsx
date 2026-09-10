@@ -37,11 +37,11 @@ export default function ArtistIdentityPanel({ data }: { data: ArtistIdentityData
   const activeYears = activeYearsLabel(data)
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-2">
       <div id="artist-header">
-        {/* 幅80%・中央寄せで縮小表示する(バイオグラフィー全文を含めたLEFTカラム全体を
+        {/* 幅70%・中央寄せで縮小表示する(バイオグラフィー全文を含めたLEFTカラム全体を
          * スクロール無しで収めるため、画像の専有面積を意図的に抑えている)。 */}
-        <div className="mx-auto w-3/5 overflow-hidden rounded-lg bg-white/5">
+        <div className="mx-auto w-[70%] overflow-hidden rounded-lg bg-white/5">
           {data.imageUrl ? (
             // 実データ上、アーティスト画像は現状すべてApple Music由来の600x600正方形。
             // クロップせず実寸のまま表示する。
@@ -52,7 +52,7 @@ export default function ArtistIdentityPanel({ data }: { data: ArtistIdentityData
           )}
         </div>
 
-        <div className="mt-5">
+        <div className="mt-3">
           <h1 className="text-2xl font-bold leading-tight">{data.name}</h1>
           {(data.nameKana || data.nameEn) && (
             <p className="mt-1 text-sm text-white/50">{[data.nameKana, data.nameEn].filter(Boolean).join(' / ')}</p>
