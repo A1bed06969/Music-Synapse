@@ -8,13 +8,7 @@ import { buildArtistAppearanceQuery } from '@/utils/artistAppearanceQuery'
 import { findRelatedNews, formatRelativeTime } from '@/utils/newsParser'
 import { fetchCachedNews } from '@/utils/newsCache'
 import { fetchArtistRankingAwardRows } from '@/utils/artistDetailCounts'
-
-type FeaturedEntryRow = {
-  id: string
-  kind: 'ranking' | 'award'
-  label: string
-  periodLabel: string
-}
+import { fetchArtistMediaSelections } from '@/utils/fetchArtistMediaSelections'
 
 type OverviewAlbumRow = {
   id: string
@@ -71,6 +65,7 @@ export default async function ArtistOverviewPage({ params }: { params: Promise<{
     { items: newsItems },
     rankingEntries,
     awardEntries,
+    mediaSelections,
   ] = await Promise.all([
     buildArtistAlbumQuery<OverviewAlbumRow>(supabase, id, 'id, title, jacket_url, release_date, streaming_status'),
     Promise.all([
@@ -105,6 +100,7 @@ export default async function ArtistOverviewPage({ params }: { params: Promise<{
       'id, year, result, award:award_id(name)',
       { orderBy: { column: 'year', ascending: false }, limit: 2 }
     ),
+    fetchArtistMediaSelections(supabase, id),
   ])
 
   const { data: artistForNews } = await supabase.from('artist').select('name, name_kana, name_en').eq('id', id).single()
@@ -143,26 +139,21 @@ export default async function ArtistOverviewPage({ params }: { params: Promise<{
     .sort((a, b) => (a.start_time ?? '').localeCompare(b.start_time ?? ''))
     .slice(0, 3)
 
-  const featuredContent: FeaturedEntryRow[] = [
-    ...rankingEntries.map((row) => {
-      const ranking = firstOf(row.ranking)
-      return {
-        id: `ranking-${row.id}`,
-        kind: 'ranking' as const,
-        label: ranking?.name ?? '—',
-        periodLabel: row.period_date ? formatDate(row.period_date) : '',
-      }
-    }),
-    ...awardEntries.map((row) => {
-      const award = firstOf(row.award)
-      return {
-        id: `award-${row.id}`,
-        kind: 'award' as const,
-        label: award?.name ?? '—',
-        periodLabel: [row.year ? `${row.year}年` : null, row.result].filter(Boolean).join(' · '),
-      }
-    }),
-  ].slice(0, 2)
+  const latestRankings = rankingEntries.map((row) => {
+    const ranking = firstOf(row.ranking)
+    return { id: row.id, label: ranking?.name ?? '—', periodLabel: row.period_date ? formatDate(row.period_date) : '' }
+  })
+
+  const latestAwards = awardEntries.map((row) => {
+    const award = firstOf(row.award)
+    return {
+      id: row.id,
+      label: award?.name ?? '—',
+      periodLabel: [row.year ? `${row.year}年` : null, row.result].filter(Boolean).join(' · '),
+    }
+  })
+
+  const latestRadioRotation = [...mediaSelections].sort((a, b) => (b.date ?? '').localeCompare(a.date ?? '')).slice(0, 3)
 
   if (!artistForNews) notFound()
 
@@ -253,14 +244,46 @@ export default async function ArtistOverviewPage({ params }: { params: Promise<{
         </section>
       )}
 
-      {featuredContent.length > 0 && (
+      {latestRankings.length > 0 && (
         <section>
-          <h2 className="text-xs uppercase tracking-wide text-white/40">Featured Content</h2>
+          <h2 className="text-xs uppercase tracking-wide text-white/40">Ranking</h2>
           <ul className="mt-3 divide-y divide-white/5">
-            {featuredContent.map((entry) => (
+            {latestRankings.map((entry) => (
               <li key={entry.id} className="py-2 text-sm">
                 <p>{entry.label}</p>
                 {entry.periodLabel && <p className="mt-0.5 text-xs text-white/40">{entry.periodLabel}</p>}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {latestAwards.length > 0 && (
+        <section>
+          <h2 className="text-xs uppercase tracking-wide text-white/40">Awards</h2>
+          <ul className="mt-3 divide-y divide-white/5">
+            {latestAwards.map((entry) => (
+              <li key={entry.id} className="py-2 text-sm">
+                <p>{entry.label}</p>
+                {entry.periodLabel && <p className="mt-0.5 text-xs text-white/40">{entry.periodLabel}</p>}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {latestRadioRotation.length > 0 && (
+        <section>
+          <h2 className="text-xs uppercase tracking-wide text-white/40">Radio Rotation</h2>
+          <ul className="mt-3 divide-y divide-white/5">
+            {latestRadioRotation.map((entry) => (
+              <li key={entry.id} className="py-2 text-sm">
+                <p className="font-medium">{entry.trackTitle ?? '—'}</p>
+                <p className="mt-0.5 text-xs text-white/40">
+                  {entry.date ? formatDate(entry.date) : ''}
+                  {entry.mediaName ? ` · ${entry.mediaName}` : ''}
+                  {entry.programName ? ` ${entry.programName}` : ''}
+                </p>
               </li>
             ))}
           </ul>
