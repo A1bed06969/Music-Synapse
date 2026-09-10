@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import BackLink from '@/app/components/navigation/BackLink'
+import SiteFooter from '@/app/components/SiteFooter'
 
 type Band = { id: string; name: string; description: string | null }
 type Production = { id: number; artistId: string; artistName: string; description: string | null }
@@ -22,6 +23,7 @@ export default function MemberProfile({
   productions: Production[]
 }) {
   return (
+    <>
     <div className="mx-auto max-w-[1600px] px-6 py-12">
       <BackLink fallbackHref="/search" fallbackLabel="検索に戻る" />
 
@@ -76,5 +78,7 @@ export default function MemberProfile({
         </div>
       )}
     </div>
+    <SiteFooter />
+    </>
   )
 }

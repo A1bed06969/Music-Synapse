@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import { Geist, Geist_Mono } from "next/font/google";
 import SiteHeader from "./components/SiteHeader";
-import SiteFooter from "./components/SiteFooter";
+import ConditionalSiteFooter from "./components/ConditionalSiteFooter";
 import { PreviewPlayerProvider } from "./components/PreviewPlayerContext";
 import { JunkieDigProvider } from "./components/record-digging/JunkieDigContext";
 import RecordDiggingLauncher from "./components/record-digging/RecordDiggingLauncher";
@@ -49,7 +49,7 @@ export default async function RootLayout({
             <main className="flex-1">{children}</main>
             <RecordDiggingLauncher />
           </PreviewPlayerProvider>
-          <SiteFooter />
+          <ConditionalSiteFooter />
         </JunkieDigProvider>
       </body>
     </html>

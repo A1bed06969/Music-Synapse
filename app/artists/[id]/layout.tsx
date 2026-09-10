@@ -9,7 +9,12 @@ import ArtistNav from '@/app/components/artist-detail/ArtistNav'
 import ArtistNavMobile from '@/app/components/artist-detail/ArtistNavMobile'
 import StickyMiniHeader from '@/app/components/detail/StickyMiniHeader'
 import BackLink from '@/app/components/navigation/BackLink'
+import SiteFooter from '@/app/components/SiteFooter'
 import MemberProfile from './MemberProfile'
+
+// SiteHeaderの実測高さ(border込み)。デスクトップのLEFT/RIGHTカラムをこの下に
+// 固定するための基準値としてだけ使う(サイトヘッダーの高さが変わったら要更新)。
+const HEADER_HEIGHT_PX = 57
 
 type ArtistRow = {
   id: string
@@ -136,18 +141,45 @@ export default async function ArtistDetailLayout({
   }
 
   return (
-    <div className="mx-auto max-w-[1600px] px-6 py-4 lg:py-8">
-      <BackLink fallbackHref="/search" fallbackLabel="検索に戻る" />
+    <div className="lg:flex lg:flex-row lg:overflow-hidden" style={{ ['--artist-shell-h' as string]: `calc(100vh - ${HEADER_HEIGHT_PX}px)` }}>
+      {/* ===== Mobile(lg:未満): 通常のページスクロール、縦積み ===== */}
+      <div className="px-6 pt-3 lg:hidden">
+        <BackLink fallbackHref="/search" fallbackLabel="検索に戻る" />
+      </div>
       <StickyMiniHeader watchElementId="artist-header" imageUrl={identity.imageUrl} title={identity.name} />
-      <div className="mt-3 grid grid-cols-1 gap-8 lg:mt-6 lg:grid-cols-[minmax(280px,4fr)_minmax(320px,4fr)_minmax(180px,2fr)]">
-        <div className="lg:sticky lg:top-20 lg:self-start">
+      <div className="px-6 lg:hidden">
+        <div className="mt-3">
           <ArtistIdentityPanel data={identity} />
         </div>
-        <div className="lg:hidden">
+        <div className="mt-6">
           <ArtistNavMobile artistId={id} counts={counts} />
         </div>
-        <div className="min-w-0">{children}</div>
-        <div className="hidden lg:sticky lg:top-20 lg:block lg:self-start">
+        <div className="mt-8 min-w-0 pb-8">{children}</div>
+      </div>
+      <div className="lg:hidden">
+        <SiteFooter />
+      </div>
+
+      {/* ===== Desktop(lg:以上): LEFT/RIGHTは固定、CENTERだけが独立スクロールし
+          フッターもCENTERの中にだけ表示する。列比率は3:4:3。 ===== */}
+      <div
+        className="hidden lg:block lg:h-[var(--artist-shell-h)] lg:w-[30%] lg:min-w-[260px] lg:shrink-0 lg:overflow-y-auto lg:border-r lg:border-white/5"
+      >
+        <div className="px-8 pt-4">
+          <BackLink fallbackHref="/search" fallbackLabel="検索に戻る" />
+          <div className="mt-4">
+            <ArtistIdentityPanel data={identity} />
+          </div>
+        </div>
+      </div>
+      <div className="hidden lg:block lg:h-[var(--artist-shell-h)] lg:min-w-0 lg:flex-1 lg:overflow-y-auto">
+        <div className="px-8 pt-4 pb-8">{children}</div>
+        <SiteFooter />
+      </div>
+      <div
+        className="hidden lg:block lg:h-[var(--artist-shell-h)] lg:w-[30%] lg:min-w-[260px] lg:shrink-0 lg:overflow-y-auto lg:border-l lg:border-white/5"
+      >
+        <div className="px-8 pt-4">
           <ArtistNav artistId={id} counts={counts} />
         </div>
       </div>

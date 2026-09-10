@@ -42,13 +42,12 @@ export default function ArtistIdentityPanel({ data }: { data: ArtistIdentityData
       <div id="artist-header">
         <div className="w-full overflow-hidden rounded-lg bg-white/5">
           {data.imageUrl ? (
-            // アーティスト画像は正方形とは限らない(横長のキャンバス画像であることも
-            // 多い)ため、正方形に切り抜かず実際の縦横比のまま幅いっぱいに表示する。
-            // ただし縦長・正方形の画像がLEFTカラムの縦方向を占領してスクロールを
-            // 要求してしまわないよう、高さの上限だけは設ける(横長画像はこの上限より
-            // 低いので影響しない。上限にかかる画像だけobject-coverで中央を切り抜く)。
+            // 実データ上、アーティスト画像は現状すべてApple Music由来の600x600正方形。
+            // クロップせず実寸のまま幅いっぱいに表示する(高さの制限はもう設けない
+            // — LEFTカラムはapp/artists/[id]/layout.tsxの固定シェルの中で独立して
+            // overflow-y-autoするため、画像が高くなってもCENTER/RIGHTには影響しない)。
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={data.imageUrl} alt={data.name} className="max-h-64 w-full object-cover" />
+            <img src={data.imageUrl} alt={data.name} className="h-auto w-full" />
           ) : (
             <div className="aspect-square w-full" />
           )}
