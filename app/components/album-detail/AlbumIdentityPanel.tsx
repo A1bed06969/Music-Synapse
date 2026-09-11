@@ -51,8 +51,12 @@ export default function AlbumIdentityPanel({ data }: { data: AlbumIdentityData }
       </div>
 
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-white/45">
-        {data.albumTypeLabel && <span>{data.albumTypeLabel}</span>}
-        {data.albumTypeLabel && <span>·</span>}
+        {data.albumTypeLabel && (
+          <>
+            <span>{data.albumTypeLabel}</span>
+            <span>·</span>
+          </>
+        )}
         <span>{data.releaseDateLabel}</span>
         {data.label && (
           <>
