@@ -2,7 +2,7 @@
 import Link from 'next/link'
 import { createClient } from '@/utils/Supabase/server'
 import { notFound } from 'next/navigation'
-import { formatDate, STREAMING_STATUS_LABEL } from '@/utils/format'
+import { formatDate, STREAMING_STATUS_LABEL, extractYoutubeVideoId } from '@/utils/format'
 import { buildArtistAlbumQuery } from '@/utils/artistAlbumQuery'
 import { buildArtistAppearanceQuery } from '@/utils/artistAppearanceQuery'
 import { findRelatedNews, formatRelativeTime } from '@/utils/newsParser'
@@ -25,11 +25,13 @@ type ScoredTrackRow = {
     | null
 }
 
+type EventEmbed = { id: string; name: string; image_url: string | null; official_youtube_url: string | null }
+
 type ArtistAppearanceRow = {
   id: number
   venue: string | null
   start_time: string | null
-  event_edition: { year: number | null; event: { name: string } | { name: string }[] | null } | { year: number | null; event: { name: string } | { name: string }[] | null }[] | null
+  event_edition: { year: number | null; event: EventEmbed | EventEmbed[] | null } | { year: number | null; event: EventEmbed | EventEmbed[] | null }[] | null
 }
 
 type RankingEmbed = {
@@ -151,7 +153,7 @@ export default async function ArtistOverviewPage({ params }: { params: Promise<{
     buildArtistAppearanceQuery<ArtistAppearanceRow>(
       supabase,
       id,
-      'id, venue, start_time, event_edition:event_edition_id(year, event:event_id(name))'
+      'id, venue, start_time, event_edition:event_edition_id(year, event:event_id(id, name, image_url, official_youtube_url))'
     ),
     fetchCachedNews(),
     // list_type('ranked'/'selection')で後段でRanking/Curationに振り分けるため、
@@ -345,13 +347,36 @@ export default async function ArtistOverviewPage({ params }: { params: Promise<{
             {upcomingLive.map((row) => {
               const edition = firstOf(row.event_edition)
               const event = edition ? firstOf(edition.event) : null
+              // event.image_urlが無い企画は、公式YouTubeがあればサムネイルを代用する
+              // (app/events/[id]/page.tsxのEventThumbnailと同じフォールバック方針)。
+              const videoId = event && !event.image_url && event.official_youtube_url ? extractYoutubeVideoId(event.official_youtube_url) : null
+              const thumbnailUrl = event?.image_url ?? (videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : null)
+              const content = (
+                <div className="flex gap-4">
+                  <div className="h-14 w-14 shrink-0 overflow-hidden rounded-md bg-white/5">
+                    {thumbnailUrl && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={thumbnailUrl} alt="" className="h-full w-full object-cover" />
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-medium">{event?.name ?? '—'}</p>
+                    <p className="mt-0.5 text-xs text-white/40">
+                      {row.start_time ? formatDate(row.start_time.slice(0, 10)) : ''}
+                      {row.venue ? ` · ${row.venue}` : ''}
+                    </p>
+                  </div>
+                </div>
+              )
               return (
                 <li key={row.id} className="py-2 text-sm">
-                  <p className="font-medium">{event?.name ?? '—'}</p>
-                  <p className="mt-0.5 text-xs text-white/40">
-                    {row.start_time ? formatDate(row.start_time.slice(0, 10)) : ''}
-                    {row.venue ? ` · ${row.venue}` : ''}
-                  </p>
+                  {event ? (
+                    <Link href={`/events/${event.id}`} className="group -m-1 block rounded-md p-1 hover:bg-white/5">
+                      {content}
+                    </Link>
+                  ) : (
+                    content
+                  )}
                 </li>
               )
             })}
