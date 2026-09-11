@@ -30,9 +30,14 @@
 //
 // 実行方法:
 //   npx tsx --env-file=.env.local scripts/backfill-track-youtube-mv.ts [--limit=N]
+//   npx tsx --env-file=.env.local scripts/backfill-track-youtube-mv.ts --artist-id=MS_ART_xxx,MS_ART_yyy
 // --limitは処理するアーティスト数(1人あたり約101ユニット消費。無料枠1日10,000
 // ユニットに収めるには --limit=90 程度を目安にする)。省略時は対象アーティスト全員を
 // 処理しようとするため、無料枠を超えてAPIエラーになるまで進む点に注意。
+// --artist-idはカンマ区切りのアーティストID指定(特定アーティストをすぐ処理したい場合用)。
+// 指定時は84万件超の全件スキャンをせずそのアーティストのトラックだけを直接取得し、
+// クラシック後回し・既存ログでのスキップも無視して常に処理する(明示指定を優先する)。
+// --limitと同時指定はできない。
 import { createAdminClient } from '@/utils/Supabase/admin'
 import {
   searchChannelsByArtistName,
@@ -48,6 +53,8 @@ const CHANNEL_CONFIDENCE_THRESHOLD = 0.85
 
 const limitArg = process.argv.find((a) => a.startsWith('--limit='))
 const LIMIT = limitArg ? Number(limitArg.split('=')[1]) : undefined
+const artistIdArg = process.argv.find((a) => a.startsWith('--artist-id='))
+const ARTIST_IDS = artistIdArg ? artistIdArg.slice('--artist-id='.length).split(',').filter(Boolean) : undefined
 
 type TrackRow = { id: string; artist_id: string; title: string }
 type ArtistRow = { id: string; name: string }
@@ -116,6 +123,27 @@ async function fetchArtistNames(supabase: AdminClient, artistIds: string[]): Pro
     for (const row of (data ?? []) as ArtistRow[]) names.set(row.id, row.name)
   }
   return names
+}
+
+/** --artist-id指定時の直接取得。84万件超の全件スキャンをせず、指定アーティストの
+ * 未設定トラックだけを直接取得する。既存ログでのスキップも無視する(明示指定優先)。 */
+async function buildDirectTargetArtists(supabase: AdminClient, artistIds: string[]): Promise<TargetArtist[]> {
+  const names = await fetchArtistNames(supabase, artistIds)
+  const targets: TargetArtist[] = []
+  for (const id of artistIds) {
+    const name = names.get(id)
+    if (!name) {
+      console.log(`  ⚠️ アーティストID ${id} が見つかりません。スキップします。`)
+      continue
+    }
+    const { data } = await supabase
+      .from('track')
+      .select('id, artist_id, title')
+      .eq('artist_id', id)
+      .is('youtube_video_id', null)
+    targets.push({ artist: { id, name }, tracks: (data ?? []) as TrackRow[] })
+  }
+  return targets
 }
 
 /** ジャンルタグがクラシック/オーケストラ系(CLASSICAL_GENRE_PATTERN)に該当する
@@ -280,15 +308,25 @@ async function main() {
 
   const supabase = createAdminClient()
 
-  console.log('対象アーティストを集計中(トラック件数が多いため数十秒〜数分かかります)...')
-  const allTargets = await buildTargetArtists(supabase)
-  const targets = LIMIT ? allTargets.slice(0, LIMIT) : allTargets
+  let targets: TargetArtist[]
+  let candidatePoolSize: number | null = null
+  if (ARTIST_IDS) {
+    console.log(`指定アーティスト(${ARTIST_IDS.length}件)を直接取得中...`)
+    targets = await buildDirectTargetArtists(supabase, ARTIST_IDS)
+  } else {
+    console.log('対象アーティストを集計中(トラック件数が多いため数十秒〜数分かかります)...')
+    const allTargets = await buildTargetArtists(supabase)
+    candidatePoolSize = allTargets.length
+    targets = LIMIT ? allTargets.slice(0, LIMIT) : allTargets
+  }
 
   if (targets.length === 0) {
     console.log('対象のアーティストはいません。')
     return
   }
-  console.log(`対象: ${targets.length}アーティスト(全候補: ${allTargets.length}人)\n`)
+  console.log(
+    `対象: ${targets.length}アーティスト${candidatePoolSize !== null ? `(全候補: ${candidatePoolSize}人)` : ''}\n`
+  )
 
   let matchedArtists = 0
   let noChannel = 0
