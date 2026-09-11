@@ -21,7 +21,7 @@ export default function ServiceLinkPill({
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      className="flex items-center gap-1.5 rounded-full border border-white/20 px-3 py-1 text-xs text-white/70 transition hover:border-white/40 hover:text-white"
+      className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-white/20 px-3 py-1 text-xs text-white/70 transition hover:border-white/40 hover:text-white"
     >
       {icon ? (
         <span
