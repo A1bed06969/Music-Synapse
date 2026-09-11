@@ -83,4 +83,41 @@ describe('findBestMvMatch', () => {
     const result = findBestMvMatch('Song Title', [])
     assert.equal(result, null)
   })
+
+  // 実際にAdoの公式チャンネル(youtube.com/@Ado1024adofficial)を調査して見つかった、
+  // 末尾括弧では捉えられない日本語アーティスト特有のタイトル慣習
+  describe('Japanese leading-bracket title conventions (found via Ado channel investigation)', () => {
+    test('matches a leading quote-bracket title with a bare (non-bracketed) MV suffix word', () => {
+      const result = findBestMvMatch('クラクラ', [{ videoId: 'v1', title: '「クラクラ」MV😵‍💫' }])
+      assert.deepEqual(result, { videoId: 'v1', title: '「クラクラ」MV😵‍💫' })
+    })
+
+    test('matches a leading square-bracket artist-name-prefix title with no suffix at all', () => {
+      const result = findBestMvMatch('クラクラ', [{ videoId: 'v1', title: '【Ado】クラクラ' }])
+      assert.deepEqual(result, { videoId: 'v1', title: '【Ado】クラクラ' })
+    })
+
+    test('excludes a leading-quote-bracket karaoke practice video via the existing negative keyword', () => {
+      const result = findBestMvMatch('クラクラ', [
+        { videoId: 'v1', title: '「クラクラ」カラオケ練習用動画公開しました🎙️' },
+      ])
+      assert.equal(result, null)
+    })
+
+    test('picks the MV among several leading-quote-bracket candidates using the positive keyword tie-break', () => {
+      const result = findBestMvMatch('クラクラ', [
+        { videoId: 'v1', title: '「クラクラ」配信中😵‍💫' },
+        { videoId: 'v2', title: '「クラクラ」MV公開しました😵‍💫' },
+        { videoId: 'v3', title: '【Ado】クラクラ' },
+      ])
+      assert.deepEqual(result, { videoId: 'v2', title: '「クラクラ」MV公開しました😵‍💫' })
+    })
+
+    test('does not false-positive on an unrelated song whose title happens to contain the track title as a substring', () => {
+      const result = findBestMvMatch('新時代', [
+        { videoId: 'v1', title: '「SPY×FAMILY」Season 2 OP主題歌「クラクラ」10.5 Release!' },
+      ])
+      assert.equal(result, null)
+    })
+  })
 })

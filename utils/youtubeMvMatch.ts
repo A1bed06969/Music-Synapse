@@ -7,21 +7,51 @@
 // ことだけに集中する。該当動画が無い/複数あって決め手が無い場合はnullを
 // 返し、誤った動画を反映するよりトラックを未設定のままにすることを優先する。
 
-// 動画タイトルの末尾に付く装飾(括弧書き)を取り除いて「曲の核となる部分」だけを
-// 比較するための正規化。全角/半角の括弧どちらにも対応する。
+function normalizeText(s: string): string {
+  return s
+    .toLowerCase()
+    .normalize('NFKC')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+// 動画タイトルの末尾に付く装飾(括弧書き)。全角/半角どちらにも対応する。
 const BRACKET_SUFFIX = /[(（\[【][^)）\]】]*[)）\]】]\s*$/
 
-function normalizeCore(title: string): string {
+function stripTrailingBrackets(title: string): string {
   let t = title
   // 末尾の括弧書きを繰り返し取り除く(例: 「曲名 (Official Video) (4K)」の両方)
   while (BRACKET_SUFFIX.test(t)) {
     t = t.replace(BRACKET_SUFFIX, '').trim()
   }
   return t
-    .toLowerCase()
-    .normalize('NFKC')
-    .replace(/\s+/g, ' ')
-    .trim()
+}
+
+// 先頭の引用符括弧: 「曲名」MV😵‍💫 のように、曲名側ではなく動画タイトル側の
+// 装飾が先頭に来る日本語アーティストのチャンネル慣習(Ado公式チャンネルの実タイトル
+// を調査して確認)。末尾括弧の除去だけでは拾えないため別途抽出する。
+const LEADING_QUOTE = /^[「『]([^」』]+)[」』]/
+// 先頭の隅付き括弧/角括弧: 【Ado】曲名 のような「アーティスト名プレフィックス+曲名」
+// 慣習。中身がアーティスト名かどうかは判定せず、機械的に「先頭の括弧を取り除いた残り」
+// を曲名候補として扱う(この関数は曲名を知らないため、呼び出し側の完全一致判定に委ねる)。
+const LEADING_BRACKET_PREFIX = /^[【[]([^】\]]+)[】\]]\s*(.+)$/
+
+/** 動画タイトルから「曲の核となる部分」の候補を複数抽出する。日本語アーティストの
+ * チャンネルは装飾の位置(先頭/末尾)も種類(引用符括弧/隅付き括弧/丸括弧)もまちまち
+ * なため、単一の正規化ルールではなく複数パターンを試して候補を集める。 */
+function extractCoreCandidates(rawTitle: string): string[] {
+  const candidates = new Set<string>()
+
+  candidates.add(normalizeText(stripTrailingBrackets(rawTitle)))
+
+  const leadingQuote = rawTitle.match(LEADING_QUOTE)
+  if (leadingQuote) candidates.add(normalizeText(leadingQuote[1]))
+
+  const leadingBracket = rawTitle.match(LEADING_BRACKET_PREFIX)
+  if (leadingBracket) candidates.add(normalizeText(stripTrailingBrackets(leadingBracket[2])))
+
+  candidates.delete('')
+  return [...candidates]
 }
 
 // 公式MVではない別バージョンを示す語。英語表記・日本語表記の両方を見る。
@@ -76,12 +106,12 @@ export type MvCandidateVideo = { videoId: string; title: string }
  * タイトルで一致してしまい、かつどちらが公式MVか決め手が無い場合はnullを
  * 返す(誤反映を避けるため、取りこぼしを許容する)。 */
 export function findBestMvMatch(trackTitle: string, videos: MvCandidateVideo[]): MvCandidateVideo | null {
-  const normalizedTrack = normalizeCore(trackTitle)
+  const normalizedTrack = normalizeText(stripTrailingBrackets(trackTitle))
   if (!normalizedTrack) return null
 
   const candidates = videos.filter((v) => {
     if (hasNegativeMvKeyword(v.title)) return false
-    return normalizeCore(v.title) === normalizedTrack
+    return extractCoreCandidates(v.title).includes(normalizedTrack)
   })
 
   if (candidates.length === 0) return null
