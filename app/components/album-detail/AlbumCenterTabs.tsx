@@ -106,7 +106,7 @@ export default function AlbumCenterTabs({
               {playingId === track.id ? (
                 <div className="aspect-video overflow-hidden rounded-md bg-black">
                   <iframe
-                    src={`https://www.youtube.com/embed/${track.youtube_video_id}?autoplay=1`}
+                    src={`https://www.youtube.com/embed/${track.youtube_video_id}`}
                     title={`${albumTitle} - ${track.title}`}
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                     allowFullScreen
@@ -129,6 +129,19 @@ export default function AlbumCenterTabs({
                 </button>
               )}
               <p className="mt-1.5 truncate text-xs text-white/60">{track.title}</p>
+              {playingId === track.id && (
+                // 権利元が埋め込み表示を無効化している動画は埋め込みプレイヤーが
+                // 再生できずエラー表示になる(こちらでは検知・回避できない)ため、
+                // 常にYouTube本体への逃げ道リンクを添えておく
+                <a
+                  href={`https://www.youtube.com/watch?v=${track.youtube_video_id}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-1 block text-[11px] text-white/40 hover:text-white/70"
+                >
+                  再生できない場合はYouTubeで見る ↗
+                </a>
+              )}
             </div>
           ))}
         </div>

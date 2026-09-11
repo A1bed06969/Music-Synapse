@@ -40,6 +40,17 @@ export default function TrackCenterContent({
               className="h-full w-full"
             />
           </div>
+          {/* 権利元が埋め込み表示を無効化している動画は埋め込みプレイヤーが再生できず
+           * エラー表示になる(こちらでは検知・回避できない)ため、常にYouTube本体への
+           * 逃げ道リンクを添えておく */}
+          <a
+            href={`https://www.youtube.com/watch?v=${youtubeVideoId}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-1.5 inline-block text-[11px] text-white/40 hover:text-white/70"
+          >
+            再生できない場合はYouTubeで見る ↗
+          </a>
         </div>
       )}
 
