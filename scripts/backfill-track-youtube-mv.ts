@@ -142,12 +142,8 @@ async function buildDirectTargetArtists(supabase: AdminClient, artistIds: string
       console.log(`  ⚠️ アーティストID ${id} が見つかりません。スキップします。`)
       continue
     }
-    const { data } = await supabase
-      .from('track')
-      .select('id, artist_id, title')
-      .eq('artist_id', id)
-      .is('youtube_video_id', null)
-    targets.push({ artist: { id, name }, tracks: (data ?? []) as TrackRow[] })
+    const tracks = await fetchArtistTracksMissingMv(supabase, id)
+    targets.push({ artist: { id, name }, tracks })
   }
   return targets
 }
@@ -335,16 +331,35 @@ async function fetchRematchTargets(supabase: AdminClient): Promise<RematchTarget
  * 動画一覧だけを再取得して、utils/youtubeMvMatch.tsの最新ロジックで再照合する。
  * search.listの日次クォータを使い切っていても、channels.list/playlistItems.listは
  * 別枠でまだ使えることが確認できている(2026-09-11、実運用で確認)。 */
+/** 1アーティストの未設定トラックをページングして全件取得する。単純な.select()は
+ * PostgRESTの既定上限(1000件)で無言のまま打ち切られるため(このプロジェクトで
+ * 複数回発生している既知の不具合パターン。utils/fetchAllRows.ts参照)、1000曲超の
+ * カタログを持つアーティスト(実際にPeter Framptonで3,340曲を確認)向けに必須。 */
+async function fetchArtistTracksMissingMv(supabase: AdminClient, artistId: string): Promise<TrackRow[]> {
+  const rows: TrackRow[] = []
+  const pageSize = 1000
+  let offset = 0
+  while (true) {
+    const { data } = await supabase
+      .from('track')
+      .select('id, artist_id, title')
+      .eq('artist_id', artistId)
+      .is('youtube_video_id', null)
+      .order('id', { ascending: true })
+      .range(offset, offset + pageSize - 1)
+    const page = (data ?? []) as TrackRow[]
+    rows.push(...page)
+    if (page.length < pageSize) break
+    offset += pageSize
+  }
+  return rows
+}
+
 async function rematchArtist(
   supabase: AdminClient,
   target: RematchTarget
 ): Promise<{ tracksMatched: number; tracksRemaining: number } | { error: string }> {
-  const { data } = await supabase
-    .from('track')
-    .select('id, artist_id, title')
-    .eq('artist_id', target.artistId)
-    .is('youtube_video_id', null)
-  const missing = (data ?? []) as TrackRow[]
+  const missing = await fetchArtistTracksMissingMv(supabase, target.artistId)
   if (missing.length === 0) return { tracksMatched: 0, tracksRemaining: 0 }
 
   const details = await fetchChannelDetails([target.channelId])
