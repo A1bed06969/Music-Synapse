@@ -31,6 +31,7 @@
 // 実行方法:
 //   npx tsx --env-file=.env.local scripts/backfill-track-youtube-mv.ts [--limit=N]
 //   npx tsx --env-file=.env.local scripts/backfill-track-youtube-mv.ts --artist-id=MS_ART_xxx,MS_ART_yyy
+//   npx tsx --env-file=.env.local scripts/backfill-track-youtube-mv.ts --rematch
 // --limitは処理するアーティスト数(1人あたり約101ユニット消費。無料枠1日10,000
 // ユニットに収めるには --limit=90 程度を目安にする)。省略時は対象アーティスト全員を
 // 処理しようとするため、無料枠を超えてAPIエラーになるまで進む点に注意。
@@ -38,6 +39,11 @@
 // 指定時は84万件超の全件スキャンをせずそのアーティストのトラックだけを直接取得し、
 // クラシック後回し・既存ログでのスキップも無視して常に処理する(明示指定を優先する)。
 // --limitと同時指定はできない。
+// --rematchは、既にチャンネルを特定済み(youtube_mv_backfill_log.resolved_channel_id
+// が設定済み)のアーティストへ、utils/youtubeMvMatch.tsの現在のロジックだけを
+// 新規search.list呼び出しなしで再適用する。マッチングロジックを改善した際、
+// 既にチャンネル特定コスト(100ユニット/人)を払い済みのアーティストからやり直しなく
+// 追加マッチを拾うために使う。
 import { createAdminClient } from '@/utils/Supabase/admin'
 import {
   searchChannelsByArtistName,
@@ -297,6 +303,105 @@ async function processArtist(supabase: AdminClient, target: TargetArtist): Promi
   }
 }
 
+type RematchTarget = { artistId: string; artistName: string; channelId: string }
+
+/** youtube_mv_backfill_logで既にチャンネルまで特定できている(resolved_channel_idが
+ * 設定されている)アーティストを、--rematch用に返す。同じアーティストが複数回
+ * ログされていることがあるため、最後の1件(最新の判定)だけを使う。 */
+async function fetchRematchTargets(supabase: AdminClient): Promise<RematchTarget[]> {
+  const rows: { artist_id: string; artist_name: string; resolved_channel_id: string }[] = []
+  const pageSize = 1000
+  let offset = 0
+  while (true) {
+    const { data } = await supabase
+      .from('youtube_mv_backfill_log')
+      .select('artist_id, artist_name, resolved_channel_id')
+      .not('resolved_channel_id', 'is', null)
+      .order('id', { ascending: true })
+      .range(offset, offset + pageSize - 1)
+    const page = (data ?? []) as typeof rows
+    rows.push(...page)
+    if (page.length < pageSize) break
+    offset += pageSize
+  }
+  const byArtist = new Map<string, RematchTarget>()
+  for (const r of rows) {
+    byArtist.set(r.artist_id, { artistId: r.artist_id, artistName: r.artist_name, channelId: r.resolved_channel_id })
+  }
+  return [...byArtist.values()]
+}
+
+/** --rematch: 新規にsearch.listを呼ばず(=ユニット消費なし)、既に特定済みのチャンネルの
+ * 動画一覧だけを再取得して、utils/youtubeMvMatch.tsの最新ロジックで再照合する。
+ * search.listの日次クォータを使い切っていても、channels.list/playlistItems.listは
+ * 別枠でまだ使えることが確認できている(2026-09-11、実運用で確認)。 */
+async function rematchArtist(
+  supabase: AdminClient,
+  target: RematchTarget
+): Promise<{ tracksMatched: number; tracksRemaining: number } | { error: string }> {
+  const { data } = await supabase
+    .from('track')
+    .select('id, artist_id, title')
+    .eq('artist_id', target.artistId)
+    .is('youtube_video_id', null)
+  const missing = (data ?? []) as TrackRow[]
+  if (missing.length === 0) return { tracksMatched: 0, tracksRemaining: 0 }
+
+  const details = await fetchChannelDetails([target.channelId])
+  const detail = details.get(target.channelId)
+  if (!detail?.uploadsPlaylistId) {
+    return { error: 'チャンネル詳細またはアップロード一覧を再取得できませんでした' }
+  }
+
+  let videos: Awaited<ReturnType<typeof fetchUploadedVideos>>
+  try {
+    videos = await fetchUploadedVideos(detail.uploadsPlaylistId)
+  } catch (err) {
+    return { error: (err as Error).message.slice(0, 200) }
+  }
+
+  let matchedCount = 0
+  for (const track of missing) {
+    const match = findBestMvMatch(track.title, videos)
+    if (!match) continue
+    const { error } = await supabase.from('track').update({ youtube_video_id: match.videoId }).eq('id', track.id)
+    if (!error) matchedCount += 1
+  }
+  return { tracksMatched: matchedCount, tracksRemaining: missing.length - matchedCount }
+}
+
+async function runRematch(supabase: AdminClient) {
+  console.log('既にチャンネル特定済みのアーティストへ、修正版マッチングロジックを新規検索なしで再適用します...')
+  const targets = await fetchRematchTargets(supabase)
+  console.log(`対象: ${targets.length}アーティスト\n`)
+
+  let totalMatched = 0
+  for (const [index, target] of targets.entries()) {
+    const result = await rematchArtist(supabase, target)
+    if ('error' in result) {
+      console.log(`[${index + 1}/${targets.length}] ${target.artistName}: ❌ ${result.error}`)
+      continue
+    }
+    totalMatched += result.tracksMatched
+    console.log(
+      `[${index + 1}/${targets.length}] ${target.artistName}: +${result.tracksMatched}曲(残り未設定${result.tracksRemaining}曲)`
+    )
+    if (result.tracksMatched > 0) {
+      await supabase.from('youtube_mv_backfill_log').insert({
+        artist_id: target.artistId,
+        artist_name: target.artistName,
+        status: 'matched',
+        resolved_channel_id: target.channelId,
+        channel_reasoning: '修正版マッチングロジックの再適用(新規チャンネル検索なし)',
+        tracks_total: result.tracksMatched + result.tracksRemaining,
+        tracks_matched: result.tracksMatched,
+      })
+    }
+  }
+
+  console.log(`\n--- 再マッチ結果 ---\n追加マッチ: ${totalMatched}曲`)
+}
+
 async function main() {
   // YouTube検索まで進んでから鍵未設定に気付くと、その前段の全件読み込み分の時間が
   // 無駄になるため、起動直後に検証する
@@ -307,6 +412,11 @@ async function main() {
   }
 
   const supabase = createAdminClient()
+
+  if (process.argv.includes('--rematch')) {
+    await runRematch(supabase)
+    return
+  }
 
   let targets: TargetArtist[]
   let candidatePoolSize: number | null = null
