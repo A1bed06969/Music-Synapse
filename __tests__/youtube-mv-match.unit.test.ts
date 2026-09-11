@@ -120,4 +120,40 @@ describe('findBestMvMatch', () => {
       assert.equal(result, null)
     })
   })
+
+  // 実際にFujii Kazeの公式チャンネル(youtube.com/@FujiiKaze)を調査して見つかった、
+  // 国際的なアーティストのチャンネルでよく使われる「アーティスト名 - 曲名」の
+  // ハイフン区切りプレフィックス慣習
+  describe('leading "Artist Name - Title" hyphen-prefix convention (found via Fujii Kaze channel investigation)', () => {
+    test('matches a hyphen-prefixed title with a trailing official-MV bracket', () => {
+      const result = findBestMvMatch('Casket Girl', [
+        { videoId: 'v1', title: 'Fujii Kaze - Casket Girl  (Official Music Video)' },
+      ])
+      assert.deepEqual(result, { videoId: 'v1', title: 'Fujii Kaze - Casket Girl  (Official Music Video)' })
+    })
+
+    test('matches a hyphen-prefixed title with a trailing square-bracket suffix', () => {
+      const result = findBestMvMatch("It's Alright", [
+        { videoId: 'v1', title: "Fujii Kaze - It's Alright [Official Video]" },
+      ])
+      assert.deepEqual(result, { videoId: 'v1', title: "Fujii Kaze - It's Alright [Official Video]" })
+    })
+
+    test('matches a hyphen-prefixed title using an en-dash separator', () => {
+      const result = findBestMvMatch('Prema', [{ videoId: 'v1', title: 'Fujii Kaze – Prema (Official Video)' }])
+      assert.deepEqual(result, { videoId: 'v1', title: 'Fujii Kaze – Prema (Official Video)' })
+    })
+
+    test('excludes a hyphen-prefixed behind-the-scenes video even though the core title matches', () => {
+      const result = findBestMvMatch('Prema', [{ videoId: 'v1', title: 'Fujii Kaze - Prema (Behind The Scenes)' }])
+      assert.equal(result, null)
+    })
+
+    test('does not let an internal hyphen with no surrounding spaces be mistaken for a prefix separator', () => {
+      const result = findBestMvMatch('A-ha Song', [
+        { videoId: 'v1', title: 'A-ha Song (Official Music Video)' },
+      ])
+      assert.deepEqual(result, { videoId: 'v1', title: 'A-ha Song (Official Music Video)' })
+    })
+  })
 })

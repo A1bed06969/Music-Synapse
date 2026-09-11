@@ -35,6 +35,13 @@ const LEADING_QUOTE = /^[「『]([^」』]+)[」』]/
 // 慣習。中身がアーティスト名かどうかは判定せず、機械的に「先頭の括弧を取り除いた残り」
 // を曲名候補として扱う(この関数は曲名を知らないため、呼び出し側の完全一致判定に委ねる)。
 const LEADING_BRACKET_PREFIX = /^[【[]([^】\]]+)[】\]]\s*(.+)$/
+// 先頭の「アーティスト名 - 曲名」ハイフン区切りプレフィックス: 海外アーティストの
+// チャンネルで非常によく使われる慣習(Fujii Kaze公式チャンネルの実タイトルを調査して
+// 確認。「Fujii Kaze - Casket Girl (Official Music Video)」等)。区切りの前側が実際に
+// アーティスト名かどうかは判定せず、空白で挟まれたハイフン/en-dash/em-dashの直後を
+// 曲名候補として機械的に扱う。空白を要求することで「A-ha」のような曲名内部の
+// ハイフンを誤って区切りと解釈しないようにする。
+const LEADING_DASH_PREFIX = /^.+?\s[-–—]\s(.+)$/
 
 /** 動画タイトルから「曲の核となる部分」の候補を複数抽出する。日本語アーティストの
  * チャンネルは装飾の位置(先頭/末尾)も種類(引用符括弧/隅付き括弧/丸括弧)もまちまち
@@ -49,6 +56,9 @@ function extractCoreCandidates(rawTitle: string): string[] {
 
   const leadingBracket = rawTitle.match(LEADING_BRACKET_PREFIX)
   if (leadingBracket) candidates.add(normalizeText(stripTrailingBrackets(leadingBracket[2])))
+
+  const leadingDash = rawTitle.match(LEADING_DASH_PREFIX)
+  if (leadingDash) candidates.add(normalizeText(stripTrailingBrackets(leadingDash[1])))
 
   candidates.delete('')
   return [...candidates]
@@ -83,6 +93,9 @@ const NEGATIVE_KEYWORDS = [
   'カラオケ',
   'shorts',
   'spoken',
+  'behind the scenes',
+  '舞台裏',
+  'メイキング',
 ]
 
 /** 動画タイトルが「別バージョン」を示す語を含むかどうか。大文字小文字を無視する。 */
