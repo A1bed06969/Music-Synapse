@@ -231,7 +231,24 @@ async function processArtist(supabase: AdminClient, target: TargetArtist): Promi
     }
   }
 
-  const videos = await fetchUploadedVideos(chosenChannel.uploadsPlaylistId)
+  // channels.listがuploadsPlaylistIdを返していても、実際にplaylistItems.listすると
+  // 404になるチャンネルが一定数存在する(YouTube API側の既知の制限。Steve Reich/
+  // Humble Pie/Horace Silverの実チャンネルで確認済み)。ここで拾わずthrowさせると、
+  // main()側の汎用catchでchosenChannelの情報が失われ、せっかく特定できた公式
+  // チャンネルの記録が消えてしまうため、ここで捕まえてchannel_ambiguous扱いにする
+  let videos: Awaited<ReturnType<typeof fetchUploadedVideos>>
+  try {
+    videos = await fetchUploadedVideos(chosenChannel.uploadsPlaylistId)
+  } catch (err) {
+    return {
+      ...baseLog,
+      status: 'channel_ambiguous',
+      resolved_channel_id: chosenChannel.channelId,
+      resolved_channel_title: chosenChannel.title,
+      channel_confidence: judgement.confidence,
+      channel_reasoning: `${judgement.reasoning}(動画一覧の取得に失敗: ${(err as Error).message.slice(0, 200)})`,
+    }
+  }
 
   let matchedCount = 0
   for (const track of tracks) {
