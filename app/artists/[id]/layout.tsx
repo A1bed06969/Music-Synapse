@@ -146,7 +146,12 @@ export default async function ArtistDetailLayout({
       <div className="px-6 pt-3 lg:hidden">
         <BackLink fallbackHref="/search" fallbackLabel="検索に戻る" />
       </div>
-      <StickyMiniHeader watchElementId="artist-header" imageUrl={identity.imageUrl} title={identity.name} />
+      <StickyMiniHeader
+        watchElementId="artist-header"
+        imageUrl={identity.imageUrl}
+        title={identity.name}
+        menu={<ArtistNavMobile artistId={id} counts={counts} />}
+      />
       <div className="px-6 lg:hidden">
         <div className="mt-3">
           <ArtistIdentityPanel data={identity} />
