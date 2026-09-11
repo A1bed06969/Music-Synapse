@@ -172,7 +172,11 @@ export default async function TrackDetailPage({
 
   const rightColumn = (
     <div className="flex flex-col gap-8">
-      {rotations && rotations.length > 0 && <RotationModal rotations={rotations} />}
+      {rotations && rotations.length > 0 && (
+        <div className="[&>section]:mt-0">
+          <RotationModal rotations={rotations} />
+        </div>
+      )}
 
       {syncEntries && syncEntries.length > 0 && (
         <section>
@@ -210,23 +214,6 @@ export default async function TrackDetailPage({
 
   return (
     <>
-      <div className="px-6 pt-3 lg:px-8">
-        {success && (
-          <div className="mb-4 rounded-md border border-green-500/30 bg-green-500/5 px-4 py-3 text-sm">{success}</div>
-        )}
-        {errorMessage && (
-          <div className="mb-4 rounded-md border border-red-500/30 bg-red-500/5 px-4 py-3 text-sm">{errorMessage}</div>
-        )}
-        <div className="flex items-center justify-between">
-          <BackLink
-            fallbackHref={album ? `/albums/${album.id}` : '/tracks'}
-            fallbackLabel={album ? album.title : 'トラック一覧に戻る'}
-          />
-          <Link href={`/admin/data/tracks/${id}/edit`} className="text-xs text-white/40 hover:text-white/70">
-            編集
-          </Link>
-        </div>
-      </div>
       <StickyMiniHeader
         watchElementId="track-header"
         imageUrl={album?.jacket_url ?? null}
@@ -235,6 +222,29 @@ export default async function TrackDetailPage({
         action={<PreviewButton previewUrl={track.preview_url} trackId={track.id} size="sm" />}
       />
       <DetailPageShell
+        topBar={
+          <>
+            {success && (
+              <div className="mb-4 rounded-md border border-green-500/30 bg-green-500/5 px-4 py-3 text-sm">
+                {success}
+              </div>
+            )}
+            {errorMessage && (
+              <div className="mb-4 rounded-md border border-red-500/30 bg-red-500/5 px-4 py-3 text-sm">
+                {errorMessage}
+              </div>
+            )}
+            <div className="flex items-center justify-between">
+              <BackLink
+                fallbackHref={album ? `/albums/${album.id}` : '/tracks'}
+                fallbackLabel={album ? album.title : 'トラック一覧に戻る'}
+              />
+              <Link href={`/admin/data/tracks/${id}/edit`} className="text-xs text-white/40 hover:text-white/70">
+                編集
+              </Link>
+            </div>
+          </>
+        }
         left={<TrackIdentityPanel data={identity} />}
         center={
           <TrackCenterContent

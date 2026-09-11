@@ -14,10 +14,12 @@ const HEADER_HEIGHT_PX = 57
  * アーティストページのlayout.tsxはこのコンポーネントを使わない
  * (意図的に別実装のまま。docs/superpowers/specs/2026-09-11-album-track-3col-design.md参照)。 */
 export default function DetailPageShell({
+  topBar,
   left,
   center,
   right,
 }: {
+  topBar?: ReactNode
   left: ReactNode
   center: ReactNode
   right: ReactNode
@@ -29,7 +31,10 @@ export default function DetailPageShell({
     >
       {/* Mobile(lg:未満): 通常のページスクロール、LEFT→CENTER→RIGHTの縦積み */}
       <div className="px-6 lg:hidden">
-        <div className="pt-3">{left}</div>
+        <div className="pt-3">
+          {topBar}
+          {left}
+        </div>
         <div className="mt-8 min-w-0">{center}</div>
         <div className="mt-8 min-w-0 pb-8">{right}</div>
       </div>
@@ -38,9 +43,15 @@ export default function DetailPageShell({
       </div>
 
       {/* Desktop(lg:以上): LEFT/RIGHTは固定、CENTERだけが独立スクロールし
-          フッターもCENTERの中にだけ表示する。 */}
+          フッターもCENTERの中にだけ表示する。topBar(BackLink等)はLEFTの
+          スクロール領域の先頭に置き、独立した4本目のカラムにはしない
+          — シェルの外や4本目のカラムに置くとその分だけページ全体が
+          windowスクロール可能になってしまう。 */}
       <div className="hidden lg:block lg:h-[var(--detail-shell-h)] lg:w-[32%] lg:min-w-[320px] lg:shrink-0 lg:overflow-y-auto lg:border-r lg:border-white/5">
-        <div className="px-8 pt-3">{left}</div>
+        <div className="px-8 pt-3">
+          {topBar}
+          {left}
+        </div>
       </div>
       <div className="hidden lg:block lg:h-[var(--detail-shell-h)] lg:min-w-0 lg:flex-1 lg:overflow-y-auto">
         <div className="px-8 pt-4 pb-8">{center}</div>

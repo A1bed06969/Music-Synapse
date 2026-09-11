@@ -42,7 +42,7 @@ export default function AlbumCenterTabs({
 
   return (
     <div>
-      {showTabs && (
+      {showTabs ? (
         <div className="flex gap-1 border-b border-white/10">
           <button
             type="button"
@@ -63,6 +63,10 @@ export default function AlbumCenterTabs({
             MV
           </button>
         </div>
+      ) : (
+        <h2 className="text-[11px] font-medium uppercase tracking-[0.14em] text-white/35">
+          収録曲{tracks.length > 0 ? ` ${tracks.length}` : ''}
+        </h2>
       )}
 
       {activeTab === 'tracklist' ? (

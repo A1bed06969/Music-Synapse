@@ -2,7 +2,6 @@ import Link from 'next/link'
 import ListenLinks, { type ListenLinkIds } from '@/app/components/detail/ListenLinks'
 
 export type AlbumIdentityData = {
-  id: string
   jacketUrl: string | null
   title: string
   artists: { id: string; name: string }[]

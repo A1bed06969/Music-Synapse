@@ -113,7 +113,6 @@ export default async function AlbumDetailPage({
     })
 
   const identity: AlbumIdentityData = {
-    id: album.id,
     jacketUrl: album.jacket_url,
     title: album.title,
     artists: allArtists,
@@ -187,7 +186,11 @@ export default async function AlbumDetailPage({
         </section>
       )}
 
-      {radioRotationRows && radioRotationRows.length > 0 && <RotationModal rotations={radioRotationRows} />}
+      {radioRotationRows && radioRotationRows.length > 0 && (
+        <div className="[&>section]:mt-0">
+          <RotationModal rotations={radioRotationRows} />
+        </div>
+      )}
 
       {otherWorks && otherWorks.length > 0 && artist && (
         <section>
@@ -255,12 +258,6 @@ export default async function AlbumDetailPage({
 
   return (
     <>
-      <div className="px-6 pt-3 lg:px-8">
-        <BackLink
-          fallbackHref={artist ? `/artists/${artist.id}` : '/albums'}
-          fallbackLabel={artist ? artist.name : 'アルバム一覧に戻る'}
-        />
-      </div>
       <StickyMiniHeader
         watchElementId="album-header"
         imageUrl={album.jacket_url}
@@ -268,6 +265,12 @@ export default async function AlbumDetailPage({
         subtitle={artist?.name ?? null}
       />
       <DetailPageShell
+        topBar={
+          <BackLink
+            fallbackHref={artist ? `/artists/${artist.id}` : '/albums'}
+            fallbackLabel={artist ? artist.name : 'アルバム一覧に戻る'}
+          />
+        }
         left={<AlbumIdentityPanel data={identity} />}
         center={
           <AlbumCenterTabs
