@@ -19,9 +19,10 @@ export type AlbumCenterTrack = {
 
 /** アルバム詳細ページのCENTER。「収録曲」「MV」のタブ切替。MVタブは
  * このアルバムの収録曲のうちYouTube動画を持つものだけをサムネイルグリッドで
- * 並べ、クリックしたサムネイルをその場で埋め込み再生に差し替える(別タブ・
- * モーダルは使わない)。1件もMVが無いアルバムはタブ自体を出さず、収録曲
- * リストのみを表示する。(docs/superpowers/specs/2026-09-11-album-track-3col-design.md参照) */
+ * 並べ、クリックしたサムネイルをモーダルで大きく再生する(グリッドの1マス分の
+ * 小さな枠のままだと窮屈なため、画面中央に大きくポップアップさせる)。
+ * 1件もMVが無いアルバムはタブ自体を出さず、収録曲リストのみを表示する。
+ * (docs/superpowers/specs/2026-09-11-album-track-3col-design.md参照) */
 export default function AlbumCenterTabs({
   tracks,
   representativeTrackId,
@@ -36,6 +37,7 @@ export default function AlbumCenterTabs({
   const [playingId, setPlayingId] = useState<string | null>(null)
   const showTabs = mvTracks.length > 0
   const activeTab = showTabs ? tab : 'tracklist'
+  const playingTrack = playingId ? (mvTracks.find((t) => t.id === playingId) ?? null) : null
 
   const discNumbers = Array.from(new Set(tracks.map((t) => t.disc_number ?? 1))).sort((a, b) => a - b)
   const isMultiDisc = discNumbers.length > 1
@@ -103,47 +105,63 @@ export default function AlbumCenterTabs({
         <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
           {mvTracks.map((track) => (
             <div key={track.id}>
-              {playingId === track.id ? (
-                <div className="aspect-video overflow-hidden rounded-md bg-black">
-                  <iframe
-                    src={`https://www.youtube.com/embed/${track.youtube_video_id}`}
-                    title={`${albumTitle} - ${track.title}`}
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                    allowFullScreen
-                    loading="lazy"
-                    className="h-full w-full"
-                  />
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setPlayingId(track.id)}
-                  className="group block aspect-video w-full overflow-hidden rounded-md bg-white/5"
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={`https://i.ytimg.com/vi/${track.youtube_video_id}/hqdefault.jpg`}
-                    alt=""
-                    className="h-full w-full object-cover transition group-hover:scale-105"
-                  />
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => setPlayingId(track.id)}
+                className="group block aspect-video w-full overflow-hidden rounded-md bg-white/5"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={`https://i.ytimg.com/vi/${track.youtube_video_id}/hqdefault.jpg`}
+                  alt=""
+                  className="h-full w-full object-cover transition group-hover:scale-105"
+                />
+              </button>
               <p className="mt-1.5 truncate text-xs text-white/60">{track.title}</p>
-              {playingId === track.id && (
-                // 権利元が埋め込み表示を無効化している動画は埋め込みプレイヤーが
-                // 再生できずエラー表示になる(こちらでは検知・回避できない)ため、
-                // 常にYouTube本体への逃げ道リンクを添えておく
-                <a
-                  href={`https://www.youtube.com/watch?v=${track.youtube_video_id}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="mt-1 block text-[11px] text-white/40 hover:text-white/70"
-                >
-                  再生できない場合はYouTubeで見る ↗
-                </a>
-              )}
             </div>
           ))}
+        </div>
+      )}
+
+      {playingTrack && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+          onClick={() => setPlayingId(null)}
+        >
+          <div className="relative w-full max-w-3xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between pb-2">
+              <p className="truncate text-sm text-white/70">{playingTrack.title}</p>
+              <button
+                type="button"
+                onClick={() => setPlayingId(null)}
+                className="shrink-0 pl-4 text-2xl leading-none text-white/40 hover:text-white/80"
+                aria-label="閉じる"
+              >
+                ×
+              </button>
+            </div>
+            <div className="aspect-video overflow-hidden rounded-md bg-black">
+              <iframe
+                src={`https://www.youtube.com/embed/${playingTrack.youtube_video_id}`}
+                title={`${albumTitle} - ${playingTrack.title}`}
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+                loading="lazy"
+                className="h-full w-full"
+              />
+            </div>
+            {/* 権利元が埋め込み表示を無効化している動画は埋め込みプレイヤーが再生できず
+             * エラー表示になる(こちらでは検知・回避できない)ため、常にYouTube本体への
+             * 逃げ道リンクを添えておく */}
+            <a
+              href={`https://www.youtube.com/watch?v=${playingTrack.youtube_video_id}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-2 inline-block text-xs text-white/40 hover:text-white/70"
+            >
+              再生できない場合はYouTubeで見る ↗
+            </a>
+          </div>
         </div>
       )}
     </div>
