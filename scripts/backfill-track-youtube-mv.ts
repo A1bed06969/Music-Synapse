@@ -70,6 +70,11 @@ async function fetchTracksMissingMv(supabase: AdminClient): Promise<TrackRow[]> 
       .range(offset, offset + pageSize - 1)
     const page = (data ?? []) as TrackRow[]
     rows.push(...page)
+    // DB全体で84万件超あり、無進捗だと固まって見える(実際にユーザーから
+    // 報告があった)ため、1万件ごとに進捗を出す
+    if (rows.length % 10000 < pageSize) {
+      console.log(`  未設定トラックを読み込み中... ${rows.length}件`)
+    }
     if (page.length < pageSize) break
     offset += pageSize
   }
@@ -205,8 +210,17 @@ async function processArtist(supabase: AdminClient, target: TargetArtist): Promi
 }
 
 async function main() {
+  // YouTube検索まで進んでから鍵未設定に気付くと、その前段の全件読み込み分の時間が
+  // 無駄になるため、起動直後に検証する
+  if (!process.env.YOUTUBE_API_KEY) {
+    console.error('YOUTUBE_API_KEY が設定されていません。.env.local に追加してください。')
+    process.exitCode = 1
+    return
+  }
+
   const supabase = createAdminClient()
 
+  console.log('対象アーティストを集計中(トラック件数が多いため数十秒〜数分かかります)...')
   const allTargets = await buildTargetArtists(supabase)
   const targets = LIMIT ? allTargets.slice(0, LIMIT) : allTargets
 
