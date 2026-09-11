@@ -1,0 +1,265 @@
+// scripts/backfill-track-youtube-mv.ts
+//
+// トラックのtrack.youtube_video_id(公式MV)を、YouTubeから自動特定してバックフィルする。
+//
+// 「1曲ごとに検索」はYouTube Data API v3のsearch.listが1回100ユニット(無料枠は1日
+// 10,000ユニット=100回分)と高コストなため採用しない。代わりに「1アーティストごとに
+// 公式チャンネルを特定し、そのチャンネルの全アップロード動画タイトルを取得して
+// ローカルで照合する」方式にする。search.listはアーティスト単位で1回(100ユニット)
+// だけ消費し、以降のチャンネル詳細取得・動画一覧取得は合計でも数ユニットしかかからない
+// ため、1アーティストに何曲あっても実質1人分のコストで済む
+// (2026-09-11のbrainstormingで確定。DB全体で847,718トラックが未設定・6,887アーティスト
+// いるため、全トラック個別検索は無料枠で8,000日以上かかる計算だったが、アーティスト単位
+// なら1日100人分=約70日で全アーティストを一巡できる)。
+//
+// 処理フロー(アーティスト単位、未設定トラックが1件以上あるアーティストを対象):
+//   1. search.list(type=channel)でアーティスト名から候補チャンネルを検索(100ユニット)。
+//      「(アーティスト名) - Topic」という YouTube自動生成チャンネル(音源のみ、本人運営
+//      ではない)は候補から除外する
+//   2. channels.listで候補の登録者数・アップロード一覧プレイリストIDを取得(1ユニット)
+//   3. Geminiに候補一覧を渡し、「本人の公式チャンネルか」を判定させる。確信度が
+//      CHANNEL_CONFIDENCE_THRESHOLD未満、または候補が0件ならそのアーティストは
+//      スキップ(channel_ambiguous/no_channelとしてログし、次回実行時は再検索しない)
+//   4. 確定したチャンネルの全動画タイトルをplaylistItems.listで取得(50件ごとに1ユニット)
+//   5. このアーティストの未設定トラックそれぞれについて、utils/youtubeMvMatch.tsの
+//      ローカル照合(Lyric/Live/Cover等の別バージョンを除外した上でタイトル一致)を行い、
+//      確信を持てたものだけtrack.youtube_video_idを更新する
+//   6. 結果(チャンネル特定の成否・マッチ件数)をyoutube_mv_backfill_logに1アーティスト
+//      1行で記録する。既にログがあるアーティストは次回実行時にスキップする
+//      (同じアーティストへの再検索でユニットを浪費しないため)
+//
+// 実行方法:
+//   npx tsx --env-file=.env.local scripts/backfill-track-youtube-mv.ts [--limit=N]
+// --limitは処理するアーティスト数(1人あたり約101ユニット消費。無料枠1日10,000
+// ユニットに収めるには --limit=90 程度を目安にする)。省略時は対象アーティスト全員を
+// 処理しようとするため、無料枠を超えてAPIエラーになるまで進む点に注意。
+import { createAdminClient } from '@/utils/Supabase/admin'
+import {
+  searchChannelsByArtistName,
+  fetchChannelDetails,
+  fetchUploadedVideos,
+} from '@/utils/youtubeChannelSearch'
+import { judgeYoutubeChannelWithGemini } from '@/utils/geminiYoutubeChannelMatch'
+import { findBestMvMatch } from '@/utils/youtubeMvMatch'
+
+type AdminClient = ReturnType<typeof createAdminClient>
+
+const CHANNEL_CONFIDENCE_THRESHOLD = 0.85
+
+const limitArg = process.argv.find((a) => a.startsWith('--limit='))
+const LIMIT = limitArg ? Number(limitArg.split('=')[1]) : undefined
+
+type TrackRow = { id: string; artist_id: string; title: string }
+type ArtistRow = { id: string; name: string }
+type TargetArtist = { artist: ArtistRow; tracks: TrackRow[] }
+
+// PostgRESTの1リクエストあたり行数上限(既定1000件)を超えるため、range()で
+// ページングして全件取得する。youtube_video_idが未設定・artist_idが設定済みの
+// トラックだけに絞る(utils/fetchAllRows.tsはフィルタを受け付けないため専用実装)
+async function fetchTracksMissingMv(supabase: AdminClient): Promise<TrackRow[]> {
+  const rows: TrackRow[] = []
+  const pageSize = 1000
+  let offset = 0
+  while (true) {
+    const { data } = await supabase
+      .from('track')
+      .select('id, artist_id, title')
+      .is('youtube_video_id', null)
+      .not('artist_id', 'is', null)
+      .order('id', { ascending: true })
+      .range(offset, offset + pageSize - 1)
+    const page = (data ?? []) as TrackRow[]
+    rows.push(...page)
+    if (page.length < pageSize) break
+    offset += pageSize
+  }
+  return rows
+}
+
+async function fetchAlreadyProcessedArtistIds(supabase: AdminClient): Promise<Set<string>> {
+  const ids = new Set<string>()
+  const pageSize = 1000
+  let offset = 0
+  while (true) {
+    const { data } = await supabase
+      .from('youtube_mv_backfill_log')
+      .select('artist_id')
+      .order('id', { ascending: true })
+      .range(offset, offset + pageSize - 1)
+    const page = (data ?? []) as { artist_id: string }[]
+    for (const row of page) ids.add(row.artist_id)
+    if (page.length < pageSize) break
+    offset += pageSize
+  }
+  return ids
+}
+
+async function fetchArtistNames(supabase: AdminClient, artistIds: string[]): Promise<Map<string, string>> {
+  const names = new Map<string, string>()
+  for (let i = 0; i < artistIds.length; i += 500) {
+    const { data } = await supabase.from('artist').select('id, name').in('id', artistIds.slice(i, i + 500))
+    for (const row of (data ?? []) as ArtistRow[]) names.set(row.id, row.name)
+  }
+  return names
+}
+
+/** 未設定トラックを1件以上持つアーティストを、未設定トラック数の多い順に返す
+ * (1アーティストあたりのAPIコストが一定のため、件数が多いアーティストを先に
+ * 処理した方が同じユニット消費で多くのトラックを埋められる)。既にログ済みの
+ * アーティストは対象外にする(同じ検索を繰り返さない)。 */
+async function buildTargetArtists(supabase: AdminClient): Promise<TargetArtist[]> {
+  const [missingTracks, processedArtistIds] = await Promise.all([
+    fetchTracksMissingMv(supabase),
+    fetchAlreadyProcessedArtistIds(supabase),
+  ])
+
+  const tracksByArtist = new Map<string, TrackRow[]>()
+  for (const t of missingTracks) {
+    if (processedArtistIds.has(t.artist_id)) continue
+    const list = tracksByArtist.get(t.artist_id) ?? []
+    list.push(t)
+    tracksByArtist.set(t.artist_id, list)
+  }
+
+  const artistIds = [...tracksByArtist.keys()].sort(
+    (a, b) => (tracksByArtist.get(b)?.length ?? 0) - (tracksByArtist.get(a)?.length ?? 0)
+  )
+  const names = await fetchArtistNames(supabase, artistIds)
+
+  return artistIds
+    .filter((id) => names.has(id))
+    .map((id) => ({ artist: { id, name: names.get(id)! }, tracks: tracksByArtist.get(id)! }))
+}
+
+type LogInsert = {
+  artist_id: string
+  artist_name: string
+  status: 'matched' | 'no_channel' | 'channel_ambiguous' | 'error'
+  resolved_channel_id?: string | null
+  resolved_channel_title?: string | null
+  channel_confidence?: number | null
+  channel_reasoning?: string | null
+  tracks_total: number
+  tracks_matched?: number
+}
+
+async function processArtist(supabase: AdminClient, target: TargetArtist): Promise<LogInsert> {
+  const { artist, tracks } = target
+  const baseLog = { artist_id: artist.id, artist_name: artist.name, tracks_total: tracks.length }
+
+  const channelCandidates = await searchChannelsByArtistName(artist.name)
+  if (channelCandidates.length === 0) {
+    return { ...baseLog, status: 'no_channel' }
+  }
+
+  const details = await fetchChannelDetails(channelCandidates.map((c) => c.channelId))
+  const detailedCandidates = channelCandidates
+    .map((c) => details.get(c.channelId))
+    .filter((d): d is NonNullable<typeof d> => d !== undefined)
+
+  if (detailedCandidates.length === 0) {
+    return { ...baseLog, status: 'no_channel' }
+  }
+
+  const judgement = await judgeYoutubeChannelWithGemini(artist.name, detailedCandidates)
+  if (judgement.channelIndex === null || judgement.confidence < CHANNEL_CONFIDENCE_THRESHOLD) {
+    return {
+      ...baseLog,
+      status: 'channel_ambiguous',
+      channel_confidence: judgement.confidence,
+      channel_reasoning: judgement.reasoning,
+    }
+  }
+
+  const chosenChannel = detailedCandidates[judgement.channelIndex]
+  if (!chosenChannel.uploadsPlaylistId) {
+    return {
+      ...baseLog,
+      status: 'channel_ambiguous',
+      resolved_channel_id: chosenChannel.channelId,
+      resolved_channel_title: chosenChannel.title,
+      channel_confidence: judgement.confidence,
+      channel_reasoning: `${judgement.reasoning}(アップロード一覧を取得できませんでした)`,
+    }
+  }
+
+  const videos = await fetchUploadedVideos(chosenChannel.uploadsPlaylistId)
+
+  let matchedCount = 0
+  for (const track of tracks) {
+    const match = findBestMvMatch(track.title, videos)
+    if (!match) continue
+    const { error } = await supabase.from('track').update({ youtube_video_id: match.videoId }).eq('id', track.id)
+    if (!error) matchedCount += 1
+  }
+
+  return {
+    ...baseLog,
+    status: 'matched',
+    resolved_channel_id: chosenChannel.channelId,
+    resolved_channel_title: chosenChannel.title,
+    channel_confidence: judgement.confidence,
+    channel_reasoning: judgement.reasoning,
+    tracks_matched: matchedCount,
+  }
+}
+
+async function main() {
+  const supabase = createAdminClient()
+
+  const allTargets = await buildTargetArtists(supabase)
+  const targets = LIMIT ? allTargets.slice(0, LIMIT) : allTargets
+
+  if (targets.length === 0) {
+    console.log('対象のアーティストはいません。')
+    return
+  }
+  console.log(`対象: ${targets.length}アーティスト(全候補: ${allTargets.length}人)\n`)
+
+  let matchedArtists = 0
+  let noChannel = 0
+  let ambiguous = 0
+  let errors = 0
+  let totalTracksMatched = 0
+
+  for (const [index, target] of targets.entries()) {
+    console.log(`[${index + 1}/${targets.length}] ${target.artist.name}(未設定${target.tracks.length}曲)`)
+    let result: LogInsert
+    try {
+      result = await processArtist(supabase, target)
+    } catch (err) {
+      console.log(`  ❌ エラー: ${(err as Error).message}`)
+      result = {
+        artist_id: target.artist.id,
+        artist_name: target.artist.name,
+        tracks_total: target.tracks.length,
+        status: 'error',
+        channel_reasoning: (err as Error).message.slice(0, 500),
+      }
+    }
+
+    if (result.status === 'matched') {
+      matchedArtists += 1
+      totalTracksMatched += result.tracks_matched ?? 0
+      console.log(`  ✅ ${result.resolved_channel_title} → ${result.tracks_matched}/${target.tracks.length}曲マッチ`)
+    } else if (result.status === 'no_channel') {
+      noChannel += 1
+      console.log('  ⚠️ チャンネルが見つかりませんでした')
+    } else if (result.status === 'channel_ambiguous') {
+      ambiguous += 1
+      console.log(`  ⚠️ チャンネル確信度不足(${Math.round((result.channel_confidence ?? 0) * 100)}%): ${result.channel_reasoning}`)
+    } else {
+      errors += 1
+    }
+
+    await supabase.from('youtube_mv_backfill_log').insert(result)
+  }
+
+  console.log('\n--- 結果サマリー ---')
+  console.log(`チャンネル特定・反映: ${matchedArtists}アーティスト(${totalTracksMatched}曲)`)
+  console.log(`チャンネル見つからず: ${noChannel}アーティスト`)
+  console.log(`確信度不足でスキップ: ${ambiguous}アーティスト`)
+  console.log(`エラー: ${errors}アーティスト`)
+}
+
+main()
