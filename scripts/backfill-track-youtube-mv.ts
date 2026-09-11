@@ -53,6 +53,16 @@ type TrackRow = { id: string; artist_id: string; title: string }
 type ArtistRow = { id: string; name: string }
 type TargetArtist = { artist: ArtistRow; tracks: TrackRow[] }
 
+// クラシック/オーケストラ系は「曲数は多いが公式MVがほぼ存在しない」実態が
+// 実行結果(Royal Philharmonic Orchestra等、0/200曲超マッチ)から確認できたため、
+// 無料枠を先に使い切らせないよう後回しにする(除外はしない、後回しのみ)。
+// ジャンルタグ(genre.name)は表記ゆれ・重複が多いカタログのため正規表現で判定する。
+const CLASSICAL_GENRE_PATTERN = /classical|orchestr/i
+// ジャンルタグだけでは「名前はOrchestra/Symphonyだがジャンルは別(例: Jazz)」の
+// ような楽団を取りこぼす(実際にArtie Shaw and His Orchestraがこのケースだった)ため、
+// アーティスト名のパターンでも判定する
+const CLASSICAL_NAME_PATTERN = /orchestra|symphony|philharmonic|オーケストラ|交響楽団|管弦楽団|フィルハーモニー/i
+
 // PostgRESTの1リクエストあたり行数上限(既定1000件)を超えるため、range()で
 // ページングして全件取得する。youtube_video_idが未設定・artist_idが設定済みの
 // トラックだけに絞る(utils/fetchAllRows.tsはフィルタを受け付けないため専用実装)
@@ -108,14 +118,38 @@ async function fetchArtistNames(supabase: AdminClient, artistIds: string[]): Pro
   return names
 }
 
-/** 未設定トラックを1件以上持つアーティストを、未設定トラック数の多い順に返す
- * (1アーティストあたりのAPIコストが一定のため、件数が多いアーティストを先に
- * 処理した方が同じユニット消費で多くのトラックを埋められる)。既にログ済みの
+/** ジャンルタグがクラシック/オーケストラ系(CLASSICAL_GENRE_PATTERN)に該当する
+ * アーティストIDの集合を返す。genreテーブル自体は小さいためまず全件取得し、
+ * 該当するgenre_idだけでartist_genreを絞り込む。 */
+async function fetchClassicalGenreArtistIds(supabase: AdminClient): Promise<Set<string>> {
+  const { data: genres } = await supabase.from('genre').select('id, name')
+  const matchingGenreIds = ((genres ?? []) as { id: string; name: string }[])
+    .filter((g) => CLASSICAL_GENRE_PATTERN.test(g.name))
+    .map((g) => g.id)
+  if (matchingGenreIds.length === 0) return new Set()
+
+  const artistIds = new Set<string>()
+  for (let i = 0; i < matchingGenreIds.length; i += 500) {
+    const { data } = await supabase
+      .from('artist_genre')
+      .select('artist_id')
+      .in('genre_id', matchingGenreIds.slice(i, i + 500))
+    for (const row of (data ?? []) as { artist_id: string }[]) artistIds.add(row.artist_id)
+  }
+  return artistIds
+}
+
+/** 未設定トラックを1件以上持つアーティストを、「クラシック/オーケストラ系を後回し」
+ * →「その中で未設定トラック数が多い順」の2段階で並べて返す(1アーティストあたりの
+ * APIコストが一定のため、件数が多いアーティストを先に処理した方が同じユニット消費で
+ * 多くのトラックを埋められるが、クラシック/オーケストラ系は曲数が多い割に公式MVが
+ * ほぼ存在しないため、無料枠を先に使い切らせないよう優先度を下げる)。既にログ済みの
  * アーティストは対象外にする(同じ検索を繰り返さない)。 */
 async function buildTargetArtists(supabase: AdminClient): Promise<TargetArtist[]> {
-  const [missingTracks, processedArtistIds] = await Promise.all([
+  const [missingTracks, processedArtistIds, classicalGenreArtistIds] = await Promise.all([
     fetchTracksMissingMv(supabase),
     fetchAlreadyProcessedArtistIds(supabase),
+    fetchClassicalGenreArtistIds(supabase),
   ])
 
   const tracksByArtist = new Map<string, TrackRow[]>()
@@ -126,12 +160,21 @@ async function buildTargetArtists(supabase: AdminClient): Promise<TargetArtist[]
     tracksByArtist.set(t.artist_id, list)
   }
 
-  const artistIds = [...tracksByArtist.keys()].sort(
-    (a, b) => (tracksByArtist.get(b)?.length ?? 0) - (tracksByArtist.get(a)?.length ?? 0)
-  )
+  const artistIds = [...tracksByArtist.keys()]
   const names = await fetchArtistNames(supabase, artistIds)
 
-  return artistIds
+  const isDeprioritized = (id: string): boolean => {
+    const name = names.get(id) ?? ''
+    return classicalGenreArtistIds.has(id) || CLASSICAL_NAME_PATTERN.test(name)
+  }
+
+  const sortedIds = artistIds.sort((a, b) => {
+    const deprioritizedDiff = Number(isDeprioritized(a)) - Number(isDeprioritized(b))
+    if (deprioritizedDiff !== 0) return deprioritizedDiff
+    return (tracksByArtist.get(b)?.length ?? 0) - (tracksByArtist.get(a)?.length ?? 0)
+  })
+
+  return sortedIds
     .filter((id) => names.has(id))
     .map((id) => ({ artist: { id, name: names.get(id)! }, tracks: tracksByArtist.get(id)! }))
 }
