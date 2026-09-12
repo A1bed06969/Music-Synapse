@@ -621,7 +621,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 - Create: `scripts/dedupe-artists.ts`
 
 **Interfaces:**
-- Consumes: `pickCanonical`/`ArtistCandidate`(Task 1)、`ArtistCandidate`型そのまま使用。
+- Consumes: `pickCanonical`/`secondaryDataScore`/`ArtistCandidate`(Task 1)、`ArtistCandidate`型そのまま使用。
 - Produces: このタスクではdry-run専用のレポート出力のみ(後続タスクで`--execute`を追加する)。`main()`という名前のエントリポイント関数をこのファイルの末尾に持つ(Task 5がこのファイルを直接拡張する)。
 
 - [ ] **Step 1: スクリプトを作成する**
@@ -644,7 +644,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 //   npx tsx --env-file=.env.local scripts/dedupe-artists.ts --dry-run   (既定、書き込みなし)
 //   npx tsx --env-file=.env.local scripts/dedupe-artists.ts --execute
 import { createAdminClient } from '@/utils/Supabase/admin'
-import { pickCanonical, type ArtistCandidate } from '@/utils/artistDedupCanonical'
+import { pickCanonical, secondaryDataScore, type ArtistCandidate } from '@/utils/artistDedupCanonical'
 
 type AdminClient = ReturnType<typeof createAdminClient>
 
@@ -788,6 +788,28 @@ async function buildCandidates(supabase: AdminClient, artistRows: ArtistRow[]): 
   return candidates
 }
 
+/** 本体候補がどの判定基準(track数/album数/副次データスコア/id比較)で
+ * 決まったかを人間が読める形で説明する(スペック「安全確認」で必須の
+ * 選定理由の報告)。pickCanonicalと同じ優先順位を、残りの候補の中の
+ * 次点(runner-up)と比較することで判定する。 */
+function explainCanonicalReason(canonical: ArtistCandidate, all: ArtistCandidate[]): string {
+  const others = all.filter((c) => c.id !== canonical.id)
+  if (others.length === 0) return '重複なし'
+  const runnerUp = pickCanonical(others)
+  if (canonical.trackCount !== runnerUp.trackCount) {
+    return `track数最大(${canonical.trackCount} vs 次点${runnerUp.trackCount})`
+  }
+  if (canonical.albumCount !== runnerUp.albumCount) {
+    return `track数同数のためalbum数で決定(${canonical.albumCount} vs 次点${runnerUp.albumCount})`
+  }
+  const canonicalScore = secondaryDataScore(canonical)
+  const runnerUpScore = secondaryDataScore(runnerUp)
+  if (canonicalScore !== runnerUpScore) {
+    return `track・album数同数のため副次データスコアで決定(${canonicalScore} vs 次点${runnerUpScore})`
+  }
+  return 'track・album数・副次データスコア全て同数のためid文字列比較で決定'
+}
+
 const DRY_RUN = !process.argv.includes('--execute')
 
 async function main() {
@@ -821,7 +843,9 @@ async function main() {
     const rows = group.artistIds.map((id) => artistById.get(id)!).filter(Boolean)
     const candidates = await buildCandidates(supabase, rows)
     const canonical = pickCanonical(candidates)
-    console.log(`  本体候補: ${canonical.id}(track=${canonical.trackCount}, album=${canonical.albumCount})`)
+    console.log(
+      `  本体候補: ${canonical.id}(track=${canonical.trackCount}, album=${canonical.albumCount}) — 選定理由: ${explainCanonicalReason(canonical, candidates)}`
+    )
     for (const c of candidates) {
       if (c.id === canonical.id) continue
       console.log(
@@ -867,7 +891,7 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
 
 ```ts
 import { createAdminClient } from '@/utils/Supabase/admin'
-import { pickCanonical, type ArtistCandidate } from '@/utils/artistDedupCanonical'
+import { pickCanonical, secondaryDataScore, type ArtistCandidate } from '@/utils/artistDedupCanonical'
 import { repointForeignKeys, type FkReference } from '@/utils/fkRepoint'
 ```
 
@@ -1045,7 +1069,9 @@ async function mergeSecondaryData(supabase: AdminClient, canonicalId: string, du
     const rows = group.artistIds.map((id) => artistById.get(id)!).filter(Boolean)
     const candidates = await buildCandidates(supabase, rows)
     const canonical = pickCanonical(candidates)
-    console.log(`  本体候補: ${canonical.id}(track=${canonical.trackCount}, album=${canonical.albumCount})`)
+    console.log(
+      `  本体候補: ${canonical.id}(track=${canonical.trackCount}, album=${canonical.albumCount}) — 選定理由: ${explainCanonicalReason(canonical, candidates)}`
+    )
 
     for (const c of candidates) {
       if (c.id === canonical.id) continue
@@ -1206,8 +1232,10 @@ async function mergeAlbumsAndTracks(supabase: AdminClient, canonicalArtistId: st
   const albumResult = matchAlbums((canonicalAlbums ?? []) as AlbumFullRow[], (duplicateAlbums ?? []) as AlbumFullRow[])
 
   let tracksMatched = 0
+  let tracksFieldFilled = 0
   let tracksReassigned = 0
   const trackAmbiguousTitles: string[] = []
+  const reassignedTrackTitles: string[] = []
   const matchedDuplicateAlbumIds = new Set(albumResult.matched.map((m) => m.duplicateId))
 
   for (const pair of albumResult.matched) {
@@ -1223,13 +1251,15 @@ async function mergeAlbumsAndTracks(supabase: AdminClient, canonicalArtistId: st
 
     for (const trackPair of trackResult.matched) {
       tracksMatched++
-      await mergeMatchedTrack(supabase, trackPair.canonicalId, trackPair.duplicateId, execute)
+      const mergeResult = await mergeMatchedTrack(supabase, trackPair.canonicalId, trackPair.duplicateId, execute)
+      if (mergeResult.filled.length > 0) tracksFieldFilled++
     }
 
     const matchedDuplicateTrackIds = new Set(trackResult.matched.map((m) => m.duplicateId))
     const unmatchedTracks = (duplicateTracks ?? []).filter((t) => !matchedDuplicateTrackIds.has(t.id))
     for (const t of unmatchedTracks) {
       tracksReassigned++
+      reassignedTrackTitles.push(t.title)
       if (execute) await supabase.from('track').update({ artist_id: canonicalArtistId }).eq('id', t.id)
     }
 
@@ -1255,7 +1285,9 @@ async function mergeAlbumsAndTracks(supabase: AdminClient, canonicalArtistId: st
     ambiguousAlbumTitles: albumResult.ambiguousTitles,
     reassignedAlbums: unmatchedAlbums.map((a) => a.title),
     tracksMatched,
+    tracksFieldFilled,
     tracksReassigned,
+    reassignedTrackTitles,
     trackAmbiguousTitles,
   }
 }
@@ -1269,16 +1301,23 @@ Task 5 Step 2で書いた`try`ブロックの中に、`const failedFks = result.
         if (group.kind === 'severe') {
           const albumTrackResult = await mergeAlbumsAndTracks(supabase, canonical.id, c.id, !DRY_RUN)
           console.log(
-            `    アルバム統合: ${albumTrackResult.matchedAlbums}件マッチ / トラック統合: ${albumTrackResult.tracksMatched}件マッチ・${albumTrackResult.tracksReassigned}件は本体へ再割り当て`
+            `    アルバム統合: ${albumTrackResult.matchedAlbums}件マッチ / トラック統合: ${albumTrackResult.tracksMatched}件マッチ(うちフィールド補完${albumTrackResult.tracksFieldFilled}件)・${albumTrackResult.tracksReassigned}件は本体へ再割り当て`
           )
           if (albumTrackResult.ambiguousAlbumTitles.length > 0) {
-            console.log(`    ⚠️ あいまいで未対応のアルバム: ${albumTrackResult.ambiguousAlbumTitles.join(', ')}`)
+            console.log(
+              `    ⚠️ あいまいで未対応のアルバム(所属: 本体${canonical.id}/重複${c.id}): ${albumTrackResult.ambiguousAlbumTitles.join(', ')}`
+            )
           }
           if (albumTrackResult.trackAmbiguousTitles.length > 0) {
-            console.log(`    ⚠️ あいまいで未対応のトラック: ${albumTrackResult.trackAmbiguousTitles.join(', ')}`)
+            console.log(
+              `    ⚠️ あいまいで未対応のトラック(所属: 本体${canonical.id}/重複${c.id}): ${albumTrackResult.trackAmbiguousTitles.join(', ')}`
+            )
           }
           if (albumTrackResult.reassignedAlbums.length > 0) {
             console.log(`    再割り当てされたアルバム: ${albumTrackResult.reassignedAlbums.join(', ')}`)
+          }
+          if (albumTrackResult.reassignedTrackTitles.length > 0) {
+            console.log(`    再割り当てされたトラック: ${albumTrackResult.reassignedTrackTitles.join(', ')}`)
           }
         }
 ```
@@ -1288,7 +1327,7 @@ Task 5 Step 2で既に追加済みの「重複artist行を削除する」ロジ�
 - [ ] **Step 4: dry-runで実データに対して再実行し、内容を確認する**
 
 Run: `npx tsx --env-file=.env.local scripts/dedupe-artists.ts --dry-run`
-Expected: スガ シカオ・坂本冬美・ワン・ダイレクションそれぞれについて、アルバム・トラックのマッチ件数、あいまいで未対応の一覧、再割り当てされるアルバムの一覧が表示される。スガ シカオの4行(477曲同士)については、ほぼ全曲がマッチすることを確認する。この出力を見て、明らかにおかしい対応付け(例: 全く違う曲同士がマッチしている)が無いか目視で確認すること。
+Expected: スガ シカオ・坂本冬美・ワン・ダイレクションそれぞれについて、アルバム・トラックのマッチ件数、フィールド補完が発生したトラック件数、あいまいで未対応のアルバム・トラックの一覧(所属artist_id付き)、再割り当てされるアルバム・トラックの一覧が表示される。スガ シカオの4行(477曲同士)については、ほぼ全曲がマッチすることを確認する。この出力を見て、明らかにおかしい対応付け(例: 全く違う曲同士がマッチしている)が無いか目視で確認すること。
 
 - [ ] **Step 5: Commit**
 
