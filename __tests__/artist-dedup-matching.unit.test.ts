@@ -55,6 +55,28 @@ describe('matchAlbums', () => {
       ]
     )
   })
+
+  test('flags a title as ambiguous when it appears multiple times on canonical side even if absent on duplicate side', () => {
+    const canonical: AlbumRow[] = [
+      { id: 'c1', title: 'Best' },
+      { id: 'c2', title: 'Best' },
+    ]
+    const duplicate: AlbumRow[] = [{ id: 'd1', title: 'Other' }]
+    const result = matchAlbums(canonical, duplicate)
+    assert.deepEqual(result.matched, [])
+    assert.deepEqual(result.ambiguousTitles, ['Best'])
+  })
+
+  test('flags a title as ambiguous when it appears multiple times on duplicate side even if absent on canonical side', () => {
+    const canonical: AlbumRow[] = [{ id: 'c1', title: 'Other' }]
+    const duplicate: AlbumRow[] = [
+      { id: 'd1', title: 'Best' },
+      { id: 'd2', title: 'Best' },
+    ]
+    const result = matchAlbums(canonical, duplicate)
+    assert.deepEqual(result.matched, [])
+    assert.deepEqual(result.ambiguousTitles, ['Best'])
+  })
 })
 
 describe('matchTracks', () => {
@@ -110,5 +132,30 @@ describe('matchTracks', () => {
       ]
     )
     assert.deepEqual(result.ambiguousTitles, [])
+  })
+
+  test('does not double-match when canonical side has duplicate disc/track_no tuples in tier 1', () => {
+    const canonical: TrackRow[] = [
+      { id: 'c1', title: 'A', disc_number: 1, track_no: 1 },
+      { id: 'c2', title: 'A', disc_number: 1, track_no: 1 },
+    ]
+    const duplicate: TrackRow[] = [{ id: 'd1', title: 'A', disc_number: 1, track_no: 1 }]
+    const result = matchTracks(canonical, duplicate)
+    // Tier 1 should NOT match because the tuple (A,1,1) appears 2x on canonical and 1x on duplicate
+    // Both canonical tracks should fall through to tier 2 (title-only), where 'A' is ambiguous
+    assert.deepEqual(result.matched, [])
+    assert.deepEqual(result.ambiguousTitles, ['A'])
+  })
+
+  test('flags a title as ambiguous in tier 2 when it appears multiple times on one side only', () => {
+    const canonical: TrackRow[] = [
+      { id: 'c1', title: 'A', disc_number: null, track_no: null },
+      { id: 'c2', title: 'A', disc_number: null, track_no: null },
+    ]
+    const duplicate: TrackRow[] = [{ id: 'd1', title: 'B', disc_number: null, track_no: null }]
+    const result = matchTracks(canonical, duplicate)
+    // 'A' appears 2x on canonical, 0x on duplicate, so it is ambiguous
+    assert.deepEqual(result.matched, [])
+    assert.deepEqual(result.ambiguousTitles, ['A'])
   })
 })
