@@ -18,6 +18,22 @@ export type YoutubeChannelDetail = YoutubeChannelCandidate & {
   uploadsPlaylistId: string | null
 }
 
+/** YouTube Data APIの日次クォータ超過(429)を表す専用エラー。呼び出し側
+ * (scripts/backfill-track-youtube-mv.ts)がこれを他のエラーと区別できるように
+ * するためだけに存在する。クォータ超過は「このアーティストの処理に失敗した」
+ * のではなく「そもそも試せていない」状態なので、youtube_mv_backfill_logに
+ * 記録して次回スキップ対象にしてはいけない(実際に73件を誤って永久スキップ
+ * 扱いにしてしまった不具合があり、その修正として導入した)。 */
+export class YoutubeQuotaExceededError extends Error {}
+
+async function throwForResponse(res: Response, callLabel: string): Promise<never> {
+  const text = await res.text().catch(() => '')
+  if (res.status === 429) {
+    throw new YoutubeQuotaExceededError(`YouTube ${callLabel} error: 429 ${text.slice(0, 300)}`)
+  }
+  throw new Error(`YouTube ${callLabel} error: ${res.status} ${text.slice(0, 300)}`)
+}
+
 function getApiKey(): string {
   const apiKey = process.env.YOUTUBE_API_KEY
   if (!apiKey) {
@@ -38,10 +54,7 @@ export async function searchChannelsByArtistName(artistName: string, maxResults 
   const apiKey = getApiKey()
   const url = `${API_BASE}/search?part=snippet&type=channel&maxResults=${maxResults}&q=${encodeURIComponent(artistName)}&key=${apiKey}`
   const res = await fetch(url, { signal: AbortSignal.timeout(20000) })
-  if (!res.ok) {
-    const text = await res.text().catch(() => '')
-    throw new Error(`YouTube search.list error: ${res.status} ${text.slice(0, 300)}`)
-  }
+  if (!res.ok) return throwForResponse(res, 'search.list')
   const data = await res.json()
   const items = (data.items ?? []) as {
     id?: { channelId?: string }
@@ -68,10 +81,7 @@ export async function fetchChannelDetails(channelIds: string[]): Promise<Map<str
   const apiKey = getApiKey()
   const url = `${API_BASE}/channels?part=snippet,statistics,contentDetails&id=${channelIds.join(',')}&key=${apiKey}`
   const res = await fetch(url, { signal: AbortSignal.timeout(20000) })
-  if (!res.ok) {
-    const text = await res.text().catch(() => '')
-    throw new Error(`YouTube channels.list error: ${res.status} ${text.slice(0, 300)}`)
-  }
+  if (!res.ok) return throwForResponse(res, 'channels.list')
   const data = await res.json()
   const items = (data.items ?? []) as {
     id?: string
@@ -111,10 +121,7 @@ export async function fetchUploadedVideos(uploadsPlaylistId: string): Promise<Yo
       `${API_BASE}/playlistItems?part=snippet&maxResults=50&playlistId=${uploadsPlaylistId}&key=${apiKey}` +
       (pageToken ? `&pageToken=${pageToken}` : '')
     const res = await fetch(url, { signal: AbortSignal.timeout(20000) })
-    if (!res.ok) {
-      const text = await res.text().catch(() => '')
-      throw new Error(`YouTube playlistItems.list error: ${res.status} ${text.slice(0, 300)}`)
-    }
+    if (!res.ok) return throwForResponse(res, 'playlistItems.list')
     const data = await res.json()
     const items = (data.items ?? []) as { snippet?: { title?: string; resourceId?: { videoId?: string } } }[]
     for (const item of items) {

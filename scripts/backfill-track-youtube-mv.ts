@@ -49,6 +49,7 @@ import {
   searchChannelsByArtistName,
   fetchChannelDetails,
   fetchUploadedVideos,
+  YoutubeQuotaExceededError,
 } from '@/utils/youtubeChannelSearch'
 import { judgeYoutubeChannelWithGemini } from '@/utils/geminiYoutubeChannelMatch'
 import { findBestMvMatch } from '@/utils/youtubeMvMatch'
@@ -459,12 +460,24 @@ async function main() {
   let errors = 0
   let totalTracksMatched = 0
 
+  let quotaExceeded = false
   for (const [index, target] of targets.entries()) {
     console.log(`[${index + 1}/${targets.length}] ${target.artist.name}(未設定${target.tracks.length}曲)`)
     let result: LogInsert
     try {
       result = await processArtist(supabase, target)
     } catch (err) {
+      if (err instanceof YoutubeQuotaExceededError) {
+        // クォータ超過は「このアーティストの処理に失敗した」のではなく「そもそも
+        // 試せていない」状態なので、ログに書かずここで打ち切る(書いてしまうと
+        // 次回実行時にこのアーティストが永久にスキップされてしまう。実際に
+        // 2026-09-12の実行で73アーティストがこの不具合で誤って永久スキップ
+        // 扱いになった)。以降の残り件数もどうせ全て同じ理由で失敗するだけなので
+        // 無駄なAPI呼び出しをせずここでループを抜ける。
+        console.log('  ⏸️ YouTube検索クォータを使い切りました。このアーティストと以降は次回に持ち越します。')
+        quotaExceeded = true
+        break
+      }
       console.log(`  ❌ エラー: ${(err as Error).message}`)
       result = {
         artist_id: target.artist.id,
@@ -497,6 +510,9 @@ async function main() {
   console.log(`チャンネル見つからず: ${noChannel}アーティスト`)
   console.log(`確信度不足でスキップ: ${ambiguous}アーティスト`)
   console.log(`エラー: ${errors}アーティスト`)
+  if (quotaExceeded) {
+    console.log('クォータ超過のため途中で打ち切りました(未処理分はログに残していないので次回そのまま再開できます)')
+  }
 }
 
 main()
