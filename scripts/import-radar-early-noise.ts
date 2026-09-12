@@ -71,6 +71,18 @@ function normalizeArtistName(name: string): string {
 }
 
 async function resolveArtistId(supabase: ReturnType<typeof createAdminClient>, name: string): Promise<{ id: string; matched: boolean }> {
+  // 検索より先に、既に実データ登録済み(apple_music_artist_id有り)の同名
+  // アーティストが無いか確認する(このスクリプトの過去実行時、これを怠った
+  // ために重複行を大量に作ってしまった反省を反映。scripts/import-nme-100.tsの
+  // 同種チェックと対になる)
+  const { data: existingReal } = await supabase
+    .from('artist')
+    .select('id')
+    .eq('name', name)
+    .not('apple_music_artist_id', 'is', null)
+    .maybeSingle()
+  if (existingReal) return { id: existingReal.id, matched: true }
+
   let candidates: Awaited<ReturnType<typeof searchArtist>>
   try {
     candidates = await searchArtist(name)
