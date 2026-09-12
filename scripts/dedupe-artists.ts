@@ -299,7 +299,10 @@ const TRACK_MERGE_FIELDS = [
 /** 対応付けられたトラックペアについて、本体側がnullの項目だけ重複側の値を
  * コピーする(スペック「6. マッチしたトラックのフィールド補完」)。その後、
  * トラックを参照する外部キーを本体トラックへ付け替えてから重複トラックを
- * 削除する(execute時のみ)。 */
+ * 削除する(execute時のみ)。 途中の書き込みが失敗した場合、後続の削除まで
+ * 進めるとデータを黙って失ってしまう(補完前の重複トラックを消してしまう)
+ * ため、本体側の更新に失敗したらそのトラックペアの処理を打ち切り、重複
+ * トラックは削除しない(スペック「データを黙って失わない」の要請)。 */
 async function mergeMatchedTrack(supabase: AdminClient, canonicalTrackId: string, duplicateTrackId: string, execute: boolean) {
   const [{ data: canonicalTrack }, { data: duplicateTrack }] = await Promise.all([
     supabase.from('track').select(TRACK_MERGE_FIELDS.join(',')).eq('id', canonicalTrackId).single(),
@@ -324,11 +327,29 @@ async function mergeMatchedTrack(supabase: AdminClient, canonicalTrackId: string
     }
   }
   if (execute) {
-    if (Object.keys(patch).length > 0) await supabase.from('track').update(patch).eq('id', canonicalTrackId)
-    await repointForeignKeys(TRACK_FK_REFERENCES, duplicateTrackId, canonicalTrackId, (table, column, fromId, toId) =>
+    if (Object.keys(patch).length > 0) {
+      const { error: updateError } = await supabase.from('track').update(patch).eq('id', canonicalTrackId)
+      if (updateError) {
+        console.warn(`    ⚠️ track(id=${canonicalTrackId})のフィールド補完に失敗しました: ${updateError.message}`)
+        console.warn(`    ⚠️ 重複track(id=${duplicateTrackId})は削除しません(補完に失敗したため)`)
+        return { filled: [] }
+      }
+    }
+    const trackFkOutcomes = await repointForeignKeys(TRACK_FK_REFERENCES, duplicateTrackId, canonicalTrackId, (table, column, fromId, toId) =>
       updateFk(supabase, table, column, fromId, toId, execute)
     )
-    await supabase.from('track').delete().eq('id', duplicateTrackId)
+    const failedTrackFks = trackFkOutcomes.filter((o) => o.status === 'failed')
+    if (failedTrackFks.length > 0) {
+      console.warn(
+        `    ⚠️ track(id=${duplicateTrackId})のFK付け替え失敗: ${failedTrackFks.map((f) => `${f.table}.${f.column}(${f.error})`).join(', ')}`
+      )
+      console.warn(`    ⚠️ 重複track(id=${duplicateTrackId})は削除しません(付け替えに失敗した参照が残っているため)`)
+      return { filled }
+    }
+    const { error: deleteError } = await supabase.from('track').delete().eq('id', duplicateTrackId)
+    if (deleteError) {
+      console.warn(`    ⚠️ 重複track(id=${duplicateTrackId})の削除に失敗しました: ${deleteError.message}`)
+    }
   }
   return { filled }
 }
@@ -371,25 +392,74 @@ async function mergeAlbumsAndTracks(supabase: AdminClient, canonicalArtistId: st
     for (const t of unmatchedTracks) {
       tracksReassigned++
       reassignedTrackTitles.push(t.title)
-      if (execute) await supabase.from('track').update({ artist_id: canonicalArtistId }).eq('id', t.id)
+      if (execute) {
+        const { error } = await supabase.from('track').update({ artist_id: canonicalArtistId }).eq('id', t.id)
+        if (error) console.warn(`    ⚠️ track(id=${t.id})の再割り当てに失敗しました: ${error.message}`)
+      }
     }
 
     if (execute && unmatchedTracks.length === 0) {
-      // アルバムの中身が全てマッチ・削除されたので、アルバム自体を削除する
-      await repointForeignKeys(ALBUM_FK_REFERENCES, pair.duplicateId, pair.canonicalId, (table, column, fromId, toId) =>
+      // アルバムの中身が全てマッチ・削除されたので、アルバム自体を削除する。
+      // FK付け替えに失敗した参照が残っている場合は削除しない(main()の
+      // artist行削除と同じ「失敗したら消さない」方針)。
+      const albumFkOutcomes = await repointForeignKeys(ALBUM_FK_REFERENCES, pair.duplicateId, pair.canonicalId, (table, column, fromId, toId) =>
         updateFk(supabase, table, column, fromId, toId, execute)
       )
-      await supabase.from('album').delete().eq('id', pair.duplicateId)
+      const failedAlbumFks = albumFkOutcomes.filter((o) => o.status === 'failed')
+      if (failedAlbumFks.length > 0) {
+        console.warn(
+          `    ⚠️ album(id=${pair.duplicateId})のFK付け替え失敗: ${failedAlbumFks.map((f) => `${f.table}.${f.column}(${f.error})`).join(', ')}`
+        )
+        console.warn(`    ⚠️ 重複album(id=${pair.duplicateId})は削除しません(付け替えに失敗した参照が残っているため)`)
+      } else {
+        const { error } = await supabase.from('album').delete().eq('id', pair.duplicateId)
+        if (error) console.warn(`    ⚠️ 重複album(id=${pair.duplicateId})の削除に失敗しました: ${error.message}`)
+      }
     } else if (execute && unmatchedTracks.length > 0) {
       // 未マッチのトラックが残っているアルバムは削除せず本体へ付け替える
-      await supabase.from('album').update({ artist_id: canonicalArtistId }).eq('id', pair.duplicateId)
+      const { error } = await supabase.from('album').update({ artist_id: canonicalArtistId }).eq('id', pair.duplicateId)
+      if (error) console.warn(`    ⚠️ album(id=${pair.duplicateId})の再割り当てに失敗しました: ${error.message}`)
     }
   }
 
   const unmatchedAlbums = (duplicateAlbums ?? []).filter((a) => !matchedDuplicateAlbumIds.has(a.id))
   for (const album of unmatchedAlbums) {
-    if (execute) await supabase.from('album').update({ artist_id: canonicalArtistId }).eq('id', album.id)
+    if (execute) {
+      const { error } = await supabase.from('album').update({ artist_id: canonicalArtistId }).eq('id', album.id)
+      if (error) console.warn(`    ⚠️ album(id=${album.id})の再割り当てに失敗しました: ${error.message}`)
+    }
   }
+
+  // ここまでの処理で、マッチしたアルバム内のトラックはマッチ済み(→削除)か
+  // 未マッチ(→本体へ再割り当て済み)のいずれかとして扱われている。しかし
+  // あいまい/未対応のアルバム(unmatchedAlbumsで本体へ付け替えたアルバム自体の
+  // トラック)は上のどのループにも含まれておらず、track.artist_idを個別に
+  // 触っていない。track.artist_idはARTIST_FK_REFERENCESから意図的に除外されて
+  // おり(このスペック参照)、この関数が唯一の付け替え責任を持つ。もしここで
+  // 拾わなければ、重複artist行を削除する際にtrack.artist_idのFK制約
+  // (ON DELETE CASCADE、2026-09-12にDBで確認済み)によってこれらのトラックが
+  // 黙って一緒に削除されてしまう(スペックの「未対応データは削除せず本体へ
+  // 再割り当てする」という核心の保証に反する)。そこで、重複artist_idを
+  // まだ持っている残り全トラック(あいまいなアルバムに属するもの・
+  // album_idを持たない孤立トラックのいずれも含む)を最後にまとめて
+  // 本体へ再割り当てする。updateFkは1テーブル・1カラムの汎用付け替え関数
+  // だが、単発利用にも使えるためここでも流用する(dry-runでは書き込まず
+  // 件数だけ数える)。
+  //
+  // 注意(dry-runでの見え方): dry-runでは上のどの再割り当て/削除も実際には
+  // 書き込まれないため、この時点でupdateFkが数える「artist_id=重複」の件数は
+  // 実行前の状態(=そのduplicateの全track数)をそのまま反映する。つまり
+  // dry-runレポート上のこの件数は、上で報告済みのtracksMatched/tracksReassigned
+  // と重複してカウントされる(--execute時は先行する削除/再割り当てが実際に
+  // 永続化されているため、ここで拾われるのはあいまい/未対応アルバム配下の
+  // トラックのみになり、重複は生じない)。dry-runでの数値の意味は
+  // 「現時点でこの重複artist_idを指しているtrack数」であり、
+  // 「catch-allが正味で救うtrack数」ではない点に注意。
+  const catchAllResult = await updateFk(supabase, 'track', 'artist_id', duplicateArtistId, canonicalArtistId, execute)
+  if (catchAllResult.error) {
+    console.warn(`    ⚠️ track(artist_id=${duplicateArtistId})の再割り当てに失敗しました: ${catchAllResult.error}`)
+  }
+  const tracksReassignedViaCatchAll = catchAllResult.count ?? 0
 
   return {
     matchedAlbums: albumResult.matched.length,
@@ -400,6 +470,7 @@ async function mergeAlbumsAndTracks(supabase: AdminClient, canonicalArtistId: st
     tracksReassigned,
     reassignedTrackTitles,
     trackAmbiguousTitles,
+    tracksReassignedViaCatchAll,
   }
 }
 
@@ -738,6 +809,11 @@ async function main() {
           console.log(
             `    アルバム統合: ${albumTrackResult.matchedAlbums}件マッチ / トラック統合: ${albumTrackResult.tracksMatched}件マッチ(うちフィールド補完${albumTrackResult.tracksFieldFilled}件)・${albumTrackResult.tracksReassigned}件は本体へ再割り当て`
           )
+          if (albumTrackResult.tracksReassignedViaCatchAll > 0) {
+            console.log(
+              `    あいまい/未対応アルバム・孤立トラックの再割り当て(catch-all): ${albumTrackResult.tracksReassignedViaCatchAll}件`
+            )
+          }
           if (albumTrackResult.ambiguousAlbumTitles.length > 0) {
             console.log(
               `    ⚠️ あいまいで未対応のアルバム(所属: 本体${canonical.id}/重複${c.id}): ${albumTrackResult.ambiguousAlbumTitles.join(', ')}`
