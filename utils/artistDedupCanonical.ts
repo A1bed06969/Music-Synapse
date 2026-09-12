@@ -31,15 +31,22 @@ export function secondaryDataScore(c: ArtistCandidate): number {
   )
 }
 
+/** track数→album数→副次データスコア→id文字列の優先順位で2つの候補を比較する
+ * comparator。pickCanonicalの本体選定だけでなく、複数の重複行がある場合に
+ * スカラー項目補完をどの順で処理するか(dedupe-artists.ts参照。スペック
+ * 「優先順位1の重複行から順に見て、最初に見つかった非null値を採用」)にも
+ * 同じ優先順位が必要なため、単独の関数として公開する。 */
+export function compareCanonicalPriority(a: ArtistCandidate, b: ArtistCandidate): number {
+  if (b.trackCount !== a.trackCount) return b.trackCount - a.trackCount
+  if (b.albumCount !== a.albumCount) return b.albumCount - a.albumCount
+  const scoreDiff = secondaryDataScore(b) - secondaryDataScore(a)
+  if (scoreDiff !== 0) return scoreDiff
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
+}
+
 export function pickCanonical(candidates: ArtistCandidate[]): ArtistCandidate {
   if (candidates.length === 0) {
     throw new Error('pickCanonical: candidates は1件以上必要です')
   }
-  return [...candidates].sort((a, b) => {
-    if (b.trackCount !== a.trackCount) return b.trackCount - a.trackCount
-    if (b.albumCount !== a.albumCount) return b.albumCount - a.albumCount
-    const scoreDiff = secondaryDataScore(b) - secondaryDataScore(a)
-    if (scoreDiff !== 0) return scoreDiff
-    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
-  })[0]
+  return [...candidates].sort(compareCanonicalPriority)[0]
 }
