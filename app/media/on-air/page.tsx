@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { createClient } from '@/utils/Supabase/server'
 import { formatRotationPeriod } from '@/utils/format'
+import { fetchAllRows } from '@/utils/fetchAllRows'
 import PrefectureMap, { type PrefectureEntry, type PrefectureMapData } from '@/app/components/PrefectureMap'
 
 const MUSIC_TYPE_LABEL: Record<string, string> = {
@@ -86,12 +87,18 @@ export default async function OnAirPage({
   const supabase = await createClient()
   const currentPage = Math.max(1, Number(pageParam) || 1)
 
-  const [{ data: mediaList }, { data: allDates }] = await Promise.all([
+  // radio_rotationは2,476件あり(2026-09時点)、PostgRESTの1回のクエリ上限(1000件)を
+  // 超えるため、単純な.select()だと日付昇順で最初の1000件だけが返り、月選択の
+  // プルダウンが古いデータ止まりになってしまう(実際に2020年4月までしか選べない
+  // 不具合として発生した)。fetchAllRowsで全件ページング取得する
+  const [{ data: mediaList }, allDateRows] = await Promise.all([
     supabase.from('media').select('id, name, area').order('name'),
-    supabase.from('radio_rotation').select('period_start_date').order('period_start_date', { ascending: true }),
+    fetchAllRows<{ period_start_date: string }>(supabase, 'radio_rotation', 'period_start_date', 'period_start_date', {
+      ascending: true,
+    }),
   ])
 
-  const availableMonths = Array.from(new Set((allDates ?? []).map((d) => monthKey(d.period_start_date))))
+  const availableMonths = Array.from(new Set(allDateRows.map((d) => monthKey(d.period_start_date))))
   const currentMonth = monthParam || availableMonths[availableMonths.length - 1] || new Date().toISOString().slice(0, 7)
   const monthIndex = availableMonths.indexOf(currentMonth)
   const prevMonth = monthIndex > 0 ? availableMonths[monthIndex - 1] : null
