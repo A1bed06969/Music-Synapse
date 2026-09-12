@@ -460,6 +460,13 @@ async function mergeAlbumsAndTracks(supabase: AdminClient, canonicalArtistId: st
     console.warn(`    ⚠️ track(artist_id=${duplicateArtistId})の再割り当てに失敗しました: ${catchAllResult.error}`)
   }
   const tracksReassignedViaCatchAll = catchAllResult.count ?? 0
+  // このcatch-all自体が失敗した場合、console.warnで報告するだけでは不十分:
+  // track.artist_idはON DELETE CASCADEのため(album.artist_idのON DELETE
+  // RESTRICTと違い)、呼び出し元がこの失敗を無視してartist行を削除すると
+  // 再割り当てし損ねたトラックがCASCADEで一緒に消えてしまう。呼び出し元
+  // (main())のartist削除ゲート(failedFks)にこの失敗を確実に伝えるため、
+  // 戻り値にcatchAllFailedを含める。
+  const catchAllFailed = catchAllResult.error !== null
 
   return {
     matchedAlbums: albumResult.matched.length,
@@ -471,6 +478,7 @@ async function mergeAlbumsAndTracks(supabase: AdminClient, canonicalArtistId: st
     reassignedTrackTitles,
     trackAmbiguousTitles,
     tracksReassignedViaCatchAll,
+    catchAllFailed,
   }
 }
 
@@ -804,8 +812,17 @@ async function main() {
         if (nonZeroFks.length > 0) {
           console.log(`    FK移設: ${nonZeroFks.map((f) => `${f.table}.${f.column}=${f.movedCount}件`).join(', ')}`)
         }
+        // mergeAlbumsAndTracksのcatch-all(重複artist_idを持つ残りtrackの
+        // 再割り当て)自体が失敗した場合、下のfailedFksチェックだけでは
+        // 検知できない(artistFkReferencesForGroupはalbum.artist_id・
+        // track.artist_idのどちらも含まないため)。track.artist_idはON DELETE
+        // CASCADEなので、この失敗を見逃したままartist行を削除すると
+        // 再割り当てし損ねたトラックがCASCADEで一緒に消えてしまう。そのため
+        // このフラグをfailedFksと同じ削除ゲートに組み込む(下記参照)。
+        let albumTrackHasFailure = false
         if (group.kind === 'severe') {
           const albumTrackResult = await mergeAlbumsAndTracks(supabase, canonical.id, c.id, !DRY_RUN)
+          albumTrackHasFailure = albumTrackResult.catchAllFailed
           console.log(
             `    アルバム統合: ${albumTrackResult.matchedAlbums}件マッチ / トラック統合: ${albumTrackResult.tracksMatched}件マッチ(うちフィールド補完${albumTrackResult.tracksFieldFilled}件)・${albumTrackResult.tracksReassigned}件は本体へ再割り当て`
           )
@@ -835,6 +852,8 @@ async function main() {
         if (failedFks.length > 0) {
           console.log(`    ⚠️ FK付け替え失敗: ${failedFks.map((f) => `${f.table}.${f.column}(${f.error})`).join(', ')}`)
           console.log('    ⚠️ この重複行は削除しません(付け替えに失敗した参照が残っているため)')
+        } else if (albumTrackHasFailure) {
+          console.log('    ⚠️ この重複行は削除しません(アルバム・トラック統合の一部処理に失敗したため)')
         } else if (!DRY_RUN) {
           const { error: deleteError } = await supabase.from('artist').delete().eq('id', c.id)
           if (deleteError) {
