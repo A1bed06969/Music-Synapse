@@ -22,6 +22,7 @@ import {
   type ArtistCandidate,
 } from '@/utils/artistDedupCanonical'
 import { repointForeignKeys, type FkReference } from '@/utils/fkRepoint'
+import { matchAlbums, matchTracks } from '@/utils/artistDedupMatching'
 
 type AdminClient = ReturnType<typeof createAdminClient>
 
@@ -215,7 +216,16 @@ function explainCanonicalReason(canonical: ArtistCandidate, all: ArtistCandidate
 
 // artist.idを参照するテーブル一覧(2026-09-12、information_schemaで確認済み。
 // track.artist_idは深刻3組のマッチング処理(mergeAlbumsAndTracks)で個別に
-// 扱うためここには含めない)
+// 扱うためここには含めない)。album.artist_idは一覧には残すが、深刻3組
+// (group.kind === 'severe')に限りmain()側でこのリストから除外して使う。
+// 理由: このリストに含めたまま無条件にrepointForeignKeysへ渡すと、
+// mergeAlbumsAndTracksが呼ばれるより前にここで重複の全アルバムのartist_idが
+// 本体へ付け替わってしまい、mergeAlbumsAndTracks側の
+// `.eq('artist_id', duplicateArtistId)`が0件しかヒットしなくなる
+// (タイトル一致でのアルバム統合・トラック統合が実行時に一切走らず、
+// 重複アルバム・トラックがタイトル重複したまま本体の直下に付け替わるだけに
+// なってしまう)。空スタブ49組はmergeAlbumsAndTracksを呼ばないため、
+// そちらは従来どおりこのリストのalbum.artist_idで付け替える。
 const ARTIST_FK_REFERENCES: FkReference[] = [
   { table: 'album', column: 'artist_id' },
   { table: 'album_artist', column: 'artist_id' },
@@ -237,6 +247,161 @@ const ARTIST_FK_REFERENCES: FkReference[] = [
   { table: 'track_artist', column: 'artist_id' },
   { table: 'youtube_mv_backfill_log', column: 'artist_id' },
 ]
+
+// album.idを参照するテーブル一覧(2026-09-12確認済み。マッチ済みアルバムを
+// 削除する前に使う。track.album_idはトラック統合が終わっていれば通常0件)
+const ALBUM_FK_REFERENCES: FkReference[] = [
+  { table: 'album', column: 'primary_album_id' },
+  { table: 'album_artist', column: 'album_id' },
+  { table: 'album_artwork', column: 'album_id' },
+  { table: 'album_credit', column: 'album_id' },
+  { table: 'album_genre', column: 'album_id' },
+  { table: 'album_match_log', column: 'stub_album_id' },
+  { table: 'album_pickup', column: 'album_id' },
+  { table: 'artist_credit', column: 'album_id' },
+  { table: 'award_entry', column: 'album_id' },
+  { table: 'collection_entry', column: 'album_id' },
+  { table: 'contest_entry', column: 'album_id' },
+  { table: 'disc_guide_selection', column: 'album_id' },
+  { table: 'genre_highlight', column: 'album_id' },
+  { table: 'radio_rotation', column: 'album_id' },
+  { table: 'ranking_entry', column: 'album_id' },
+  { table: 'track', column: 'album_id' },
+]
+
+// track.idを参照するテーブル一覧(2026-09-12確認済み。マッチ済みトラックを
+// 削除する前に使う)
+const TRACK_FK_REFERENCES: FkReference[] = [
+  { table: 'album', column: 'representative_track_id' },
+  { table: 'artist_credit', column: 'track_id' },
+  { table: 'award_entry', column: 'track_id' },
+  { table: 'collection_entry', column: 'track_id' },
+  { table: 'contest_entry', column: 'track_id' },
+  { table: 'playlist_track', column: 'track_id' },
+  { table: 'radio_rotation', column: 'track_id' },
+  { table: 'ranking_entry', column: 'track_id' },
+  { table: 'setlist_track', column: 'track_id' },
+  { table: 'sync_entry', column: 'track_id' },
+  { table: 'track_artist', column: 'track_id' },
+  { table: 'track_credit', column: 'track_id' },
+  { table: 'track_genre', column: 'track_id' },
+  { table: 'track_instrument', column: 'track_id' },
+]
+
+type AlbumFullRow = { id: string; title: string }
+type TrackFullRow = { id: string; title: string; disc_number: number | null; track_no: number | null }
+
+const TRACK_MERGE_FIELDS = [
+  'youtube_video_id', 'preview_url', 'apple_music_track_id', 'spotify_track_id',
+  'youtube_music_track_id', 'amazon_music_track_id', 'lyric_url', 'track_review', 'duration_seconds',
+]
+
+/** 対応付けられたトラックペアについて、本体側がnullの項目だけ重複側の値を
+ * コピーする(スペック「6. マッチしたトラックのフィールド補完」)。その後、
+ * トラックを参照する外部キーを本体トラックへ付け替えてから重複トラックを
+ * 削除する(execute時のみ)。 */
+async function mergeMatchedTrack(supabase: AdminClient, canonicalTrackId: string, duplicateTrackId: string, execute: boolean) {
+  const [{ data: canonicalTrack }, { data: duplicateTrack }] = await Promise.all([
+    supabase.from('track').select(TRACK_MERGE_FIELDS.join(',')).eq('id', canonicalTrackId).single(),
+    supabase.from('track').select(TRACK_MERGE_FIELDS.join(',')).eq('id', duplicateTrackId).single(),
+  ])
+  const patch: Record<string, unknown> = {}
+  const filled: string[] = []
+  if (canonicalTrack && duplicateTrack) {
+    // .select(TRACK_MERGE_FIELDS.join(','))は動的な文字列のためSupabaseの型生成が
+    // 列を解決できず`GenericStringError`型になる(fillScalarFieldsForGroupと同じ
+    // 既知のパターン)。実行時の値は問題ないのでunknown経由でキャストする
+    // (直接`as Record<string, unknown>`だとtscでTS2352になり型検査が通らない)。
+    const canonicalRecord = canonicalTrack as unknown as Record<string, unknown>
+    const duplicateRecord = duplicateTrack as unknown as Record<string, unknown>
+    for (const field of TRACK_MERGE_FIELDS) {
+      const canonicalValue = canonicalRecord[field]
+      const duplicateValue = duplicateRecord[field]
+      if ((canonicalValue === null || canonicalValue === '') && duplicateValue !== null && duplicateValue !== '') {
+        patch[field] = duplicateValue
+        filled.push(field)
+      }
+    }
+  }
+  if (execute) {
+    if (Object.keys(patch).length > 0) await supabase.from('track').update(patch).eq('id', canonicalTrackId)
+    await repointForeignKeys(TRACK_FK_REFERENCES, duplicateTrackId, canonicalTrackId, (table, column, fromId, toId) =>
+      updateFk(supabase, table, column, fromId, toId, execute)
+    )
+    await supabase.from('track').delete().eq('id', duplicateTrackId)
+  }
+  return { filled }
+}
+
+/** 1件の重複artist_idについて、アルバム・トラックをタイトル完全一致で本体へ
+ * 対応付けて統合する(深刻3組専用。スペック「4〜8」参照)。 */
+async function mergeAlbumsAndTracks(supabase: AdminClient, canonicalArtistId: string, duplicateArtistId: string, execute: boolean) {
+  const [{ data: canonicalAlbums }, { data: duplicateAlbums }] = await Promise.all([
+    supabase.from('album').select('id, title').eq('artist_id', canonicalArtistId),
+    supabase.from('album').select('id, title').eq('artist_id', duplicateArtistId),
+  ])
+  const albumResult = matchAlbums((canonicalAlbums ?? []) as AlbumFullRow[], (duplicateAlbums ?? []) as AlbumFullRow[])
+
+  let tracksMatched = 0
+  let tracksFieldFilled = 0
+  let tracksReassigned = 0
+  const trackAmbiguousTitles: string[] = []
+  const reassignedTrackTitles: string[] = []
+  const matchedDuplicateAlbumIds = new Set(albumResult.matched.map((m) => m.duplicateId))
+
+  for (const pair of albumResult.matched) {
+    const [{ data: canonicalTracks }, { data: duplicateTracks }] = await Promise.all([
+      supabase.from('track').select('id, title, disc_number, track_no').eq('album_id', pair.canonicalId),
+      supabase.from('track').select('id, title, disc_number, track_no').eq('album_id', pair.duplicateId),
+    ])
+    const trackResult = matchTracks(
+      (canonicalTracks ?? []) as TrackFullRow[],
+      (duplicateTracks ?? []) as TrackFullRow[]
+    )
+    trackAmbiguousTitles.push(...trackResult.ambiguousTitles)
+
+    for (const trackPair of trackResult.matched) {
+      tracksMatched++
+      const mergeResult = await mergeMatchedTrack(supabase, trackPair.canonicalId, trackPair.duplicateId, execute)
+      if (mergeResult.filled.length > 0) tracksFieldFilled++
+    }
+
+    const matchedDuplicateTrackIds = new Set(trackResult.matched.map((m) => m.duplicateId))
+    const unmatchedTracks = (duplicateTracks ?? []).filter((t) => !matchedDuplicateTrackIds.has(t.id))
+    for (const t of unmatchedTracks) {
+      tracksReassigned++
+      reassignedTrackTitles.push(t.title)
+      if (execute) await supabase.from('track').update({ artist_id: canonicalArtistId }).eq('id', t.id)
+    }
+
+    if (execute && unmatchedTracks.length === 0) {
+      // アルバムの中身が全てマッチ・削除されたので、アルバム自体を削除する
+      await repointForeignKeys(ALBUM_FK_REFERENCES, pair.duplicateId, pair.canonicalId, (table, column, fromId, toId) =>
+        updateFk(supabase, table, column, fromId, toId, execute)
+      )
+      await supabase.from('album').delete().eq('id', pair.duplicateId)
+    } else if (execute && unmatchedTracks.length > 0) {
+      // 未マッチのトラックが残っているアルバムは削除せず本体へ付け替える
+      await supabase.from('album').update({ artist_id: canonicalArtistId }).eq('id', pair.duplicateId)
+    }
+  }
+
+  const unmatchedAlbums = (duplicateAlbums ?? []).filter((a) => !matchedDuplicateAlbumIds.has(a.id))
+  for (const album of unmatchedAlbums) {
+    if (execute) await supabase.from('album').update({ artist_id: canonicalArtistId }).eq('id', album.id)
+  }
+
+  return {
+    matchedAlbums: albumResult.matched.length,
+    ambiguousAlbumTitles: albumResult.ambiguousTitles,
+    reassignedAlbums: unmatchedAlbums.map((a) => a.title),
+    tracksMatched,
+    tracksFieldFilled,
+    tracksReassigned,
+    reassignedTrackTitles,
+    trackAmbiguousTitles,
+  }
+}
 
 async function updateFk(
   supabase: AdminClient,
@@ -549,7 +714,15 @@ async function main() {
         // ここでは無条件に呼んでよい。FK付け替えには重複間コリジョンの概念が
         // 無いため、リンク/ジャンル/関係性/スカラー項目と違いグループ全体を
         // まとめる必要が無く、従来どおり重複ごとにpair-scopedで呼ぶ。
-        const fkOutcomes = await repointForeignKeys(ARTIST_FK_REFERENCES, c.id, canonical.id, (table, column, fromId, toId) =>
+        // 深刻3組(severe)はalbum.artist_idをここで付け替えず、
+        // mergeAlbumsAndTracks側にタイトル一致でのアルバム統合・再割り当てを
+        // 任せる(ARTIST_FK_REFERENCESのコメント参照。ここで先に付け替えて
+        // しまうとmergeAlbumsAndTracksが重複のアルバムを1件も見つけられなくなる)。
+        const artistFkReferencesForGroup =
+          group.kind === 'severe'
+            ? ARTIST_FK_REFERENCES.filter((r) => !(r.table === 'album' && r.column === 'artist_id'))
+            : ARTIST_FK_REFERENCES
+        const fkOutcomes = await repointForeignKeys(artistFkReferencesForGroup, c.id, canonical.id, (table, column, fromId, toId) =>
           updateFk(supabase, table, column, fromId, toId, !DRY_RUN)
         )
         // ARTIST_FK_REFERENCES経由で移設される各テーブルの件数(0件のものは省略)。
@@ -559,6 +732,28 @@ async function main() {
         const nonZeroFks = fkOutcomes.filter((o) => o.status === 'ok' && (o.movedCount ?? 0) > 0)
         if (nonZeroFks.length > 0) {
           console.log(`    FK移設: ${nonZeroFks.map((f) => `${f.table}.${f.column}=${f.movedCount}件`).join(', ')}`)
+        }
+        if (group.kind === 'severe') {
+          const albumTrackResult = await mergeAlbumsAndTracks(supabase, canonical.id, c.id, !DRY_RUN)
+          console.log(
+            `    アルバム統合: ${albumTrackResult.matchedAlbums}件マッチ / トラック統合: ${albumTrackResult.tracksMatched}件マッチ(うちフィールド補完${albumTrackResult.tracksFieldFilled}件)・${albumTrackResult.tracksReassigned}件は本体へ再割り当て`
+          )
+          if (albumTrackResult.ambiguousAlbumTitles.length > 0) {
+            console.log(
+              `    ⚠️ あいまいで未対応のアルバム(所属: 本体${canonical.id}/重複${c.id}): ${albumTrackResult.ambiguousAlbumTitles.join(', ')}`
+            )
+          }
+          if (albumTrackResult.trackAmbiguousTitles.length > 0) {
+            console.log(
+              `    ⚠️ あいまいで未対応のトラック(所属: 本体${canonical.id}/重複${c.id}): ${albumTrackResult.trackAmbiguousTitles.join(', ')}`
+            )
+          }
+          if (albumTrackResult.reassignedAlbums.length > 0) {
+            console.log(`    再割り当てされたアルバム: ${albumTrackResult.reassignedAlbums.join(', ')}`)
+          }
+          if (albumTrackResult.reassignedTrackTitles.length > 0) {
+            console.log(`    再割り当てされたトラック: ${albumTrackResult.reassignedTrackTitles.join(', ')}`)
+          }
         }
         const failedFks = fkOutcomes.filter((o) => o.status === 'failed')
         if (failedFks.length > 0) {
