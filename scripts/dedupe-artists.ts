@@ -356,11 +356,32 @@ async function mergeMatchedTrack(supabase: AdminClient, canonicalTrackId: string
 
 /** 1件の重複artist_idについて、アルバム・トラックをタイトル完全一致で本体へ
  * 対応付けて統合する(深刻3組専用。スペック「4〜8」参照)。 */
+// 注意(3行以上の深刻グループでの限界): この関数はpair-scoped(重複1件ごとに
+// 呼ばれるたびに本体の"現時点の"アルバム/トラックを読み直す)。--execute時、
+// 深刻グループに重複が3件以上ある場合、重複#1の処理で未マッチ/あいまいな
+// アルバムが本体へ再割り当て(付け替え)されてから重複#2が処理されるため、
+// 重複#2は「重複#1の分だけ膨らんだ後の」本体アルバム集合に対してマッチングする
+// ことになる。これにより、本体側で重複#1処理前はユニークだったタイトルが
+// 重複#1処理後に2件になり、重複#2からはあいまい判定(マッチ拒否)されうる
+// (誤マッチではなく、マッチ件数がdry-runの予測より減り、再割り当て件数が
+// 増えるだけ — タイトルマッチングはあいまいな場合に正しく推測を拒否するため)。
+// dry-runは何も永続化しないため本体は常に処理前の状態のままで、この問題は
+// 起きない。既知のまれなエッジケースであり、グループ全体を先読みして
+// インメモリでシミュレートする再設計は本タスクでは過剰実装と判断し行わない
+// (呼び出し元main()で3行以上の深刻グループに一度だけ注意書きを出力する)。
 async function mergeAlbumsAndTracks(supabase: AdminClient, canonicalArtistId: string, duplicateArtistId: string, execute: boolean) {
-  const [{ data: canonicalAlbums }, { data: duplicateAlbums }] = await Promise.all([
+  const [{ data: canonicalAlbums, error: canonicalAlbumsError }, { data: duplicateAlbums, error: duplicateAlbumsError }] = await Promise.all([
     supabase.from('album').select('id, title').eq('artist_id', canonicalArtistId),
     supabase.from('album').select('id, title').eq('artist_id', duplicateArtistId),
   ])
+  // fetchSecondaryCounts等で踏んだのと同じ失敗パターン(エラーを無視すると
+  // `data`がnullになり`?? []`が本物の0件と区別なく通してしまう)を避けるため、
+  // 読み取り後に必ずエラーを確認してから使う。ここを素通りさせると、例えば
+  // 重複側のアルバム読み取りが失敗した場合`duplicateAlbums`が空配列扱いになり、
+  // 後続のトラック読み取りループが0回しか回らず「未マッチなし」と誤認され、
+  // タイトル未補完のままアルバム削除が実行されてしまう。
+  if (canonicalAlbumsError) throw new Error(`mergeAlbumsAndTracks(canonical=${canonicalArtistId}) album(canonical): ${canonicalAlbumsError.message}`)
+  if (duplicateAlbumsError) throw new Error(`mergeAlbumsAndTracks(duplicate=${duplicateArtistId}) album(duplicate): ${duplicateAlbumsError.message}`)
   const albumResult = matchAlbums((canonicalAlbums ?? []) as AlbumFullRow[], (duplicateAlbums ?? []) as AlbumFullRow[])
 
   let tracksMatched = 0
@@ -371,10 +392,17 @@ async function mergeAlbumsAndTracks(supabase: AdminClient, canonicalArtistId: st
   const matchedDuplicateAlbumIds = new Set(albumResult.matched.map((m) => m.duplicateId))
 
   for (const pair of albumResult.matched) {
-    const [{ data: canonicalTracks }, { data: duplicateTracks }] = await Promise.all([
+    const [{ data: canonicalTracks, error: canonicalTracksError }, { data: duplicateTracks, error: duplicateTracksError }] = await Promise.all([
       supabase.from('track').select('id, title, disc_number, track_no').eq('album_id', pair.canonicalId),
       supabase.from('track').select('id, title, disc_number, track_no').eq('album_id', pair.duplicateId),
     ])
+    // 上のalbum読み取りと同じ理由でエラーを確認する。特に重複側
+    // (duplicateTracks)の読み取りが失敗すると`unmatchedTracks.length === 0`に
+    // なり、「アルバム完全マッチ」の分岐(削除)を誤って取ってしまう
+    // (このアルバムのタイトルマッチングが黙ってスキップされたまま
+    // トラックが本体へ付け替わり、重複アルバムが削除される)。
+    if (canonicalTracksError) throw new Error(`mergeAlbumsAndTracks(album=${pair.canonicalId}) track(canonical): ${canonicalTracksError.message}`)
+    if (duplicateTracksError) throw new Error(`mergeAlbumsAndTracks(album=${pair.duplicateId}) track(duplicate): ${duplicateTracksError.message}`)
     const trackResult = matchTracks(
       (canonicalTracks ?? []) as TrackFullRow[],
       (duplicateTracks ?? []) as TrackFullRow[]
@@ -527,7 +555,7 @@ async function migrateDedupedLinksForGroup(
   canonicalId: string,
   duplicateIdsInPriorityOrder: string[],
   execute: boolean
-): Promise<Map<string, { linksMoved: number; linksDropped: number; genresMoved: number; genresDropped: number }>> {
+): Promise<Map<string, { linksMoved: number; linksDropped: number; genresMoved: number; genresDropped: number; hasFailure: boolean }>> {
   const allIds = [canonicalId, ...duplicateIdsInPriorityOrder]
   const [{ data: allLinks, error: linksError }, { data: allGenres, error: genresError }] = await Promise.all([
     supabase.from('artist_external_link').select('id, artist_id, link_type, url').in('artist_id', allIds),
@@ -539,8 +567,9 @@ async function migrateDedupedLinksForGroup(
   if (linksError) throw new Error(`migrateDedupedLinksForGroup(canonical=${canonicalId}) artist_external_link: ${linksError.message}`)
   if (genresError) throw new Error(`migrateDedupedLinksForGroup(canonical=${canonicalId}) artist_genre: ${genresError.message}`)
 
-  const resultByDup = new Map<string, { linksMoved: number; linksDropped: number; genresMoved: number; genresDropped: number }>()
-  for (const dupId of duplicateIdsInPriorityOrder) resultByDup.set(dupId, { linksMoved: 0, linksDropped: 0, genresMoved: 0, genresDropped: 0 })
+  const resultByDup = new Map<string, { linksMoved: number; linksDropped: number; genresMoved: number; genresDropped: number; hasFailure: boolean }>()
+  for (const dupId of duplicateIdsInPriorityOrder)
+    resultByDup.set(dupId, { linksMoved: 0, linksDropped: 0, genresMoved: 0, genresDropped: 0, hasFailure: false })
 
   const canonicalKeys = new Set((allLinks ?? []).filter((l) => l.artist_id === canonicalId).map((l) => `${l.link_type}|${l.url}`))
   for (const dupId of duplicateIdsInPriorityOrder) {
@@ -572,7 +601,15 @@ async function migrateDedupedLinksForGroup(
         result.genresDropped++
         if (execute) {
           const { error } = await supabase.from('artist_genre').delete().eq('artist_id', dupId).eq('genre_id', g.genre_id)
-          if (error) console.warn(`    ⚠️ artist_genre(artist_id=${dupId}, genre_id=${g.genre_id})の削除に失敗しました: ${error.message}`)
+          if (error) {
+            console.warn(`    ⚠️ artist_genre(artist_id=${dupId}, genre_id=${g.genre_id})の削除に失敗しました: ${error.message}`)
+            // 衝突による意図的な重複削除(良性ケース)が実際に書き込む段階で
+            // 失敗した場合、これはもはや「衝突検出」ではなく正真正銘の書き込み
+            // 失敗である。artist_genre.artist_idはON DELETE CASCADEのため、この
+            // 行を消し損ねたままduplicate artist行を削除するとCASCADEで黙って
+            // 一緒に消えてしまう。main()の削除ゲートへ確実に伝える。
+            result.hasFailure = true
+          }
         }
       } else {
         result.genresMoved++
@@ -583,7 +620,10 @@ async function migrateDedupedLinksForGroup(
             .update({ artist_id: canonicalId })
             .eq('artist_id', dupId)
             .eq('genre_id', g.genre_id)
-          if (error) console.warn(`    ⚠️ artist_genre(artist_id=${dupId}, genre_id=${g.genre_id})の付け替えに失敗しました: ${error.message}`)
+          if (error) {
+            console.warn(`    ⚠️ artist_genre(artist_id=${dupId}, genre_id=${g.genre_id})の付け替えに失敗しました: ${error.message}`)
+            result.hasFailure = true
+          }
         }
       }
     }
@@ -600,32 +640,72 @@ async function migrateDedupedLinksForGroup(
  * 書き込まれないため「Bの処理時」に同じ行をもう一度元の状態のまま読み、
  * 自己参照として検出できずに「moved」が二重に報告されるバグがあった
  * (--execute実行時は書き込みが永続化されるため最終的なDB状態自体は正しく
- * 収束するが、dry-runのレポートが実際の動作と食い違っていた)。 */
+ * 収束するが、dry-runのレポートが実際の動作と食い違っていた)。
+ *
+ * migrateDedupedLinksForGroupのリンク/ジャンルと同じく、本体の実データから
+ * 育てるcanonicalRelationByKey(キー: artist_id_a|artist_id_b|relation_type、
+ * 実DBのUNIQUE INDEX artist_relation_dedup_keyと同じ列・同じ並び順で2026-09-13に
+ * 確認済み)を使って「付け替え後に本体レベルで既に存在する行と衝突するか」を
+ * 判定する。衝突する場合はUPDATEを試みず明示的にDELETEする(実際にこのUNIQUE
+ * INDEX違反で--execute実行時にwarnのみで見過ごされていたケースが本番run中に
+ * 2件発生している。どちらも良性=真に重複した行だったが、コードはそれを
+ * 意図した経路と区別できていなかった)。重複を優先順位順に処理することで、
+ * 「先に処理された重複が持ち込んだ行」との衝突もリンク/ジャンルと同じ考え方で
+ * 検出できる。 */
 async function migrateRelationsForGroup(
   supabase: AdminClient,
   canonicalId: string,
   duplicateIds: string[],
   execute: boolean
-): Promise<Map<string, { moved: number; droppedSelfRelation: number }>> {
-  const resultByDup = new Map<string, { moved: number; droppedSelfRelation: number }>()
-  for (const dupId of duplicateIds) resultByDup.set(dupId, { moved: 0, droppedSelfRelation: 0 })
+): Promise<Map<string, { moved: number; droppedSelfRelation: number; droppedDuplicate: number; hasFailure: boolean }>> {
+  const resultByDup = new Map<string, { moved: number; droppedSelfRelation: number; droppedDuplicate: number; hasFailure: boolean }>()
+  for (const dupId of duplicateIds) resultByDup.set(dupId, { moved: 0, droppedSelfRelation: 0, droppedDuplicate: 0, hasFailure: false })
   if (duplicateIds.length === 0) return resultByDup
 
-  const orFilter = duplicateIds.map((id) => `artist_id_a.eq.${id},artist_id_b.eq.${id}`).join(',')
+  // 本体自身が絡む行も含めて1回で取得する(canonicalRelationByKeyの種として、
+  // 本体が第三者と既に持っている関係を知る必要があるため)。
+  const allIds = [canonicalId, ...duplicateIds]
+  const orFilter = allIds.map((id) => `artist_id_a.eq.${id},artist_id_b.eq.${id}`).join(',')
   const { data: relations, error: relationsError } = await supabase
     .from('artist_relation')
-    .select('id, artist_id_a, artist_id_b')
+    .select('id, artist_id_a, artist_id_b, relation_type, description')
     .or(orFilter)
   if (relationsError) throw new Error(`migrateRelationsForGroup(canonical=${canonicalId}) artist_relation: ${relationsError.message}`)
 
   const duplicateIdSet = new Set(duplicateIds)
   const remap = (id: string) => (duplicateIdSet.has(id) ? canonicalId : id)
+  const priorityRank = new Map(duplicateIds.map((id, i) => [id, i]))
+  const keyOf = (a: string, b: string, relationType: string) => `${a}|${b}|${relationType}`
 
-  for (const r of relations ?? []) {
+  type RelationRow = { id: number; artist_id_a: string; artist_id_b: string; relation_type: string; description: string | null }
+  const allRows = (relations ?? []) as RelationRow[]
+
+  // 本体と第三者(このグループの重複ではないアーティスト)の既存関係で種付けする。
+  // これらは重複を経由していないので移動対象ではないが、重複側の関係が
+  // 付け替わった結果ここと衝突しないかのチェック用キーとして必要。
+  const canonicalRelationByKey = new Map<string, { id: number; description: string | null }>()
+  const rowsToProcess: RelationRow[] = []
+  for (const r of allRows) {
+    const touchesDup = duplicateIdSet.has(r.artist_id_a) || duplicateIdSet.has(r.artist_id_b)
+    if (!touchesDup) {
+      canonicalRelationByKey.set(keyOf(r.artist_id_a, r.artist_id_b, r.relation_type), { id: r.id, description: r.description })
+    } else {
+      rowsToProcess.push(r)
+    }
+  }
+  // リンク/ジャンルの移設と同じく優先順位順に処理し、「先に処理された重複が
+  // 持ち込んだキー」との衝突を優先順位どおりに検出できるようにする(グループ内
+  // 重複同士の関係は、どちらのIDが先にduplicateIdSetに現れるかに関わらず
+  // involvedDupIdの優先順位でソートされる)。
+  rowsToProcess.sort((x, y) => {
+    const rankOf = (r: RelationRow) => (duplicateIdSet.has(r.artist_id_a) ? priorityRank.get(r.artist_id_a)! : priorityRank.get(r.artist_id_b)!)
+    return rankOf(x) - rankOf(y)
+  })
+
+  for (const r of rowsToProcess) {
     // このグループの重複を指している側を報告の帰属先にする(a側が重複ならa側、
-    // でなければb側。クエリ自体がいずれかの重複を含む行しか返さないため、
-    // どちらか一方は必ず該当する)。重複行同士の関係(a・bどちらも重複)は
-    // どちらか一方にのみ帰属させ、行としては1回しか処理しない。
+    // でなければb側)。重複行同士の関係(a・bどちらも重複)はどちらか一方にのみ
+    // 帰属させ、行としては1回しか処理しない。
     const involvedDupId = duplicateIdSet.has(r.artist_id_a) ? r.artist_id_a : r.artist_id_b
     const result = resultByDup.get(involvedDupId)
     if (!result) continue // 念のための防御(クエリ条件上ここには来ないはず)
@@ -636,13 +716,49 @@ async function migrateRelationsForGroup(
       result.droppedSelfRelation++
       if (execute) {
         const { error } = await supabase.from('artist_relation').delete().eq('id', r.id)
-        if (error) console.warn(`    ⚠️ artist_relation(id=${r.id})の削除に失敗しました: ${error.message}`)
+        if (error) {
+          console.warn(`    ⚠️ artist_relation(id=${r.id})の削除に失敗しました: ${error.message}`)
+          result.hasFailure = true
+        }
+      }
+      continue
+    }
+
+    const key = keyOf(newA, newB, r.relation_type)
+    const survivor = canonicalRelationByKey.get(key)
+    if (survivor) {
+      // 付け替え後、本体レベルで既に存在する行と同じキーになる
+      // (artist_relation_dedup_key違反になる)ので、UPDATEは試みず明示的に
+      // DELETEする。fillScalarFieldsForGroupと同じ「非nullは上書きしない・
+      // 空だけ埋める」方針の単一フィールド版として、消される側のdescriptionが
+      // 非null・生き残る側がnullならコピーしてから消す(単一フィールドの
+      // 引き継ぎのみ。それ以上の高度化はしない)。
+      result.droppedDuplicate++
+      if (execute) {
+        if (r.description !== null && r.description !== '' && (survivor.description === null || survivor.description === '')) {
+          const { error: descError } = await supabase.from('artist_relation').update({ description: r.description }).eq('id', survivor.id)
+          if (descError) {
+            console.warn(`    ⚠️ artist_relation(id=${survivor.id})のdescription補完に失敗しました: ${descError.message}`)
+            result.hasFailure = true
+          } else {
+            survivor.description = r.description
+          }
+        }
+        const { error } = await supabase.from('artist_relation').delete().eq('id', r.id)
+        if (error) {
+          console.warn(`    ⚠️ artist_relation(id=${r.id})の削除(本体レベルで既に存在する行との衝突)に失敗しました: ${error.message}`)
+          result.hasFailure = true
+        }
       }
     } else {
       result.moved++
+      canonicalRelationByKey.set(key, { id: r.id, description: r.description })
       if (execute) {
         const { error } = await supabase.from('artist_relation').update({ artist_id_a: newA, artist_id_b: newB }).eq('id', r.id)
-        if (error) console.warn(`    ⚠️ artist_relation(id=${r.id})の付け替えに失敗しました: ${error.message}`)
+        if (error) {
+          console.warn(`    ⚠️ artist_relation(id=${r.id})の付け替えに失敗しました: ${error.message}`)
+          result.hasFailure = true
+        }
       }
     }
   }
@@ -779,6 +895,17 @@ async function main() {
       continue
     }
 
+    if (group.kind === 'severe' && group.artistIds.length > 2) {
+      // Fix 3: mergeAlbumsAndTracksはpair-scopedのまま(関数本体のコメント参照)
+      // なので、3行以上の深刻グループでは後続の重複ほど本体アルバム集合が
+      // 先行する重複の処理で膨らんだ後の状態を見ることになり、マッチ件数が
+      // dry-runの予測より減りうる。空スタブ組や重複1件だけの深刻グループには
+      // この懸念自体が存在しないため出さない。
+      console.log(
+        '  ℹ️ 3行以上のグループのため、後続の重複ほどマッチ件数が実行時に減る可能性があります(dry-runは常に本体の初期状態と比較するため)'
+      )
+    }
+
     for (const c of duplicates) {
       console.log(
         `  重複: ${c.id}(track=${c.trackCount}, album=${c.albumCount}, link=${c.externalLinkCount}, genre=${c.genreCount}, relation=${c.relationCount}, mvlog=${c.mvBackfillLogCount})`
@@ -786,8 +913,9 @@ async function main() {
       const linkResult = groupMergeResult.linkResultByDuplicate.get(c.id)!
       const relationResult = groupMergeResult.relationResultByDuplicate.get(c.id)!
       console.log(
-        `    リンク移設${linkResult.linksMoved}件・重複削除${linkResult.linksDropped}件 / ジャンル移設${linkResult.genresMoved}件・重複削除${linkResult.genresDropped}件 / 関係性移設${relationResult.moved}件・自己参照削除${relationResult.droppedSelfRelation}件`
+        `    リンク移設${linkResult.linksMoved}件・重複削除${linkResult.linksDropped}件 / ジャンル移設${linkResult.genresMoved}件・重複削除${linkResult.genresDropped}件 / 関係性移設${relationResult.moved}件・自己参照削除${relationResult.droppedSelfRelation}件・本体レベル衝突による削除${relationResult.droppedDuplicate}件`
       )
+      const secondaryMergeHasFailure = linkResult.hasFailure || relationResult.hasFailure
       try {
         // updateFk自体がexecute=falseのときは書き込まず件数だけ数えるので、
         // ここでは無条件に呼んでよい。FK付け替えには重複間コリジョンの概念が
@@ -854,6 +982,12 @@ async function main() {
           console.log('    ⚠️ この重複行は削除しません(付け替えに失敗した参照が残っているため)')
         } else if (albumTrackHasFailure) {
           console.log('    ⚠️ この重複行は削除しません(アルバム・トラック統合の一部処理に失敗したため)')
+        } else if (secondaryMergeHasFailure) {
+          // artist_genre/artist_relationはON DELETE CASCADEなので、これらの
+          // 書き込みが(良性の衝突ドロップではなく)本当に失敗した場合、
+          // failedFks/albumTrackHasFailureと同じ削除ゲートで止めないと
+          // CASCADEで実データが黙って失われる(brief Fix 2b参照)。
+          console.log('    ⚠️ この重複行は削除しません(副次データ統合の一部処理に失敗したため)')
         } else if (!DRY_RUN) {
           const { error: deleteError } = await supabase.from('artist').delete().eq('id', c.id)
           if (deleteError) {
