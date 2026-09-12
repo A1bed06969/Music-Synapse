@@ -128,6 +128,10 @@ type SecondaryCounts = {
   mvBackfillLogCount: number
 }
 
+// countクエリが失敗すると`count`はnull/undefinedになり、`?? 0`がそれを本物の0件と
+// 区別なく通してしまう(fetchTrackTitlesForArtistsで実際に踏んだのと同じ失敗パターン)。
+// ここで拾い損ねるとpickCanonicalに偽の0件データが渡り、本体候補の誤選定に直結する
+// ため、7クエリ全てエラーを確認してから読む。
 async function fetchSecondaryCounts(supabase: AdminClient, artistId: string): Promise<SecondaryCounts> {
   const [track, album, link, genre, relA, relB, mv] = await Promise.all([
     supabase.from('track').select('id', { count: 'exact', head: true }).eq('artist_id', artistId),
@@ -138,6 +142,20 @@ async function fetchSecondaryCounts(supabase: AdminClient, artistId: string): Pr
     supabase.from('artist_relation').select('id', { count: 'exact', head: true }).eq('artist_id_b', artistId),
     supabase.from('youtube_mv_backfill_log').select('id', { count: 'exact', head: true }).eq('artist_id', artistId),
   ])
+  const labeledResults: Array<[string, { error: { message: string } | null }]> = [
+    ['track', track],
+    ['album', album],
+    ['artist_external_link', link],
+    ['artist_genre', genre],
+    ['artist_relation(a)', relA],
+    ['artist_relation(b)', relB],
+    ['youtube_mv_backfill_log', mv],
+  ]
+  for (const [label, result] of labeledResults) {
+    if (result.error) {
+      throw new Error(`fetchSecondaryCounts(${artistId}) ${label}: ${result.error.message}`)
+    }
+  }
   return {
     trackCount: track.count ?? 0,
     albumCount: album.count ?? 0,
