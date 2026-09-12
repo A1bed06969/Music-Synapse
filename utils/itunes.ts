@@ -9,6 +9,11 @@ export type ItunesArtist = {
   artistId: number
   artistName: string
   artistLinkUrl?: string
+  /** 同名で既に本登録済みの別アーティストが見つかった際、Geminiによる同一人物
+   * 判定の材料として使う(呼び出し元がsearchArtist等のジャンル情報を持つ検索
+   * 結果から渡せる場合のみ設定。省略時は判定材料が名前のみになり、常に
+   * 確信度が低く扱われる=安全側)。 */
+  primaryGenreName?: string
 }
 
 export type ItunesAlbum = {

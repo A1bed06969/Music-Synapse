@@ -168,3 +168,110 @@ export async function judgeArtistMatchWithGemini(
 
   return { candidateIndex: candidateIndex ?? null, confidence, reasoning }
 }
+
+// 同名だがapple_music_artist_idが異なる既存登録済みアーティストが見つかった際、
+// 同一の実在人物か別人(同姓同名)かをGeminiに判定させる。judgeArtistMatchWithGemini
+// と違い「名前は完全一致」が前提のため、ジャンル・出身地といった名前以外の手がかりが
+// 無い限り確信度を上げてはいけない(同姓同名を誤って統合するリスクの方が、
+// 重複行が残るリスクより高いと判断)。
+
+export type SameArtistProfile = {
+  name: string
+  primaryGenreName?: string | null
+  hometownCountry?: string | null
+}
+
+export type SameArtistJudgement = {
+  sameArtist: boolean
+  confidence: number
+  reasoning: string
+}
+
+function buildSameArtistPrompt(existing: SameArtistProfile, incoming: SameArtistProfile): string {
+  const describe = (p: SameArtistProfile) =>
+    `${p.name}${p.primaryGenreName ? ` / ジャンル: ${p.primaryGenreName}` : ''}${p.hometownCountry ? ` / 出身国: ${p.hometownCountry}` : ''}`
+
+  return `以下の2件は、名前が完全一致するアーティストのレコードです。同一の実在アーティストか、同姓同名の別人かを判定してください。
+
+既存登録: ${describe(existing)}
+新規候補: ${describe(incoming)}
+
+判定ルール:
+- 名前が一致していることは既に確認済みなので、それ自体は判定材料にしないこと
+- ジャンル・出身国が一致または近い場合のみ確信度を上げてよい。両方とも不明・
+  比較材料が無い場合は必ず確信度を低くすること(0.5未満)
+- ジャンル・出身国が明らかに矛盾する場合は別人と判定し、確信度を低くすること
+- 同姓同名の別人を誤って同一人物と判定するリスクの方が、重複レコードが
+  残るリスクよりも重大であることを踏まえ、判断に迷う場合は必ずsameArtist=false
+  とすること
+- reasoningには判定の決め手になった具体的な情報を日本語で簡潔に書く
+
+confidenceは0.0〜1.0の数値で返してください。`
+}
+
+const SAME_ARTIST_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    sameArtist: { type: Type.BOOLEAN },
+    confidence: { type: Type.NUMBER },
+    reasoning: { type: Type.STRING },
+  },
+  required: ['sameArtist', 'confidence', 'reasoning'],
+}
+
+export async function judgeSameArtistWithGemini(
+  existing: SameArtistProfile,
+  incoming: SameArtistProfile
+): Promise<SameArtistJudgement> {
+  const apiKey = process.env.GEMINI_API_KEY
+  if (!apiKey) {
+    throw new Error('GEMINI_API_KEY が設定されていません。')
+  }
+
+  const ai = new GoogleGenAI({ apiKey })
+  const prompt = buildSameArtistPrompt(existing, incoming)
+
+  let lastErr: unknown
+  let response: Awaited<ReturnType<typeof ai.models.generateContent>> | undefined
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      response = await ai.models.generateContent({
+        model: MODEL,
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        config: {
+          responseMimeType: 'application/json',
+          responseSchema: SAME_ARTIST_SCHEMA,
+        },
+      })
+      break
+    } catch (err) {
+      lastErr = err
+      const status = (err as { status?: unknown })?.status
+      if (attempt < MAX_ATTEMPTS && isRetryableStatus(status)) {
+        await sleep(RETRY_DELAY_MS * attempt)
+        continue
+      }
+      throw err
+    }
+  }
+  if (!response) throw lastErr
+
+  const text = response.text
+  if (!text) {
+    return { sameArtist: false, confidence: 0, reasoning: 'Geminiから応答がありませんでした' }
+  }
+
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(text)
+  } catch {
+    return { sameArtist: false, confidence: 0, reasoning: 'Geminiの応答をJSONとして解釈できませんでした' }
+  }
+
+  const p = parsed as { sameArtist?: unknown; confidence?: unknown; reasoning?: unknown }
+  const sameArtist = typeof p.sameArtist === 'boolean' ? p.sameArtist : false
+  const confidence = typeof p.confidence === 'number' ? Math.max(0, Math.min(1, p.confidence)) : 0
+  const reasoning = typeof p.reasoning === 'string' && p.reasoning.trim() ? p.reasoning.trim() : '(理由の取得に失敗)'
+
+  return { sameArtist, confidence, reasoning }
+}

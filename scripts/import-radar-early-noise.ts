@@ -99,6 +99,7 @@ async function resolveArtistId(supabase: ReturnType<typeof createAdminClient>, n
       artistId: exactMatches[0].artistId,
       artistName: exactMatches[0].artistName,
       artistLinkUrl: exactMatches[0].artistLinkUrl,
+      primaryGenreName: exactMatches[0].primaryGenreName,
     })
     if (artistId) return { id: artistId, matched: true }
     console.error(`    登録失敗(${name}): ${errorMessage}`)

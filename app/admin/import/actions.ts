@@ -17,6 +17,13 @@ import { fetchAppleMusicArtistImage } from '@/utils/appleMusicImage'
 import { autoImportFromMusicBrainz, autoImportFromDiscogs } from '@/utils/creditImport'
 import { dispatchAlbumSync } from '@/utils/albumSyncDispatch'
 import { classifyAlbumType } from '@/utils/albumType'
+import { judgeSameArtistWithGemini } from '@/utils/geminiArtistMatch'
+
+// 同名だが別のapple_music_artist_idを持つ既存アーティストとの同一人物判定で、
+// これ以上の確信度が無ければ自動統合しない(同姓同名の別人を誤って統合する
+// リスクを避けるため、app/admin/data/artists/unmatched/geminiMatchActions.tsの
+// AUTO_APPLY_THRESHOLDと同じ値を踏襲)
+const SAME_ARTIST_AUTO_APPLY_THRESHOLD = 0.9
 
 type ImportResult = {
   success: boolean
@@ -104,6 +111,56 @@ export async function upsertArtistFromItunes(
     return { artistId: sameNameArtist.id, errorMessage: null }
   }
 
+  // 空スタブとしても見つからなかった場合、名前が完全一致するが既に別の
+  // apple_music_artist_idで本登録済みのartistが無いか確認する。iTunes検索結果の
+  // artistIdの揺れ(地域違いのカタログエントリ等)で同一人物が二重登録されるのを
+  // 防ぐため(2026-09-12のアーティスト重複統合作業で判明した実際の重複原因の
+  // ひとつ)。ただし同姓同名の別人という可能性も否定できないため、Geminiに
+  // ジャンル・出身国を材料に判定させ、確信が持てる場合のみ既存行を再利用する。
+  // 確信が持てない場合は新規作成した上でartist_match_logに記録し、人力確認に
+  // 委ねる(誤って別人を統合しないことを、重複行が残ることより優先する設計)。
+  const { data: sameNameRegistered } = await supabase
+    .from('artist')
+    .select('id, hometown_country')
+    .eq('name', itunesArtist.artistName)
+    .not('apple_music_artist_id', 'is', null)
+    .limit(1)
+    .maybeSingle()
+
+  let collisionLog: { existingArtistId: string; confidence: number; reasoning: string } | null = null
+
+  if (sameNameRegistered) {
+    const { data: genreLinks } = await supabase
+      .from('artist_genre')
+      .select('genre:genre_id(name)')
+      .eq('artist_id', sameNameRegistered.id)
+      .limit(1)
+    // genre:genre_id(name)の戻り値の型はオブジェクト/配列のどちらもあり得る
+    // (scripts/generate-artist-bios.tsのfetchGenreNamesと同じ防御的な扱い)
+    const rawGenre = genreLinks?.[0]?.genre as { name: string } | { name: string }[] | null | undefined
+    const existingGenreName = (Array.isArray(rawGenre) ? rawGenre[0]?.name : rawGenre?.name) ?? null
+
+    let judgement: { sameArtist: boolean; confidence: number; reasoning: string }
+    try {
+      judgement = await judgeSameArtistWithGemini(
+        { name: itunesArtist.artistName, primaryGenreName: existingGenreName, hometownCountry: sameNameRegistered.hometown_country },
+        { name: itunesArtist.artistName, primaryGenreName: itunesArtist.primaryGenreName ?? null }
+      )
+    } catch (err) {
+      console.error(`同名アーティスト同一判定に失敗(${itunesArtist.artistName}): ${(err as Error).message}`)
+      judgement = { sameArtist: false, confidence: 0, reasoning: '判定処理でエラーが発生したため未確認扱い' }
+    }
+
+    if (judgement.sameArtist && judgement.confidence >= SAME_ARTIST_AUTO_APPLY_THRESHOLD) {
+      return { artistId: sameNameRegistered.id, errorMessage: null }
+    }
+
+    console.warn(
+      `⚠️ 同名アーティスト「${itunesArtist.artistName}」が既に本登録済み(id=${sameNameRegistered.id})ですが、別のapple_music_artist_idのため同一人物と確信できず(確信度${judgement.confidence}: ${judgement.reasoning})、新規に登録します。要確認。`
+    )
+    collisionLog = { existingArtistId: sameNameRegistered.id, confidence: judgement.confidence, reasoning: judgement.reasoning }
+  }
+
   const { data: inserted, error: insertError } = await supabase
     .from('artist')
     .insert({
@@ -118,6 +175,22 @@ export async function upsertArtistFromItunes(
   if (insertError || !inserted) {
     return { artistId: null, errorMessage: insertError?.message ?? 'unknown error' }
   }
+
+  if (collisionLog) {
+    const { error: logError } = await supabase.from('artist_match_log').insert({
+      stub_artist_id: inserted.id,
+      stub_artist_name: itunesArtist.artistName,
+      chosen_apple_music_artist_id: null,
+      chosen_artist_name: null,
+      chosen_country: null,
+      confidence: collisionLog.confidence,
+      reasoning: `同名の既存アーティスト(id=${collisionLog.existingArtistId})との同一人物判定: ${collisionLog.reasoning}`,
+      candidates_json: [{ existingArtistId: collisionLog.existingArtistId }],
+      auto_applied: false,
+    })
+    if (logError) console.error(`artist_match_logへの記録に失敗(${itunesArtist.artistName}): ${logError.message}`)
+  }
+
   return { artistId: inserted.id, errorMessage: null }
 }
 
