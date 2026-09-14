@@ -18,6 +18,7 @@ import { autoImportFromMusicBrainz, autoImportFromDiscogs } from '@/utils/credit
 import { dispatchAlbumSync } from '@/utils/albumSyncDispatch'
 import { classifyAlbumType } from '@/utils/albumType'
 import { judgeSameArtistWithGemini } from '@/utils/geminiArtistMatch'
+import { extractFeaturedNames } from '@/utils/featuringBillingOrder'
 
 // 同名だが別のapple_music_artist_idを持つ既存アーティストとの同一人物判定で、
 // これ以上の確信度が無ければ自動統合しない(同姓同名の別人を誤って統合する
@@ -210,6 +211,58 @@ export async function fillMissingArtistImage(
   }
 }
 
+/** track.titleが新規に"(feat. X)"パターンを含み、Xがまだartistテーブルに
+ * 存在しない場合、名前のみの最小限スタブを作成してtrack_artistへ追加する
+ * (既存のimport-nme-100.ts等と同じ「名前のみスタブ」パターンを踏襲)。
+ * 既に存在する場合は既存のartist_idでtrack_artistへ追加するだけに留める。 */
+async function linkOrStubFeaturedArtists(supabase: SupabaseClient, trackId: string, trackTitle: string): Promise<void> {
+  const featuredNames = extractFeaturedNames(trackTitle)
+  if (!featuredNames || featuredNames.length === 0) return
+
+  for (const [index, name] of featuredNames.entries()) {
+    const { data: existingArtist, error: selectError } = await supabase
+      .from('artist')
+      .select('id')
+      .eq('name', name)
+      .maybeSingle()
+    if (selectError) {
+      console.error(`フィーチャリングアーティスト確認に失敗しました(${name}):`, selectError.message)
+      continue
+    }
+
+    let artistId: string
+    if (existingArtist) {
+      artistId = existingArtist.id
+    } else {
+      const { data: inserted, error: insertError } = await supabase.from('artist').insert({ name }).select('id').single()
+      if (insertError || !inserted) {
+        console.error(`フィーチャリングアーティストのスタブ作成に失敗しました(${name}):`, insertError?.message)
+        continue
+      }
+      artistId = inserted.id
+    }
+
+    const { data: existingLink, error: linkSelectError } = await supabase
+      .from('track_artist')
+      .select('id')
+      .eq('track_id', trackId)
+      .eq('artist_id', artistId)
+      .maybeSingle()
+    if (linkSelectError) {
+      console.error(`track_artist確認に失敗しました(${name}):`, linkSelectError.message)
+      continue
+    }
+    if (existingLink) continue
+
+    const { error: linkInsertError } = await supabase
+      .from('track_artist')
+      .insert({ track_id: trackId, artist_id: artistId, role: 'featuring', billing_order: index + 2 })
+    if (linkInsertError) {
+      console.error(`track_artist登録に失敗しました(${name}):`, linkInsertError.message)
+    }
+  }
+}
+
 /** 1アルバム分をupsertし、収録トラックの取得・登録・クレジット取込までを行う。
  * existingAlbumIdがnullなら新規登録、そうでなければ更新として扱う。
  * 戻り値は登録・更新できたトラック数(取得失敗などでスキップした場合は0)。
@@ -393,6 +446,7 @@ export async function syncOneAlbum(
         continue
       }
       albumTrackList.push({ id: insertedTrack.id, title: itunesTrack.trackName })
+      await linkOrStubFeaturedArtists(supabase, insertedTrack.id, itunesTrack.trackName)
     }
     trackCount++
   }
