@@ -211,10 +211,12 @@ export async function fillMissingArtistImage(
   }
 }
 
-/** track.titleが新規に"(feat. X)"パターンを含み、Xがまだartistテーブルに
- * 存在しない場合、名前のみの最小限スタブを作成してtrack_artistへ追加する
- * (既存のimport-nme-100.ts等と同じ「名前のみスタブ」パターンを踏襲)。
- * 既に存在する場合は既存のartist_idでtrack_artistへ追加するだけに留める。 */
+/** track.titleが新規に"(feat. X)"パターンを含む場合、Xと完全一致する既存の
+ * artist行があればtrack_artistへ追加する。完全一致するartistが存在しない
+ * 場合はスタブを作成せずスキップする(カンマ/アンパサンド区切りの抽出名は
+ * "Tyler, The Creator"のような単一アーティスト名の一部を誤って分割して
+ * しまうことがあり、未知の名前を恒久的なartist行として自動作成するのは
+ * 危険なため)。 */
 async function linkOrStubFeaturedArtists(supabase: SupabaseClient, trackId: string, trackTitle: string): Promise<void> {
   const featuredNames = extractFeaturedNames(trackTitle)
   if (!featuredNames || featuredNames.length === 0) return
@@ -230,17 +232,8 @@ async function linkOrStubFeaturedArtists(supabase: SupabaseClient, trackId: stri
       continue
     }
 
-    let artistId: string
-    if (existingArtist) {
-      artistId = existingArtist.id
-    } else {
-      const { data: inserted, error: insertError } = await supabase.from('artist').insert({ name }).select('id').single()
-      if (insertError || !inserted) {
-        console.error(`フィーチャリングアーティストのスタブ作成に失敗しました(${name}):`, insertError?.message)
-        continue
-      }
-      artistId = inserted.id
-    }
+    if (!existingArtist) continue
+    const artistId = existingArtist.id
 
     const { data: existingLink, error: linkSelectError } = await supabase
       .from('track_artist')
@@ -320,6 +313,7 @@ export async function syncOneAlbum(
 
   let albumId: string
   let createdAlbumArtistId: string | null = null
+  let trackOwnerArtistId = artistId
   if (existingAlbumId) {
     // album_typeは更新対象に含めない(手動修正が再同期のたびに上書きされないようにするため)
     albumId = existingAlbumId
@@ -332,21 +326,24 @@ export async function syncOneAlbum(
     // artist_idの下に存在しないか確認する(フィーチャリング曲のアルバムが
     // 参加アーティストごとに重複登録されるのを防ぐ。2026-09-14の調査で、
     // これを怠ったことが実際に多数の重複album/trackを生んでいたことを確認した)
-    const { data: crossArtistAlbum, error: crossArtistError } = await supabase
+    const { data: crossArtistAlbums, error: crossArtistError } = await supabase
       .from('album')
       .select('id, artist_id')
       .eq('apple_music_album_id', String(itunesAlbum.collectionId))
       .neq('artist_id', artistId)
-      .maybeSingle()
+      .order('id', { ascending: true })
+      .limit(1)
     if (crossArtistError) {
       console.error('別アーティスト下の既存アルバム確認に失敗しました:', itunesAlbum.collectionName, crossArtistError.message)
     }
+    const crossArtistAlbum = crossArtistAlbums?.[0] ?? null
 
     if (crossArtistAlbum) {
       // 既存のアルバムを再利用し、このアーティストをalbum_artistとして追加する
       // (album.artist_idは変更しない。既存の全ページ・クエリの動作を変えないため)
       albumId = crossArtistAlbum.id
       createdAlbumArtistId = artistId
+      trackOwnerArtistId = crossArtistAlbum.artist_id
       // artist_idは除外する(album.artist_idは既存の持ち主のまま変更しない。
       // 上のコメント通り、これを怠るとalbumPayloadのartist_idで上書きされてしまう)
       const { artist_id: _unusedArtistId, ...albumPayloadWithoutArtist } = albumPayload
@@ -402,16 +399,19 @@ export async function syncOneAlbum(
     // apple_music_track_idだけでなくalbum_idでも絞り込む(album側と同じ理由:
     // フィーチャリング曲は同じtrackIdが複数アーティストのアルバムに重複して
     // 現れうるため、album_idで絞らないと別アルバムのトラックを誤って拾ってしまう)
-    const { data: existingTrack } = await supabase
+    const { data: existingTrack, error: existingTrackError } = await supabase
       .from('track')
       .select('id')
       .eq('apple_music_track_id', String(itunesTrack.trackId))
       .eq('album_id', albumId)
       .maybeSingle()
+    if (existingTrackError) {
+      console.error(`既存track確認に失敗しました(${itunesTrack.trackName}):`, existingTrackError.message)
+    }
 
     const trackPayload = {
       album_id: albumId,
-      artist_id: artistId,
+      artist_id: trackOwnerArtistId,
       track_no: itunesTrack.trackNumber ?? null,
       disc_number: itunesTrack.discNumber ?? null,
       title: itunesTrack.trackName,

@@ -174,6 +174,7 @@ const ALBUM_FK_REFERENCES: { table: string; column: string }[] = [
   { table: 'album_credit', column: 'album_id' },
   { table: 'album_genre', column: 'album_id' },
   { table: 'album_match_log', column: 'stub_album_id' },
+  { table: 'album_artist', column: 'album_id' },
   { table: 'album_pickup', column: 'album_id' },
   { table: 'artist_credit', column: 'album_id' },
   { table: 'award_entry', column: 'album_id' },
