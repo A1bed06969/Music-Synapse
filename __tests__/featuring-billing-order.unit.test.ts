@@ -40,8 +40,8 @@ describe('determineBillingOrder', () => {
     ]
     const result = determineBillingOrder('Under the Mistletoe (feat. Dan Hicks)', candidates)
     assert.deepEqual(result, [
-      { artistId: 'a1', role: 'primary', billingOrder: 1 },
-      { artistId: 'a2', role: 'featuring', billingOrder: 2 },
+      { artistId: 'a1', role: 'main', billingOrder: 1 },
+      { artistId: 'a2', role: 'featured', billingOrder: 2 },
     ])
   })
 
@@ -52,8 +52,8 @@ describe('determineBillingOrder', () => {
     ]
     const result = determineBillingOrder('"New Jack" Sober (feat. Craig David & Stefflon Don)', candidates)
     assert.deepEqual(result, [
-      { artistId: 'a2', role: 'primary', billingOrder: 1 },
-      { artistId: 'a1', role: 'featuring', billingOrder: 2 },
+      { artistId: 'a2', role: 'main', billingOrder: 1 },
+      { artistId: 'a1', role: 'featured', billingOrder: 2 },
     ])
   })
 
@@ -64,8 +64,8 @@ describe('determineBillingOrder', () => {
     ]
     const result = determineBillingOrder('Plain Title', candidates)
     assert.deepEqual(result, [
-      { artistId: 'a1', role: 'primary', billingOrder: 1 },
-      { artistId: 'z1', role: 'featuring', billingOrder: 2 },
+      { artistId: 'a1', role: 'main', billingOrder: 1 },
+      { artistId: 'z1', role: 'featured', billingOrder: 2 },
     ])
   })
 
@@ -77,9 +77,9 @@ describe('determineBillingOrder', () => {
     ]
     const result = determineBillingOrder('Song (feat. B, C)', candidates)
     assert.deepEqual(result, [
-      { artistId: 'a-main', role: 'primary', billingOrder: 1 },
-      { artistId: 'a-b', role: 'featuring', billingOrder: 2 },
-      { artistId: 'a-c', role: 'featuring', billingOrder: 3 },
+      { artistId: 'a-main', role: 'main', billingOrder: 1 },
+      { artistId: 'a-b', role: 'featured', billingOrder: 2 },
+      { artistId: 'a-c', role: 'featured', billingOrder: 3 },
     ])
   })
 })

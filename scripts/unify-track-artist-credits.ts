@@ -300,7 +300,7 @@ async function upsertTrackArtist(
   supabase: AdminClient,
   trackId: string,
   artistId: string,
-  role: 'primary' | 'featuring',
+  role: 'main' | 'featured',
   billingOrder: number,
   execute: boolean
 ): Promise<void> {
@@ -325,7 +325,7 @@ async function upsertAlbumArtist(
   supabase: AdminClient,
   albumId: string,
   artistId: string,
-  role: 'primary' | 'featuring',
+  role: 'main' | 'featured',
   billingOrder: number,
   execute: boolean
 ): Promise<void> {

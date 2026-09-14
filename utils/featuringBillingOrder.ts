@@ -21,7 +21,7 @@ export function extractFeaturedNames(title: string): string[] | null {
 }
 
 export type BillingCandidate = { artistId: string; artistName: string; richnessScore: number }
-export type BillingEntry = { artistId: string; role: 'primary' | 'featuring'; billingOrder: number }
+export type BillingEntry = { artistId: string; role: 'main' | 'featured'; billingOrder: number }
 
 export function determineBillingOrder(title: string, candidates: BillingCandidate[]): BillingEntry[] {
   const featuredNames = extractFeaturedNames(title)
@@ -39,8 +39,8 @@ export function determineBillingOrder(title: string, candidates: BillingCandidat
         (a, b) => featuredNames.indexOf(a.artistName.trim()) - featuredNames.indexOf(b.artistName.trim())
       )
       return [
-        { artistId: primary.artistId, role: 'primary', billingOrder: 1 },
-        ...orderedFeatured.map((c, i) => ({ artistId: c.artistId, role: 'featuring' as const, billingOrder: i + 2 })),
+        { artistId: primary.artistId, role: 'main', billingOrder: 1 },
+        ...orderedFeatured.map((c, i) => ({ artistId: c.artistId, role: 'featured' as const, billingOrder: i + 2 })),
       ]
     }
   }
@@ -52,7 +52,7 @@ export function determineBillingOrder(title: string, candidates: BillingCandidat
   })
   return sorted.map((c, i) => ({
     artistId: c.artistId,
-    role: i === 0 ? 'primary' : 'featuring',
+    role: i === 0 ? 'main' : 'featured',
     billingOrder: i + 1,
   }))
 }

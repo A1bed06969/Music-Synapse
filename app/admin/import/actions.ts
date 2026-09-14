@@ -256,7 +256,7 @@ async function linkOrStubFeaturedArtists(supabase: SupabaseClient, trackId: stri
 
     const { error: linkInsertError } = await supabase
       .from('track_artist')
-      .insert({ track_id: trackId, artist_id: artistId, role: 'featuring', billing_order: index + 2 })
+      .insert({ track_id: trackId, artist_id: artistId, role: 'featured', billing_order: index + 2 })
     if (linkInsertError) {
       console.error(`track_artist登録に失敗しました(${name}):`, linkInsertError.message)
     }
@@ -388,7 +388,7 @@ export async function syncOneAlbum(
         .eq('album_id', albumId)
       const { error: albumArtistInsertError } = await supabase
         .from('album_artist')
-        .insert({ album_id: albumId, artist_id: createdAlbumArtistId, role: 'featuring', billing_order: (existingCount ?? 0) + 1 })
+        .insert({ album_id: albumId, artist_id: createdAlbumArtistId, role: 'featured', billing_order: (existingCount ?? 0) + 1 })
       if (albumArtistInsertError) {
         console.error('album_artist登録に失敗しました:', itunesAlbum.collectionName, albumArtistInsertError.message)
       }

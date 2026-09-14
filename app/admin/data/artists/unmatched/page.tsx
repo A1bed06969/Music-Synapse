@@ -44,7 +44,7 @@ export default async function UnmatchedArtistsPage() {
       .from('track_artist')
       .select('artist:artist_id!inner(id, name, created_at, apple_music_artist_id), track:track_id(title)')
       .is('artist.apple_music_artist_id', null)
-      .eq('role', 'featuring'),
+      .eq('role', 'featured'),
   ])
 
   const stubById = new Map<string, { id: string; name: string; createdAt: string }>()
