@@ -369,7 +369,15 @@ export async function syncOneAlbum(
     }
 
     if (existingTrack) {
-      const { error: trackUpdateError } = await supabase.from('track').update(trackPayload).eq('id', existingTrack.id)
+      // artist_idは除外する(track.artist_idは既存の持ち主のまま変更しない。
+      // album側のガードにより、フィーチャリング曲の同期がこの既存trackにも
+      // 一致しうるようになったため、ここでartist_idを含めて更新すると
+      // 既存トラックの所有アーティストが上書きされてしまう)
+      const { artist_id: _unusedTrackArtistId, ...trackPayloadWithoutArtist } = trackPayload
+      const { error: trackUpdateError } = await supabase
+        .from('track')
+        .update(trackPayloadWithoutArtist)
+        .eq('id', existingTrack.id)
       if (trackUpdateError) {
         console.error('トラック更新失敗:', itunesTrack.trackName, trackUpdateError.message)
       }
