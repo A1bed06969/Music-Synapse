@@ -29,14 +29,20 @@
 
 ## 検出・マッチング基準
 
-対象は、track.titleが"feat"(大文字小文字を区別しない)を含み、かつ以下が完全一致する行が2件以上・異なる`artist_id`にまたがっているグループ:
+プラン作成時の追加調査で、重複album行が**全て同一の`apple_music_album_id`を持つ**ことを実データで確認した(例: 「Jugology」の6重複album行は全て`apple_music_album_id = "923737387"`)。これはタイトル文字列よりもはるかに確実な突合キーのため、優先的に使う。track側の`apple_music_track_id`も同様で、対象トラック(titleに"feat"を含む63,519件)のうち99.94%(63,483件)に設定されている。
+
+対象は、track.titleが"feat"(大文字小文字を区別しない)を含み、かつ以下のいずれかの条件で2件以上・異なる`artist_id`にまたがっているグループ:
+
+**主判定(優先)**: `apple_music_track_id`が両側とも非nullで完全一致する行(album側も同様に`apple_music_album_id`で判定)。外部ID同士の一致のため、タイトル文字列の表記ゆれに影響されず最も確実。
+
+**副判定(apple_music_track_idが片側でもnullの場合のフォールバック)**: 以下が完全一致する行
 
 - `track.title`(完全一致)
 - 対応する`album.title`(完全一致)
 - `track.track_no`(完全一致。片側がnullの場合はこの条件をスキップし、他の3項目のみで判定する)
 - `track.duration_seconds`(完全一致。片側がnullの場合はこの条件をスキップし、他の3項目のみで判定する)
 
-上記の条件でグループ化した際、**同一artist_id内に完全一致する行が複数存在する場合**(同名異版等、既存の重複統合プロジェクトの`matchTracks`と同じ考え方)はそのグループ全体を「あいまい」としてスキップし、dry-runレポートに一覧化する(推測で統合しない)。
+上記いずれの条件でグループ化した場合も、**同一artist_id内に一致する行が複数存在する場合**(同名異版等、既存の重複統合プロジェクトの`matchTracks`と同じ考え方)はそのグループ全体を「あいまい」としてスキップし、dry-runレポートに一覧化する(推測で統合しない)。
 
 ## 本体(canonical)track/albumの選定
 
@@ -66,11 +72,13 @@
 
 ## 今後の再発防止(共通ガード)
 
-新規track行を作成する**全てのインポート経路**(既存アーティストの通常カタログ同期・フィーチャリング経由の両方)に、以下のガードを共通関数として追加する:
+実際のインポート処理(`app/admin/import/actions.ts`の`syncOneAlbum`)を確認したところ、根本原因はalbum単位にあることが分かった: `syncOneAlbum`はアルバムを**呼び出し元から渡された`artistId`で新規作成**し、収録トラックの既存判定を`apple_music_track_id` + `album_id`で行っている。フィーチャリング曲のalbumが既に**別のartist_idの下に別album行として**存在していても、この関数はそれを検知せず、常に新規album行(→新規track行)を作り直してしまう。つまりガードは**album作成の直前**に置く必要がある。
 
-- 新規track作成前に、同一の`(title, album title, track_no, duration_seconds)`(上記マッチング基準と同一)を持つtrack行が**既に別のartist_idの下に存在するか**を確認する
-- 存在する場合は新規track行を作成せず、既存track行に対して現在同期中のartist_idの`track_artist`行を追加する(`role='featuring'`、`billing_order`は既存の最大値+1)だけに留める
-- album側も同様のガードを設ける
+新規album行を作成する**全てのインポート経路**に、以下のガードを共通関数として追加する:
+
+- 新規album作成前に、同一の`apple_music_album_id`を持つalbum行が**既に別のartist_idの下に存在するか**を確認する(apple_music_album_idが無い場合は`(title, track_count, release_date)`の完全一致でフォールバック判定する)
+- 存在する場合は新規album行を作成せず、既存のalbum_idに対して現在同期中のartist_idの`album_artist`行を追加し、収録トラックの同期先も**その既存album_id**にする(結果として`syncOneAlbum`内の`apple_music_track_id` + `album_id`による既存トラック判定が正しく機能し、track側も重複を作らずに済む)
+- 新規track行についても、apple_music_album_idを持たない手動登録経路等のために、`apple_music_track_id`(無ければtitle/track_no/durationの完全一致)による同種のガードを個別に用意する
 
 さらに、track.titleが新規に`(feat. X)`パターンを含み、Xがまだ`artist`テーブルに存在しない場合:
 
