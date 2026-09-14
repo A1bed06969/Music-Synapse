@@ -1,6 +1,6 @@
 'use server'
 
-import { revalidatePath } from 'next/cache'
+import { safeRevalidatePath } from '@/utils/safeRevalidate'
 import { createAdminClient } from '@/utils/Supabase/admin'
 import { fetchArtistWithAlbums } from '@/utils/itunes'
 import { judgeArtistMatchWithGemini, type MatchCandidate, type ArticleContext } from '@/utils/geminiArtistMatch'
@@ -128,7 +128,7 @@ export async function runGeminiMatchForStub(stubArtistId: string, rankingId: str
     if (!linkResult.success) {
       return { status: 'error', message: `自動反映に失敗しました: ${linkResult.message}` }
     }
-    revalidatePath('/admin/data/artists/unmatched')
+    safeRevalidatePath('/admin/data/artists/unmatched')
     return {
       status: 'auto_applied',
       message: `「${linkResult.registeredName}」に自動反映しました。`,
@@ -179,7 +179,7 @@ export async function runGeminiMatchForRanking(rankingId: string): Promise<Gemin
     else result.errors += 1
   }
 
-  revalidatePath('/admin/data/artists/unmatched')
+  safeRevalidatePath('/admin/data/artists/unmatched')
   return result
 }
 
@@ -206,7 +206,7 @@ export async function confirmGeminiMatchLog(logId: string): Promise<LinkStubResu
   )
   if (result.success) {
     await supabase.from('artist_match_log').update({ auto_applied: true }).eq('id', logId)
-    revalidatePath('/admin/data/artists/unmatched')
+    safeRevalidatePath('/admin/data/artists/unmatched')
   }
   return result
 }
@@ -240,6 +240,6 @@ export async function revertGeminiMatchLog(logId: string): Promise<{ success: bo
   if (error) return { success: false, message: `取消に失敗しました: ${error.message}` }
 
   await supabase.from('artist_match_log').update({ reverted: true, reverted_at: new Date().toISOString() }).eq('id', logId)
-  revalidatePath('/admin/data/artists/unmatched')
+  safeRevalidatePath('/admin/data/artists/unmatched')
   return { success: true, message: '紐付けを解除しました。既に同期されたアルバム等は手動でご確認ください。' }
 }

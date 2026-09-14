@@ -1,6 +1,6 @@
 'use server'
 
-import { revalidatePath } from 'next/cache'
+import { safeRevalidatePath } from '@/utils/safeRevalidate'
 import { afterOrNow } from '@/utils/afterOrNow'
 import { createAdminClient } from '@/utils/Supabase/admin'
 import { searchArtist, fetchArtistWithAlbums, parseAppleMusicArtistUrl, type ItunesArtistSearchResult } from '@/utils/itunes'
@@ -106,8 +106,8 @@ export async function linkStubArtistToItunes(
     dispatchAlbumSync(stubArtistId, itunesArtist.artistName, String(itunesArtist.artistId), itunesAlbums, 0, country)
   )
 
-  revalidatePath('/admin/data/artists/unmatched')
-  revalidatePath(`/artists/${stubArtistId}`)
+  safeRevalidatePath('/admin/data/artists/unmatched')
+  safeRevalidatePath(`/artists/${stubArtistId}`)
 
   return { success: true, registeredName: itunesArtist.artistName }
 }

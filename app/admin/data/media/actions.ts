@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
+import { safeRevalidatePath } from '@/utils/safeRevalidate'
 import { createAdminClient } from '@/utils/Supabase/admin'
 import { PREFECTURE_COORDS } from '@/utils/prefectures'
 
@@ -213,9 +214,9 @@ export async function mergeMedia(formData: FormData) {
     redirectWith('error', `統合元の削除に失敗しました(データは既に統合先へ付け替え済みです): ${deleteError.message}`)
   }
 
-  revalidatePath('/admin/data/media')
-  revalidatePath('/admin/data/media/radio-airplay-pick')
-  revalidatePath('/media/on-air')
+  safeRevalidatePath('/admin/data/media')
+  safeRevalidatePath('/admin/data/media/radio-airplay-pick')
+  safeRevalidatePath('/media/on-air')
   redirectWith('success', `「${source!.name}」を「${target!.name}」へ統合しました。`)
 }
 
