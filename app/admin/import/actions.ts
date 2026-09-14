@@ -294,7 +294,13 @@ export async function syncOneAlbum(
       // (album.artist_idは変更しない。既存の全ページ・クエリの動作を変えないため)
       albumId = crossArtistAlbum.id
       createdAlbumArtistId = artistId
-      const { error: albumUpdateError } = await supabase.from('album').update(albumPayload).eq('id', albumId)
+      // artist_idは除外する(album.artist_idは既存の持ち主のまま変更しない。
+      // 上のコメント通り、これを怠るとalbumPayloadのartist_idで上書きされてしまう)
+      const { artist_id: _unusedArtistId, ...albumPayloadWithoutArtist } = albumPayload
+      const { error: albumUpdateError } = await supabase
+        .from('album')
+        .update(albumPayloadWithoutArtist)
+        .eq('id', albumId)
       if (albumUpdateError) {
         console.error('アルバム更新失敗(既存アルバム再利用):', itunesAlbum.collectionName, albumUpdateError.message)
       }
