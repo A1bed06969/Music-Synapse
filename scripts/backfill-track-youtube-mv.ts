@@ -51,7 +51,7 @@ import {
   fetchUploadedVideos,
   YoutubeQuotaExceededError,
 } from '@/utils/youtubeChannelSearch'
-import { judgeYoutubeChannelWithGemini } from '@/utils/geminiYoutubeChannelMatch'
+import { judgeYoutubeChannelWithGemini, GeminiQuotaExceededError } from '@/utils/geminiYoutubeChannelMatch'
 import { findBestMvMatch } from '@/utils/youtubeMvMatch'
 
 type AdminClient = ReturnType<typeof createAdminClient>
@@ -477,6 +477,16 @@ async function main() {
         console.log('  ⏸️ YouTube検索クォータを使い切りました。このアーティストと以降は次回に持ち越します。')
         quotaExceeded = true
         break
+      }
+      if (err instanceof GeminiQuotaExceededError) {
+        // GeminiのクォータはYouTube検索と異なり「1分あたり」の制限のことが多く、
+        // 一時的なもので数十秒待てば回復する。日次上限のYouTube検索と違い
+        // break(全体打ち切り)すると勿体無いため、このアーティストだけログに
+        // 書かずスキップして次に進む(2026-09-13の実行で、これが無かったため
+        // 一時的なレート制限に過ぎないアーティスト4件が誤って永久スキップ扱いに
+        // なった実績あり)。
+        console.log('  ⏸️ Geminiのレート制限に達しました。このアーティストは次回に持ち越します。')
+        continue
       }
       console.log(`  ❌ エラー: ${(err as Error).message}`)
       result = {

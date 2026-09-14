@@ -11,6 +11,15 @@ import type { YoutubeChannelDetail } from './youtubeChannelSearch'
 
 const MODEL = 'gemini-3.1-flash-lite'
 
+/** Geminiの無料枠クォータ(分単位・日単位どちらも)を使い切った状態。呼び出し側は
+ * これを「このアーティストの判定に失敗した」ではなく「そもそも試せていない」
+ * として扱い、youtube_mv_backfill_logに書き込まずに処理を打ち切ること
+ * (書いてしまうと次回実行時にこのアーティストが永久にスキップされてしまう。
+ * utils/youtubeChannelSearch.tsのYoutubeQuotaExceededErrorと同じ設計。
+ * 2026-09-13の実行で、この対策が無かったため4アーティストが誤って永久
+ * スキップ扱いになった実績あり)。 */
+export class GeminiQuotaExceededError extends Error {}
+
 export type YoutubeChannelJudgement = {
   channelIndex: number | null
   confidence: number
@@ -99,6 +108,9 @@ export async function judgeYoutubeChannelWithGemini(
       if (attempt < MAX_ATTEMPTS && isRetryableStatus(status)) {
         await sleep(RETRY_DELAY_MS * attempt)
         continue
+      }
+      if (status === 429) {
+        throw new GeminiQuotaExceededError((err as Error).message)
       }
       throw err
     }
