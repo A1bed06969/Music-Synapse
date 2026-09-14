@@ -201,8 +201,9 @@ const TRACK_FK_REFERENCES: { table: string; column: string }[] = [
   { table: 'track_credit', column: 'track_id' },
   { table: 'track_genre', column: 'track_id' },
   { table: 'track_instrument', column: 'track_id' },
-  // track_artist.track_idはここでは扱わない(重複trackが持つtrack_artist行は
-  // 通常無い前提だが、念のためmergeTrackArtistRows内で個別に確認・移設する)
+  // track_artist.track_idはここでは扱わない(track_artist.track_idはmergeTrackArtistRows
+  // で個別に扱う。単純なUPDATE付け替えだと(track_id, artist_id)の重複を作りうるため、
+  // repointFkの汎用ロジックではなく専用の統合ロジックが必要)
 ]
 
 async function repointFk(
@@ -212,17 +213,56 @@ async function repointFk(
   toId: string,
   execute: boolean
 ): Promise<{ table: string; column: string; error: string | null; movedCount: number }[]> {
-  const outcomes: { table: string; column: string; error: string | null; movedCount: number }[] = []
-  for (const ref of refs) {
-    if (!execute) {
-      const { count, error } = await supabase.from(ref.table).select('*', { count: 'exact', head: true }).eq(ref.column, fromId)
-      outcomes.push({ table: ref.table, column: ref.column, error: error ? error.message : null, movedCount: count ?? 0 })
-      continue
-    }
-    const { error, count } = await supabase.from(ref.table).update({ [ref.column]: toId }, { count: 'exact' }).eq(ref.column, fromId)
-    outcomes.push({ table: ref.table, column: ref.column, error: error ? error.message : null, movedCount: count ?? 0 })
-  }
+  // 各FK参照テーブルは互いに独立しているため並列実行する(グループ間・
+  // dupRow間の直列実行は変更しない — こちらはあくまで1回のrepointFk呼び出し
+  // 内部、複数テーブルにまたがるチェック/更新の並列化に限定)
+  const outcomes = await Promise.all(
+    refs.map(async (ref) => {
+      if (!execute) {
+        const { count, error } = await supabase.from(ref.table).select('*', { count: 'exact', head: true }).eq(ref.column, fromId)
+        return { table: ref.table, column: ref.column, error: error ? error.message : null, movedCount: count ?? 0 }
+      }
+      const { error, count } = await supabase.from(ref.table).update({ [ref.column]: toId }, { count: 'exact' }).eq(ref.column, fromId)
+      return { table: ref.table, column: ref.column, error: error ? error.message : null, movedCount: count ?? 0 }
+    })
+  )
   return outcomes
+}
+
+/** 重複trackが持つtrack_artist行を本体trackへ移設する(track_artistには
+ * (track_id, artist_id)のユニーク制約が無いため、単純なUPDATEでは重複を作りうる。
+ * 本体側に同じ(track_id, artist_id)が既にあれば重複行を削除し、無ければ
+ * track_idを付け替える) */
+async function mergeTrackArtistRows(
+  supabase: AdminClient,
+  fromTrackId: string,
+  toTrackId: string,
+  execute: boolean
+): Promise<{ error: string | null }> {
+  const { data: rows, error: selectError } = await supabase
+    .from('track_artist')
+    .select('id, artist_id')
+    .eq('track_id', fromTrackId)
+  if (selectError) return { error: selectError.message }
+  if (!rows || rows.length === 0) return { error: null }
+  for (const row of rows) {
+    const { data: existing, error: existingError } = await supabase
+      .from('track_artist')
+      .select('id')
+      .eq('track_id', toTrackId)
+      .eq('artist_id', row.artist_id)
+      .maybeSingle()
+    if (existingError) return { error: existingError.message }
+    if (!execute) continue
+    if (existing) {
+      const { error: deleteError } = await supabase.from('track_artist').delete().eq('id', row.id)
+      if (deleteError) return { error: deleteError.message }
+    } else {
+      const { error: updateError } = await supabase.from('track_artist').update({ track_id: toTrackId }).eq('id', row.id)
+      if (updateError) return { error: updateError.message }
+    }
+  }
+  return { error: null }
 }
 
 const TRACK_MERGE_FIELDS = [
@@ -366,20 +406,22 @@ async function main() {
       console.log(`  本体track: ${canonical.id}(artist_id=${canonical.artistId}) — 選定理由: ${reason}`)
 
       // 本体trackへ、グループ内の全アーティストのtrack_artistを作成する
-      for (const b of billing) {
-        await upsertTrackArtist(supabase, canonical.id, b.artistId, b.role, b.billingOrder, !DRY_RUN)
-        trackArtistCreated++
-      }
+      // (各アーティストのupsertは互いに独立しているため並列実行する)
+      await Promise.all(
+        billing.map((b) => upsertTrackArtist(supabase, canonical.id, b.artistId, b.role, b.billingOrder, !DRY_RUN))
+      )
+      trackArtistCreated += billing.length
       console.log(
         `  track_artist(${usedFeatParsing ? 'タイトル解析' : 'フォールバック'}): ${billing.map((b) => `${artistNames.get(b.artistId) ?? b.artistId}(${b.role}, order=${b.billingOrder})`).join(' / ')}`
       )
 
       // 本体albumへ、同じ表示順でalbum_artistを作成する(本体trackのalbum_idを基準にする)
       const canonicalAlbumId = canonicalRawRow.album_id
-      for (const b of billing) {
-        await upsertAlbumArtist(supabase, canonicalAlbumId, b.artistId, b.role, b.billingOrder, !DRY_RUN)
-        albumArtistCreated++
-      }
+      // (同様に各アーティストのupsertは互いに独立しているため並列実行する)
+      await Promise.all(
+        billing.map((b) => upsertAlbumArtist(supabase, canonicalAlbumId, b.artistId, b.role, b.billingOrder, !DRY_RUN))
+      )
+      albumArtistCreated += billing.length
 
       // 重複track(本体以外)を、フィールド補完→FK付け替え→削除する
       for (const dupRow of group.rows) {
@@ -392,6 +434,16 @@ async function main() {
         const failedFks = fkOutcomes.filter((o) => o.error !== null)
         if (failedFks.length > 0) {
           console.log(`    ⚠️ track(${dupRow.id})のFK付け替え失敗: ${failedFks.map((f) => `${f.table}.${f.column}(${f.error})`).join(', ')}`)
+          console.log(`    ⚠️ 重複track(${dupRow.id})は削除しません`)
+          fkRepointFailures++
+          continue
+        }
+
+        // track_artist.track_idはTRACK_FK_REFERENCESでは扱えない(ユニーク制約が
+        // 無いため単純なUPDATEだと重複を作りうる)ので、専用ロジックで個別に移設する
+        const mergeResult = await mergeTrackArtistRows(supabase, dupRow.id, canonical.id, !DRY_RUN)
+        if (mergeResult.error !== null) {
+          console.log(`    ⚠️ track(${dupRow.id})のtrack_artist移設失敗: ${mergeResult.error}`)
           console.log(`    ⚠️ 重複track(${dupRow.id})は削除しません`)
           fkRepointFailures++
           continue
@@ -413,6 +465,7 @@ async function main() {
           .from('track')
           .select('id', { count: 'exact', head: true })
           .eq('album_id', dupAlbumId)
+          .neq('id', dupRow.id)
         if (countError) {
           console.log(`    ⚠️ album(${dupAlbumId})の残りtrack件数確認に失敗: ${countError.message}`)
           continue
