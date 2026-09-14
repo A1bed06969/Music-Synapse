@@ -1,7 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { after } from 'next/server'
+import { afterOrNow } from '@/utils/afterOrNow'
 import { createAdminClient } from '@/utils/Supabase/admin'
 import { searchArtist, fetchArtistWithAlbums, parseAppleMusicArtistUrl, type ItunesArtistSearchResult } from '@/utils/itunes'
 import { fetchAppleMusicArtistImage } from '@/utils/appleMusicImage'
@@ -102,7 +102,7 @@ export async function linkStubArtistToItunes(
     }
   }
 
-  after(() =>
+  afterOrNow(() =>
     dispatchAlbumSync(stubArtistId, itunesArtist.artistName, String(itunesArtist.artistId), itunesAlbums, 0, country)
   )
 

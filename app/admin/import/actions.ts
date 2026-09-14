@@ -1,7 +1,7 @@
 // app/admin/import/actions.ts
 'use server'
 
-import { after } from 'next/server'
+import { afterOrNow } from '@/utils/afterOrNow'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/utils/Supabase/admin'
 import {
@@ -523,7 +523,7 @@ async function importOneArtist(artistUrl: string): Promise<ImportResult> {
   // そのためアーティスト本体の登録だけ先に完了させてすぐ結果を返し、
   // アルバム・トラックの取込はafter()でレスポンス後にバックグラウンド実行する
   // (チャンク分割・MusicBrainz取込の連鎖はutils/albumSyncDispatch.ts参照)
-  after(() => dispatchAlbumSync(artistId, itunesArtist.artistName, String(itunesArtist.artistId), itunesAlbums))
+  afterOrNow(() => dispatchAlbumSync(artistId, itunesArtist.artistName, String(itunesArtist.artistId), itunesAlbums))
 
   return {
     success: true,
