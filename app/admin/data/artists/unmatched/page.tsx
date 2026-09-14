@@ -28,7 +28,7 @@ function firstOf<T>(value: T | T[] | null | undefined): T | null {
 export default async function UnmatchedArtistsPage() {
   const supabase = await createClient()
 
-  const [{ data: eventLinks }, { data: curationLinks }] = await Promise.all([
+  const [{ data: eventLinks }, { data: curationLinks }, { data: featuringLinks }] = await Promise.all([
     supabase
       .from('event_appearance_artist')
       .select(
@@ -40,6 +40,11 @@ export default async function UnmatchedArtistsPage() {
       .select('artist:artist_id!inner(id, name, created_at, apple_music_artist_id), ranking:ranking_id(id, name)')
       .is('artist.apple_music_artist_id', null)
       .not('artist_id', 'is', null),
+    supabase
+      .from('track_artist')
+      .select('artist:artist_id!inner(id, name, created_at, apple_music_artist_id), track:track_id(title)')
+      .is('artist.apple_music_artist_id', null)
+      .eq('role', 'featuring'),
   ])
 
   const stubById = new Map<string, { id: string; name: string; createdAt: string }>()
@@ -78,6 +83,15 @@ export default async function UnmatchedArtistsPage() {
     rankingGroupCount.set(ranking.id, group)
   }
   const rankingGroups = Array.from(rankingGroupCount.values()).sort((a, b) => b.stubCount - a.stubCount)
+
+  for (const link of featuringLinks ?? []) {
+    const artist = firstOf(link.artist)
+    if (!artist) continue
+    stubById.set(artist.id, { id: artist.id, name: artist.name, createdAt: artist.created_at })
+
+    const track = firstOf<{ title: string }>(link.track)
+    if (track) addContext(artist.id, `フィーチャリング: ${track.title}`)
+  }
 
   const { data: logRows } = await supabase
     .from('artist_match_log')
