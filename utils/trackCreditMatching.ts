@@ -1,6 +1,7 @@
 // フィーチャリング曲が異なるartist_idに分散登録されている行を検出する純粋関数。
 // apple_music_track_idが両側にあればそれを優先(最も確実な外部ID一致)、
-// 無ければtitle+albumTitle+trackNo+durationSecondsの完全一致にフォールバックする。
+// 無ければtitle+albumTitle+trackNo+durationSecondsで完全一致を検出する。
+// trackNo/durationSecondsについては両方nullの場合のみ一致；片方nullの場合は異なる値。
 // 同一artist_id内に一致行が複数ある場合(同名異版等)は推測せず「あいまい」として
 // スキップする。docs/superpowers/specs/2026-09-14-track-artist-unification-design.md
 // 「検出・マッチング基準」参照。
@@ -20,7 +21,7 @@ export type CreditGroup = { rows: TrackCreditRow[] }
 export type GroupResult = { groups: CreditGroup[]; ambiguousKeys: string[] }
 
 function fallbackKey(r: TrackCreditRow): string {
-  return `${r.title} ${r.albumTitle} ${r.trackNo ?? ''} ${r.durationSeconds ?? ''}`
+  return JSON.stringify([r.title, r.albumTitle, r.trackNo, r.durationSeconds])
 }
 
 function buildGroups(rows: TrackCreditRow[], keyOf: (r: TrackCreditRow) => string): GroupResult {

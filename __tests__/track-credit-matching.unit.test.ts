@@ -94,4 +94,19 @@ describe('groupTrackCredits', () => {
     assert.equal(result.groups.length, 0)
     assert.equal(result.ambiguousKeys.length, 0)
   })
+
+  test('does not falsely group rows when title/albumTitle word boundary differs (collision avoidance)', () => {
+    // Two genuinely different (title, albumTitle) pairs that would collide with
+    // simple space concatenation ("Duet Song LP" from either split), but are actually
+    // the same title+album pair when correctly delimited.
+    // With JSON.stringify, they produce different keys and do NOT group.
+    const rows = [
+      row({ id: 't1', artistId: 'a1', appleMusicTrackId: null, title: 'Duet Song', albumTitle: 'LP', trackNo: 3, durationSeconds: 180 }),
+      row({ id: 't2', artistId: 'a2', appleMusicTrackId: null, title: 'Duet', albumTitle: 'Song LP', trackNo: 3, durationSeconds: 180 }),
+    ]
+    const result = groupTrackCredits(rows)
+    // These are genuinely different (title, albumTitle) pairs → do NOT group
+    assert.equal(result.groups.length, 0)
+    assert.equal(result.ambiguousKeys.length, 0)
+  })
 })
