@@ -266,6 +266,7 @@ export async function syncOneAlbum(
   }
 
   let albumId: string
+  let createdAlbumArtistId: string | null = null
   if (existingAlbumId) {
     // album_typeは更新対象に含めない(手動修正が再同期のたびに上書きされないようにするため)
     albumId = existingAlbumId
@@ -274,17 +275,65 @@ export async function syncOneAlbum(
       console.error('アルバム更新失敗:', itunesAlbum.collectionName, albumUpdateError.message)
     }
   } else {
-    const { data: insertedAlbum, error: albumError } = await supabase
+    // 新規作成前に、同一apple_music_album_idを持つアルバムが既に「別の」
+    // artist_idの下に存在しないか確認する(フィーチャリング曲のアルバムが
+    // 参加アーティストごとに重複登録されるのを防ぐ。2026-09-14の調査で、
+    // これを怠ったことが実際に多数の重複album/trackを生んでいたことを確認した)
+    const { data: crossArtistAlbum, error: crossArtistError } = await supabase
       .from('album')
-      .insert({ ...albumPayload, album_type: classifyAlbumType(title, itunesAlbum.trackCount ?? null) })
-      .select('id')
-      .single()
-
-    if (albumError || !insertedAlbum) {
-      console.error('アルバム登録失敗:', itunesAlbum.collectionName, albumError?.message)
-      return 0
+      .select('id, artist_id')
+      .eq('apple_music_album_id', String(itunesAlbum.collectionId))
+      .neq('artist_id', artistId)
+      .maybeSingle()
+    if (crossArtistError) {
+      console.error('別アーティスト下の既存アルバム確認に失敗しました:', itunesAlbum.collectionName, crossArtistError.message)
     }
-    albumId = insertedAlbum.id
+
+    if (crossArtistAlbum) {
+      // 既存のアルバムを再利用し、このアーティストをalbum_artistとして追加する
+      // (album.artist_idは変更しない。既存の全ページ・クエリの動作を変えないため)
+      albumId = crossArtistAlbum.id
+      createdAlbumArtistId = artistId
+      const { error: albumUpdateError } = await supabase.from('album').update(albumPayload).eq('id', albumId)
+      if (albumUpdateError) {
+        console.error('アルバム更新失敗(既存アルバム再利用):', itunesAlbum.collectionName, albumUpdateError.message)
+      }
+    } else {
+      const { data: insertedAlbum, error: albumError } = await supabase
+        .from('album')
+        .insert({ ...albumPayload, album_type: classifyAlbumType(title, itunesAlbum.trackCount ?? null) })
+        .select('id')
+        .single()
+
+      if (albumError || !insertedAlbum) {
+        console.error('アルバム登録失敗:', itunesAlbum.collectionName, albumError?.message)
+        return 0
+      }
+      albumId = insertedAlbum.id
+    }
+  }
+
+  if (createdAlbumArtistId) {
+    const { data: existingAlbumArtist, error: albumArtistSelectError } = await supabase
+      .from('album_artist')
+      .select('id')
+      .eq('album_id', albumId)
+      .eq('artist_id', createdAlbumArtistId)
+      .maybeSingle()
+    if (albumArtistSelectError) {
+      console.error('album_artist確認に失敗しました:', itunesAlbum.collectionName, albumArtistSelectError.message)
+    } else if (!existingAlbumArtist) {
+      const { count: existingCount } = await supabase
+        .from('album_artist')
+        .select('id', { count: 'exact', head: true })
+        .eq('album_id', albumId)
+      const { error: albumArtistInsertError } = await supabase
+        .from('album_artist')
+        .insert({ album_id: albumId, artist_id: createdAlbumArtistId, role: 'featuring', billing_order: (existingCount ?? 0) + 1 })
+      if (albumArtistInsertError) {
+        console.error('album_artist登録に失敗しました:', itunesAlbum.collectionName, albumArtistInsertError.message)
+      }
+    }
   }
 
   const albumTrackList: { id: string; title: string }[] = []
