@@ -305,20 +305,33 @@ export async function registerFestivalAppearance(formData: FormData) {
 
   const venue = await resolveVenueForRegion(supabase, editionId!, region)
 
-  const { error: appearanceError } = await supabase.from('event_appearance').insert({
-    event_edition_id: editionId,
-    artist_id: artistId,
-    stage: stage || null,
-    venue,
-    // 開演/終演時刻が取得できればそのまま使い、取得できない場合のみ
-    // 出演日を日付グルーピング表示に使えるよう正午の仮時刻で保持する
-    start_time: startAt || (performanceDate ? `${performanceDate}T12:00:00+00:00` : null),
-    end_time: endAt || null,
-    is_headliner: false,
-  })
+  const { data: insertedAppearance, error: appearanceError } = await supabase
+    .from('event_appearance')
+    .insert({
+      event_edition_id: editionId,
+      artist_id: artistId,
+      stage: stage || null,
+      venue,
+      // 開演/終演時刻が取得できればそのまま使い、取得できない場合のみ
+      // 出演日を日付グルーピング表示に使えるよう正午の仮時刻で保持する
+      start_time: startAt || (performanceDate ? `${performanceDate}T12:00:00+00:00` : null),
+      end_time: endAt || null,
+      is_headliner: false,
+    })
+    .select('id')
+    .single()
 
-  if (appearanceError) {
-    redirectWith('error', `出演情報の登録に失敗しました: ${appearanceError.message}`)
+  if (appearanceError || !insertedAppearance) {
+    redirectWith('error', `出演情報の登録に失敗しました: ${appearanceError?.message}`)
+  }
+
+  // アーティストページ側はevent_appearance_artist経由でのみ出演を引くため、
+  // ここで作成した行も必ず紐づけておく(単独出演でも1件登録する)
+  const { error: linkError } = await supabase
+    .from('event_appearance_artist')
+    .insert({ event_appearance_id: insertedAppearance!.id, artist_id: artistId, billing_order: 0 })
+  if (linkError) {
+    redirectWith('error', `出演情報のアーティスト紐付けに失敗しました: ${linkError.message}`)
   }
 
   revalidatePath('/admin/data/events/festival-pilot')
@@ -411,19 +424,42 @@ export async function importAndRegisterFestivalArtist(
     .eq('artist_id', artistId)
     .maybeSingle()
 
-  if (!existingAppearance) {
+  let appearanceId = existingAppearance?.id ?? null
+  if (!appearanceId) {
     const venue = await resolveVenueForRegion(supabase, editionId, input.region)
-    const { error: appearanceError } = await supabase.from('event_appearance').insert({
-      event_edition_id: editionId,
-      artist_id: artistId,
-      stage: input.stage || null,
-      venue,
-      start_time: input.startAt || (input.performanceDate ? `${input.performanceDate}T12:00:00+00:00` : null),
-      end_time: input.endAt || null,
-      is_headliner: false,
-    })
-    if (appearanceError) {
-      return { success: false, message: `出演情報の登録に失敗しました: ${appearanceError.message}` }
+    const { data: insertedAppearance, error: appearanceError } = await supabase
+      .from('event_appearance')
+      .insert({
+        event_edition_id: editionId,
+        artist_id: artistId,
+        stage: input.stage || null,
+        venue,
+        start_time: input.startAt || (input.performanceDate ? `${input.performanceDate}T12:00:00+00:00` : null),
+        end_time: input.endAt || null,
+        is_headliner: false,
+      })
+      .select('id')
+      .single()
+    if (appearanceError || !insertedAppearance) {
+      return { success: false, message: `出演情報の登録に失敗しました: ${appearanceError?.message}` }
+    }
+    appearanceId = insertedAppearance.id
+  }
+
+  // アーティストページ側はevent_appearance_artist経由でのみ出演を引くため、
+  // ここで作成した行(または既存だが未紐付けだった行)も必ず紐づけておく
+  const { data: existingLink } = await supabase
+    .from('event_appearance_artist')
+    .select('id')
+    .eq('event_appearance_id', appearanceId)
+    .eq('artist_id', artistId)
+    .maybeSingle()
+  if (!existingLink) {
+    const { error: linkError } = await supabase
+      .from('event_appearance_artist')
+      .insert({ event_appearance_id: appearanceId, artist_id: artistId, billing_order: 0 })
+    if (linkError) {
+      return { success: false, message: `出演情報のアーティスト紐付けに失敗しました: ${linkError.message}` }
     }
   }
 
