@@ -19,6 +19,17 @@ export type ResolveArtistMbidResult =
  * artist-creditからMBIDを拾い、複数タイトルで同じMBIDに票が集まった場合のみ
  * 採用する(人間の確認を挟まないため、クレジット取込と同じ
  * 「完全一致のみ自動採用」の考え方を流用)。
+ *
+ * 既知アルバムが1件しか無いアーティストは常にmatched: falseを返す(2026-09-16修正)。
+ * 以前は候補が1件しか無い場合、1件一致だけで採用していたが、アーティスト名で
+ * 絞り込まない設計のため、これは「MusicBrainz全体のどこかに偶然同じ正規化後
+ * タイトルを持つリリースが1つでもあれば、無関係な海外アーティストのMBIDを
+ * 無条件で採用してしまう」ことを意味していた。実際に「雨のパレード」が
+ * 英国のロックバンドSuedeのMBIDに誤って結び付けられ、紹介文・公式サイトURL・
+ * 座標・レーベル・メンバー関係(9件の偽アーティスト行を含む)がすべてSuedeの
+ * データで上書きされる事故が発生した。既知アルバムが1件しか無いアーティストは、
+ * このタイトルのみ照合では十分な確からしさを担保できないため、人間による確認
+ * (管理画面のMusicBrainz検索フロー)に委ねる。
  */
 export async function resolveArtistMbid(knownAlbumTitles: string[]): Promise<ResolveArtistMbidResult> {
   if (knownAlbumTitles.length === 0) {
@@ -53,9 +64,10 @@ export async function resolveArtistMbid(knownAlbumTitles: string[]): Promise<Res
     }
   }
 
-  // 確認できたタイトル数が少ない(=1件しか試せなかった)アーティストは1件一致でも許容するが、
-  // 複数タイトルを試せた場合は同名異人の誤マッチ防止のため2件以上の一致を必須とする
-  const requiredMatches = Math.min(2, candidateTitles.length)
+  // アーティスト名で絞り込まないため、常に2件以上の一致を必須とする(1件しか
+  // 候補が無い場合は必然的に一致しえず、matched: falseとなる)。1件一致だけで
+  // 採用していた旧ロジックは、Suedeとの誤マッチ事故の直接原因だったため撤廃した。
+  const requiredMatches = 2
   if (!bestMbid || bestCount < requiredMatches) {
     return {
       matched: false,
