@@ -19,6 +19,7 @@ import { createAdminClient } from '@/utils/Supabase/admin'
 import { downloadDriveFile, type DriveImageFile } from '@/utils/googleDrive'
 import { matchAlbumsWithCandidates } from '@/utils/discGuideImport'
 import { extractAlbumsWithGemini } from '@/utils/geminiDiscGuideExtract'
+import { uploadDiscGuideScanImage } from '@/utils/discGuideScanStorage'
 
 export const maxDuration = 60
 // 1バッチあたりの処理時間予算。gemini-3.1-flash-liteは1枚あたり実測5〜6秒程度
@@ -85,7 +86,15 @@ async function processOneFile(
   file: DriveImageFile
 ): Promise<void> {
   const buffer = await downloadDriveFile(file.id)
-  const imageUrl = `data:${file.mimeType};base64,${buffer.toString('base64')}`
+  const { url: imageUrl, errorMessage: uploadErrorMessage } = await uploadDiscGuideScanImage(
+    supabase,
+    discGuideId,
+    buffer,
+    file.mimeType
+  )
+  if (uploadErrorMessage) {
+    console.error(`画像のアップロードに失敗しました(${file.name}):`, uploadErrorMessage)
+  }
 
   const extracted = await extractAlbumsWithGemini(buffer, file.mimeType)
   const matched = await matchAlbumsWithCandidates(supabase, extracted)

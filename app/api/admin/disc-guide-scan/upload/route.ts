@@ -4,6 +4,7 @@ import { createAdminClient } from '@/utils/Supabase/admin';
 import { after } from 'next/server';
 import { matchAlbumsWithCandidates } from '@/utils/discGuideImport';
 import { extractAlbumsWithGemini } from '@/utils/geminiDiscGuideExtract';
+import { uploadDiscGuideScanImage } from '@/utils/discGuideScanStorage';
 import { NextRequest, NextResponse } from 'next/server';
 
 // 複数画像のOCRをafter()内で順次処理するため、デフォルトの関数実行時間では
@@ -31,9 +32,17 @@ export async function POST(req: NextRequest) {
     after(async () => {
       for (const file of files) {
         try {
-          // 1. Upload image (for now, use a simple URL placeholder; real implementation uses Supabase Storage)
+          // 1. 画像をSupabase Storageへアップロードする
           const buffer = Buffer.from(await file.arrayBuffer());
-          const imageUrl = `data:${file.type};base64,${buffer.toString('base64')}`;
+          const { url: imageUrl, errorMessage: uploadErrorMessage } = await uploadDiscGuideScanImage(
+            supabase,
+            discGuideId,
+            buffer,
+            file.type
+          );
+          if (uploadErrorMessage) {
+            console.error(`画像のアップロードに失敗しました(${file.name}):`, uploadErrorMessage);
+          }
 
           // 2. Gemini に画像を渡し、構造化データを直接抽出する
           const extracted = await extractAlbumsWithGemini(buffer, file.type);
