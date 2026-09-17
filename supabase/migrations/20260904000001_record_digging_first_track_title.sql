@@ -1,6 +1,14 @@
 -- Junkie Dig: 再生中のプレビューがどの曲かを画面に表示できるよう、
 -- 各棚RPCの返り値にfirst_track_title(LATERAL joinで既に選んでいる
 -- 最初のトラックのタイトル)を追加する。
+--
+-- 返り値の列を追加(8列→9列)するため、CREATE OR REPLACEの前に既存関数を
+-- 明示的にDROPする必要がある(Postgresは戻り値の型変更をCREATE OR REPLACEで
+-- 許可しない)。隣接するマイグレーション(20260901_record_digging_shelf_sample_jacket.sql)
+-- の同種の変更ではこのDROPが行われていたが、本ファイルでは漏れていたため追加する。
+DROP FUNCTION IF EXISTS record_digging_new_arrivals(date, date);
+DROP FUNCTION IF EXISTS record_digging_shelf_albums(text);
+
 CREATE OR REPLACE FUNCTION record_digging_new_arrivals(since_date date, until_date date)
 RETURNS TABLE (
   album_id text, title text, jacket_url text, artist_id text, artist_name text, release_date date,
