@@ -1,9 +1,13 @@
 name: Refresh news cache
 
+# 2026-09-18の本番Supabase障害・復旧断念(ローカル専用運用へ完全移行)に伴い、
+# 定期実行を無効化した。有効だった当時は接続先の本番プロジェクトが既に無いため、
+# 動かしたままだと30分おきに失敗し続けるだけになる。手動実行(workflow_dispatch)は
+# 残してあるので、本番運用を再開する場合はscheduleのコメントを外せば復帰できる。
 on:
-  schedule:
-    # 30分おき(GitHub Actionsの混雑を避けるため:00/:30ちょうどを避ける)
-    - cron: '7,37 * * * *'
+  # schedule:
+  #   # 30分おき(GitHub Actionsの混雑を避けるため:00/:30ちょうどを避ける)
+  #   - cron: '7,37 * * * *'
   workflow_dispatch: {}
 
 jobs:
