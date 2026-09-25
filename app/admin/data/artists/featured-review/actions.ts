@@ -5,6 +5,7 @@ import { safeRevalidatePath } from '@/utils/safeRevalidate'
 import { resolveMbidByExactName, findArtistMbidByAppleMusicId } from '@/utils/musicbrainz'
 import { resolveFeaturedArtistCandidate } from '@/utils/itunes'
 import { fetchAppleMusicArtistImage } from '@/utils/appleMusicImage'
+import { resolveFeaturedArtistImageFromSpotify } from '@/utils/spotify'
 import { dispatchMemberEnrichment } from '@/utils/memberEnrichmentDispatch'
 
 type ActionResult = { success: true } | { success: false; message: string }
@@ -70,16 +71,26 @@ async function resolveAndEnrichFeaturedArtist(
   }
 
   if (!artist.image_url) {
+    let imageUrl: string | null = null
     const imageSourceId = appleMusicArtistId ?? imageCandidateId
     if (imageSourceId) {
       try {
-        const imageUrl = await fetchAppleMusicArtistImage(imageSourceId)
-        if (imageUrl) {
-          await supabase.from('artist').update({ image_url: imageUrl }).eq('id', review.artist_id)
-        }
+        imageUrl = await fetchAppleMusicArtistImage(imageSourceId)
       } catch (err) {
-        console.error(`画像取得に失敗しました(${review.extracted_name}):`, (err as Error).message)
+        console.error(`Apple Musicでの画像取得に失敗しました(${review.extracted_name}):`, (err as Error).message)
       }
+    }
+    // Apple Music側で取れなかった場合(レート制限含む)はSpotifyでフォールバックする。
+    // SpotifyはAPIレスポンスに画像URLを直接含むため、og:imageスクレイピングより確実。
+    if (!imageUrl) {
+      try {
+        imageUrl = await resolveFeaturedArtistImageFromSpotify(review.extracted_name)
+      } catch (err) {
+        console.error(`Spotifyでの画像取得に失敗しました(${review.extracted_name}):`, (err as Error).message)
+      }
+    }
+    if (imageUrl) {
+      await supabase.from('artist').update({ image_url: imageUrl }).eq('id', review.artist_id)
     }
   }
 

@@ -9,6 +9,7 @@ import {
   fetchArtistWithAlbums,
   fetchTracksForAlbum,
   millisToSeconds,
+  splitCollabArtistName,
   type ItunesArtist,
   type ItunesAlbum,
   type ItunesTrack,
@@ -211,13 +212,14 @@ export async function fillMissingArtistImage(
   }
 }
 
-/** track.titleが新規に"(feat. X)"パターンを含む場合、Xと完全一致する既存の
- * artist行があればtrack_artistへ追加する。完全一致するartistが存在しない
- * 場合はスタブを作成せずスキップする(カンマ/アンパサンド区切りの抽出名は
- * "Tyler, The Creator"のような単一アーティスト名の一部を誤って分割して
- * しまうことがあり、未知の名前を恒久的なartist行として自動作成するのは
- * 危険なため)。 */
-async function linkOrStubFeaturedArtists(supabase: SupabaseClient, trackId: string, trackTitle: string): Promise<void> {
+/** track.titleが"(feat. X)"パターンを含む場合、Xと完全一致する既存のartist行が
+ * あればtrack_artistへ追加する。完全一致するartistが存在しない場合は新規artistを
+ * 作成してリンクするが、featured_artist_reviewにも記録し「未確認」のまま扱う
+ * (カンマ/アンパサンド区切りの抽出名は"Tyler, The Creator"のような単一
+ * アーティスト名の一部を誤って分割してしまうことがあり、2026-09-14に一度
+ * 無条件の自動作成を実装した後この理由で撤回した経緯があるため、確定扱いにはせず
+ * /admin/data/artists/featured-reviewで人力確認できるようにする。2026-09-21再設計)。 */
+export async function linkOrStubFeaturedArtists(supabase: SupabaseClient, trackId: string, trackTitle: string): Promise<void> {
   const featuredNames = extractFeaturedNames(trackTitle)
   if (!featuredNames || featuredNames.length === 0) return
 
@@ -232,8 +234,17 @@ async function linkOrStubFeaturedArtists(supabase: SupabaseClient, trackId: stri
       continue
     }
 
-    if (!existingArtist) continue
-    const artistId = existingArtist.id
+    let artistId = existingArtist?.id
+    let isNewStub = false
+    if (!artistId) {
+      const { data: inserted, error: insertError } = await supabase.from('artist').insert({ name }).select('id').single()
+      if (insertError || !inserted) {
+        console.error(`フィーチャリングアーティストの自動作成に失敗しました(${name}):`, insertError?.message)
+        continue
+      }
+      artistId = inserted.id
+      isNewStub = true
+    }
 
     const { data: existingLink, error: linkSelectError } = await supabase
       .from('track_artist')
@@ -252,6 +263,16 @@ async function linkOrStubFeaturedArtists(supabase: SupabaseClient, trackId: stri
       .insert({ track_id: trackId, artist_id: artistId, role: 'featured', billing_order: index + 2 })
     if (linkInsertError) {
       console.error(`track_artist登録に失敗しました(${name}):`, linkInsertError.message)
+      continue
+    }
+
+    if (isNewStub) {
+      const { error: reviewInsertError } = await supabase
+        .from('featured_artist_review')
+        .insert({ artist_id: artistId, track_id: trackId, extracted_name: name, source_title: trackTitle })
+      if (reviewInsertError) {
+        console.error(`featured_artist_reviewへの記録に失敗しました(${name}):`, reviewInsertError.message)
+      }
     }
   }
 }
@@ -259,17 +280,17 @@ async function linkOrStubFeaturedArtists(supabase: SupabaseClient, trackId: stri
 /** 1アルバム分をupsertし、収録トラックの取得・登録・クレジット取込までを行う。
  * existingAlbumIdがnullなら新規登録、そうでなければ更新として扱う。
  * 戻り値は登録・更新できたトラック数(取得失敗などでスキップした場合は0)。
- * skipCreditImportがtrueの場合、クレジット取込(MusicBrainz→Discogs)を省略する
- * (大量アルバムの一括同期でチャンクあたりの処理数を稼ぎ、Vercelの自己ディスパッチ
- * ホップ数を減らすため。省略されたクレジットはscripts/backfill-album-credits.tsが
- * 別途拾う) */
+ * skipCreditImportのデフォルトはtrue: クレジット情報は現在のデータ登録方針で
+ * スコープ外(docs/data-registration-guidelines.md参照)のため、明示的にfalseを
+ * 渡さない限りMusicBrainz→Discogsのクレジット取込は行わない。省略されたクレジットは
+ * scripts/backfill-album-credits.tsが別途拾えるよう、試行済みフラグは立てない */
 export async function syncOneAlbum(
   supabase: SupabaseClient,
   artistId: string,
   artistName: string,
   itunesAlbum: ItunesAlbum,
   existingAlbumId: string | null,
-  skipCreditImport = false,
+  skipCreditImport = true,
   country = 'JP'
 ): Promise<number> {
   // iTunes側の一時的なエラー(レート制限等)でここが失敗しても、このアルバムだけ
@@ -312,7 +333,7 @@ export async function syncOneAlbum(
   }
 
   let albumId: string
-  let createdAlbumArtistId: string | null = null
+  const albumArtistCandidateIds: string[] = []
   let trackOwnerArtistId = artistId
   if (existingAlbumId) {
     // album_typeは更新対象に含めない(手動修正が再同期のたびに上書きされないようにするため)
@@ -342,7 +363,7 @@ export async function syncOneAlbum(
       // 既存のアルバムを再利用し、このアーティストをalbum_artistとして追加する
       // (album.artist_idは変更しない。既存の全ページ・クエリの動作を変えないため)
       albumId = crossArtistAlbum.id
-      createdAlbumArtistId = artistId
+      albumArtistCandidateIds.push(artistId)
       trackOwnerArtistId = crossArtistAlbum.artist_id
       // artist_idは除外する(album.artist_idは既存の持ち主のまま変更しない。
       // 上のコメント通り、これを怠るとalbumPayloadのartist_idで上書きされてしまう)
@@ -355,9 +376,105 @@ export async function syncOneAlbum(
         console.error('アルバム更新失敗(既存アルバム再利用):', itunesAlbum.collectionName, albumUpdateError.message)
       }
     } else {
+      // このアルバム自体はDB全体で初めて見るが、Apple Music側の連名クレジット
+      // (itunesAlbum.artistId/artistName)が今同期中のアーティスト(artistId)と
+      // 異なる場合、今のアーティストは実はフィーチャリング側でしかなく、真の
+      // 主アーティストが別にいる(2026-09-22、ユーザー報告: feat.抽出で新規登録した
+      // 「Grandma」自身のカタログ同期で、実際は"sobelize"というアーティストの
+      // 単体シングルの誕生日ソングが、主アーティストが一切登録されないまま
+      // Grandma名義の作品として計上されてしまっていた)。真の主アーティストを
+      // apple_music_artist_idで解決(既存流用、無ければ新規作成)し、そちらを
+      // album.artist_idにして、今同期中のアーティストはalbum_artist側に回す。
+      // カタログ全体のバルク同期はここでは行わない(この1枚の帰属を正すだけ)。
+      let trueOwnerArtistId: string | null = null
+      // 真の主アーティストが連名(例: "暁音, RUDEBWOY FACE & RUEED")の場合、
+      // それを1つのartist名義としてそのまま作成すると分解されない連名が量産されて
+      // しまう(2026-09-14に一度この問題を後片付けしたが、発生源であるこの箇所を
+      // 直していなかったため増え続けていた。2026-09-23、ユーザー報告を受けて発生源を修正)。
+      // 先頭の1人をapple_music_artist_idの持ち主(主アーティスト)とし、残りは
+      // 個別に解決/作成してalbum_artistへ追加する対象に集める。
+      const additionalTrueOwnerArtistIds: string[] = []
+      const { data: syncingArtistRow } = await supabase
+        .from('artist')
+        .select('apple_music_artist_id')
+        .eq('id', artistId)
+        .maybeSingle()
+      if (
+        syncingArtistRow?.apple_music_artist_id &&
+        String(itunesAlbum.artistId) !== syncingArtistRow.apple_music_artist_id
+      ) {
+        const { data: existingOwner } = await supabase
+          .from('artist')
+          .select('id')
+          .eq('apple_music_artist_id', String(itunesAlbum.artistId))
+          .maybeSingle()
+        if (existingOwner) {
+          trueOwnerArtistId = existingOwner.id
+        } else {
+          const nameParts = splitCollabArtistName(itunesAlbum.artistName)
+          const [primaryName, ...otherNames] = nameParts.length > 0 ? nameParts : [itunesAlbum.artistName]
+
+          // apple_music_artist_idでは見つからなくても、同名のartistが既に
+          // 存在するなら(別のseedアーティストのカタログ同期で同じ主アーティストに
+          // 遭遇した場合等)そちらを再利用する。ここが無いと、同一の主アーティストが
+          // 参加作品を持つseedアーティストの数だけ重複登録されてしまう
+          // (2026-09-23、ユーザー報告「Deep Jandu」52件等の重複登録の原因として発覚)。
+          // otherNamesの既存チェックと揃え、名前一致のみで再利用する
+          // (apple_music_artist_id未設定なら補完する)。
+          const { data: existingByName } = await supabase
+            .from('artist')
+            .select('id, apple_music_artist_id')
+            .eq('name', primaryName)
+            .maybeSingle()
+
+          if (existingByName) {
+            trueOwnerArtistId = existingByName.id
+            if (!existingByName.apple_music_artist_id) {
+              await supabase
+                .from('artist')
+                .update({ apple_music_artist_id: String(itunesAlbum.artistId) })
+                .eq('id', existingByName.id)
+            }
+          } else {
+            const { data: insertedOwner, error: insertOwnerError } = await supabase
+              .from('artist')
+              .insert({ name: primaryName, apple_music_artist_id: String(itunesAlbum.artistId) })
+              .select('id')
+              .single()
+            if (insertOwnerError) {
+              console.error(`主アーティストの自動作成に失敗しました(${primaryName}):`, insertOwnerError.message)
+            } else {
+              trueOwnerArtistId = insertedOwner?.id ?? null
+            }
+          }
+
+          for (const otherName of otherNames) {
+            const { data: existingOtherArtist } = await supabase.from('artist').select('id').eq('name', otherName).maybeSingle()
+            if (existingOtherArtist) {
+              additionalTrueOwnerArtistIds.push(existingOtherArtist.id)
+              continue
+            }
+            const { data: insertedOther, error: insertOtherError } = await supabase
+              .from('artist')
+              .insert({ name: otherName })
+              .select('id')
+              .single()
+            if (insertOtherError) {
+              console.error(`連名の一部の作成に失敗しました(${otherName}):`, insertOtherError.message)
+            } else if (insertedOther) {
+              additionalTrueOwnerArtistIds.push(insertedOther.id)
+            }
+          }
+        }
+      }
+
       const { data: insertedAlbum, error: albumError } = await supabase
         .from('album')
-        .insert({ ...albumPayload, album_type: classifyAlbumType(title, itunesAlbum.trackCount ?? null) })
+        .insert({
+          ...albumPayload,
+          artist_id: trueOwnerArtistId ?? artistId,
+          album_type: classifyAlbumType(title, itunesAlbum.trackCount ?? null),
+        })
         .select('id')
         .single()
 
@@ -366,29 +483,34 @@ export async function syncOneAlbum(
         return 0
       }
       albumId = insertedAlbum.id
+      if (trueOwnerArtistId) {
+        albumArtistCandidateIds.push(artistId, ...additionalTrueOwnerArtistIds)
+        trackOwnerArtistId = trueOwnerArtistId
+      }
     }
   }
 
-  if (createdAlbumArtistId) {
+  for (const candidateArtistId of albumArtistCandidateIds) {
     const { data: existingAlbumArtist, error: albumArtistSelectError } = await supabase
       .from('album_artist')
       .select('id')
       .eq('album_id', albumId)
-      .eq('artist_id', createdAlbumArtistId)
+      .eq('artist_id', candidateArtistId)
       .maybeSingle()
     if (albumArtistSelectError) {
       console.error('album_artist確認に失敗しました:', itunesAlbum.collectionName, albumArtistSelectError.message)
-    } else if (!existingAlbumArtist) {
-      const { count: existingCount } = await supabase
-        .from('album_artist')
-        .select('id', { count: 'exact', head: true })
-        .eq('album_id', albumId)
-      const { error: albumArtistInsertError } = await supabase
-        .from('album_artist')
-        .insert({ album_id: albumId, artist_id: createdAlbumArtistId, role: 'featured', billing_order: (existingCount ?? 0) + 1 })
-      if (albumArtistInsertError) {
-        console.error('album_artist登録に失敗しました:', itunesAlbum.collectionName, albumArtistInsertError.message)
-      }
+      continue
+    }
+    if (existingAlbumArtist) continue
+    const { count: existingCount } = await supabase
+      .from('album_artist')
+      .select('id', { count: 'exact', head: true })
+      .eq('album_id', albumId)
+    const { error: albumArtistInsertError } = await supabase
+      .from('album_artist')
+      .insert({ album_id: albumId, artist_id: candidateArtistId, role: 'featured', billing_order: (existingCount ?? 0) + 1 })
+    if (albumArtistInsertError) {
+      console.error('album_artist登録に失敗しました:', itunesAlbum.collectionName, albumArtistInsertError.message)
     }
   }
 
@@ -435,6 +557,9 @@ export async function syncOneAlbum(
         console.error('トラック更新失敗:', itunesTrack.trackName, trackUpdateError.message)
       }
       albumTrackList.push({ id: existingTrack.id, title: itunesTrack.trackName })
+      // 新規挿入時だけこれを呼んでいたため、既存トラックが後から再同期されても
+      // feat.アーティストのtrack_artist登録が一切行われなかった(2026-09-21ユーザー報告)
+      await linkOrStubFeaturedArtists(supabase, existingTrack.id, itunesTrack.trackName)
     } else {
       const { data: insertedTrack, error: trackError } = await supabase
         .from('track')
@@ -480,14 +605,14 @@ export async function syncOneAlbum(
 
 /** 検索・選択式の登録UI(app/admin/import/search)や、大量アルバムの一括同期
  * (app/api/admin/album-sync/route.ts)から、1件だけアルバムを登録するための
- * 公開ラッパー。artist_idでの既存判定込みでsyncOneAlbumを呼ぶ。skipCreditImportは
- * syncOneAlbum同様、一括同期でのホップ数削減用(詳細はsyncOneAlbumのコメント参照) */
+ * 公開ラッパー。artist_idでの既存判定込みでsyncOneAlbumを呼ぶ。skipCreditImportの
+ * デフォルトはsyncOneAlbum同様true(詳細はsyncOneAlbumのコメント参照) */
 export async function registerSingleAlbum(
   supabase: SupabaseClient,
   artistId: string,
   artistName: string,
   itunesAlbum: ItunesAlbum,
-  skipCreditImport = false,
+  skipCreditImport = true,
   country = 'JP'
 ): Promise<{ trackCount: number }> {
   const { data: existingAlbum } = await supabase

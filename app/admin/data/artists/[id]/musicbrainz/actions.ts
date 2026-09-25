@@ -28,19 +28,23 @@ export async function importMusicBrainzData(formData: FormData) {
 
   const supabase = createAdminClient()
 
-  const { profileFieldCount, linkCount, genresLinked, membershipsWritten, membershipsUnresolved } =
-    await writeArtistProfileFromMusicBrainzDetails(supabase, artistId, mbid, details)
+  // メンバー・クレジット情報は現在のデータ登録方針でスコープ外
+  // (docs/data-registration-guidelines.md参照)。相関図機能が実装されるまでは
+  // artist_relationへの書き込みを行わない。
+  const { profileFieldCount, linkCount, genresLinked } = await writeArtistProfileFromMusicBrainzDetails(
+    supabase,
+    artistId,
+    mbid,
+    details,
+    { skipMemberships: true }
+  )
 
   revalidatePath('/admin/data')
   revalidatePath(`/artists/${artistId}`)
 
-  const unresolvedNote =
-    membershipsUnresolved.length > 0
-      ? `(未登録メンバー: ${membershipsUnresolved.join('、')})`
-      : ''
   redirectWith(
     artistId,
     'success',
-    `外部リンク${linkCount}件・ジャンル${genresLinked}件・メンバーシップ${membershipsWritten}件を取り込みました${unresolvedNote}(プロフィール${profileFieldCount}件を更新)`
+    `外部リンク${linkCount}件・ジャンル${genresLinked}件を取り込みました(プロフィール${profileFieldCount}件を更新)`
   )
 }

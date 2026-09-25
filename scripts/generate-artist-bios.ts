@@ -15,7 +15,7 @@
 import { createAdminClient } from '@/utils/Supabase/admin'
 import { fetchAllRows } from '@/utils/fetchAllRows'
 import { fetchWikipediaSitelink } from '@/utils/wikidata'
-import { fetchWikipediaLeadText } from '@/utils/wikipediaArticle'
+import { fetchWikipediaExtract } from '@/utils/wikipediaArticle'
 import { generateArtistBioWithGemini, type BioGenerationFacts } from '@/utils/geminiBioGenerate'
 import { safeRevalidatePath } from '@/utils/safeRevalidate'
 
@@ -60,10 +60,17 @@ async function buildPriorityIds(supabase: AdminClient): Promise<PriorityResult> 
     'id'
   )
 
+  // ローカルSupabase環境では.in()にID約300件を超える配列を渡すとURLが長すぎて
+  // "URI too long"になる(ホスト版Supabaseより上限が低い模様)。supabase-jsは
+  // これを例外にせずエラーを返り値に入れるだけなので、確認せず進めると空配列扱いに
+  // なって全件スキップされる(2026-09-20発見)。バッチサイズを200に抑える。
+  const BATCH_SIZE = 200
+
   const albumIds = [...new Set(entries.map((r) => r.album_id).filter((v): v is string => v !== null))]
   const albumArtistById = new Map<string, string>()
-  for (let i = 0; i < albumIds.length; i += 500) {
-    const { data } = await supabase.from('album').select('id, artist_id').in('id', albumIds.slice(i, i + 500))
+  for (let i = 0; i < albumIds.length; i += BATCH_SIZE) {
+    const { data, error } = await supabase.from('album').select('id, artist_id').in('id', albumIds.slice(i, i + BATCH_SIZE))
+    if (error) throw new Error(`album一括取得に失敗しました: ${error.message}`)
     for (const row of data ?? []) {
       if (row.artist_id) albumArtistById.set(row.id, row.artist_id)
     }
@@ -71,8 +78,9 @@ async function buildPriorityIds(supabase: AdminClient): Promise<PriorityResult> 
 
   const trackIds = [...new Set(entries.map((r) => r.track_id).filter((v): v is string => v !== null))]
   const trackArtistById = new Map<string, string>()
-  for (let i = 0; i < trackIds.length; i += 500) {
-    const { data } = await supabase.from('track').select('id, artist_id').in('id', trackIds.slice(i, i + 500))
+  for (let i = 0; i < trackIds.length; i += BATCH_SIZE) {
+    const { data, error } = await supabase.from('track').select('id, artist_id').in('id', trackIds.slice(i, i + BATCH_SIZE))
+    if (error) throw new Error(`track一括取得に失敗しました: ${error.message}`)
     for (const row of data ?? []) {
       if (row.artist_id) trackArtistById.set(row.id, row.artist_id)
     }
@@ -172,8 +180,8 @@ async function resolveSource(
     if (!qid) continue
     const sitelink = await fetchWikipediaSitelink(qid)
     if (!sitelink) continue
-    const leadText = await fetchWikipediaLeadText(sitelink.lang, sitelink.title)
-    if (leadText) return { sourceType: 'wikidata', sourceText: leadText }
+    const extract = await fetchWikipediaExtract(sitelink.lang, sitelink.title)
+    if (extract) return { sourceType: 'wikidata', sourceText: extract }
   }
 
   return null
@@ -256,11 +264,13 @@ async function main() {
   const { priorityIds, rankingRefsByArtist } = await buildPriorityIds(supabase)
 
   const artists: ArtistRow[] = []
-  for (let i = 0; i < priorityIds.length; i += 500) {
-    const { data } = await supabase
+  const BATCH_SIZE = 200
+  for (let i = 0; i < priorityIds.length; i += BATCH_SIZE) {
+    const { data, error } = await supabase
       .from('artist')
       .select('id, name, bio, biography_status, formed_year, origin_prefecture, hometown_city')
-      .in('id', priorityIds.slice(i, i + 500))
+      .in('id', priorityIds.slice(i, i + BATCH_SIZE))
+    if (error) throw new Error(`artist一括取得に失敗しました: ${error.message}`)
     artists.push(...((data ?? []) as ArtistRow[]))
   }
   const artistById = new Map(artists.map((a) => [a.id, a]))
@@ -270,7 +280,33 @@ async function main() {
     .filter(
       (a): a is ArtistRow => !!a && (!a.bio || a.bio.trim().length === 0) && a.biography_status !== 'REVERTED'
     )
-  const scoped = LIMIT ? targets.slice(0, LIMIT) : targets
+
+  // ranking_entry(選出企画)を持たない、feat.クレジットとして確定したアーティストも
+  // 対象に含める。こちらはranking_article_contextを持たないため、resolveSourceは
+  // 自然にWikidata→Wikipediaのフォールバックへ進む(2026-09-22追加)。
+  const { data: featuredReviewRows } = await supabase
+    .from('featured_artist_review')
+    .select('artist_id')
+    .eq('confirmed', true)
+  const featuredArtistIds = [
+    ...new Set((featuredReviewRows ?? []).map((r) => r.artist_id).filter((id): id is string => id !== null)),
+  ].filter((id) => !artistById.has(id))
+
+  const featuredArtists: ArtistRow[] = []
+  for (let i = 0; i < featuredArtistIds.length; i += BATCH_SIZE) {
+    const { data, error } = await supabase
+      .from('artist')
+      .select('id, name, bio, biography_status, formed_year, origin_prefecture, hometown_city')
+      .in('id', featuredArtistIds.slice(i, i + BATCH_SIZE))
+    if (error) throw new Error(`feat.アーティストの一括取得に失敗しました: ${error.message}`)
+    featuredArtists.push(...((data ?? []) as ArtistRow[]))
+  }
+  const featuredTargets = featuredArtists.filter(
+    (a) => (!a.bio || a.bio.trim().length === 0) && a.biography_status !== 'REVERTED'
+  )
+
+  const combinedTargets = [...targets, ...featuredTargets]
+  const scoped = LIMIT ? combinedTargets.slice(0, LIMIT) : combinedTargets
 
   console.log(`対象: ${scoped.length}件\n`)
 

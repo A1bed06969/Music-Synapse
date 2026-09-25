@@ -21,18 +21,23 @@
  */
 import { createAdminClient } from '@/utils/Supabase/admin'
 import { autoImportArtistProfileFromMusicBrainz } from '@/utils/artistProfileImport'
+import { fetchAllRows } from '@/utils/fetchAllRows'
 
 async function main() {
   const supabase = createAdminClient()
 
-  const { data: artists } = await supabase.from('artist').select('id, name').order('name')
-  if (!artists || artists.length === 0) {
+  // PostgRESTは既定で1件のリクエストにつき1000件で打ち切るため、単純な.select()だと
+  // カタログが1000件を超えた時点でそれ以降(名前順で後ろの方)のアーティストが
+  // 一切処理対象に入らなくなる(2026-09-22、実際にカタログが1000件を超えたことで
+  // 発覚。既取込スキップ件数が前回実行時より減って見えたのが手がかりだった)。
+  const artists = await fetchAllRows<{ id: string; name: string }>(supabase, 'artist', 'id, name', 'name')
+  if (artists.length === 0) {
     console.log('アーティストが見つかりませんでした。')
     return
   }
 
-  const { data: linkedArtistRows } = await supabase.from('artist_external_link').select('artist_id')
-  const alreadyLinked = new Set((linkedArtistRows ?? []).map((r) => r.artist_id as string))
+  const linkedArtistRows = await fetchAllRows<{ artist_id: string }>(supabase, 'artist_external_link', 'artist_id', 'artist_id')
+  const alreadyLinked = new Set(linkedArtistRows.map((r) => r.artist_id))
 
   console.log(`対象アーティスト: ${artists.length}件\n`)
 

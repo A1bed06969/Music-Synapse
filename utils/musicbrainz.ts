@@ -64,6 +64,21 @@ export async function searchArtist(name: string): Promise<MusicBrainzSearchResul
   }))
 }
 
+/**
+ * アーティスト名の完全一致検索でMBIDを解決する。うちのカタログ全体の自動照合
+ * (resolveArtistMbid)ではアーティスト名を使わない方針だが(カタカナ表記の
+ * ミスマッチ問題、utils/artistProfileImport.tsのコメント参照)、feat.抽出で
+ * 新規作成されるアーティスト名はApple Music/iTunesの原題からそのまま
+ * 取った英語表記のことが多く、MusicBrainz側の表記と一致しやすい。
+ * 同名多数(例: "Ralph"のような短い一般名)による誤マッチを避けるため、
+ * 完全一致(大文字小文字のみ無視)が1件だけの場合に限り採用する。 */
+export async function resolveMbidByExactName(name: string): Promise<string | null> {
+  const candidates = await searchArtist(name)
+  const normalize = (s: string) => s.trim().toLowerCase()
+  const exactMatches = candidates.filter((c) => normalize(c.name) === normalize(name))
+  return exactMatches.length === 1 ? exactMatches[0].mbid : null
+}
+
 export type MusicBrainzLabelSearchResult = {
   mbid: string
   name: string
@@ -298,6 +313,50 @@ export async function searchReleaseByTitle(title: string): Promise<MusicBrainzRe
   const url = `${MUSICBRAINZ_BASE}/release?query=${encodeURIComponent(query)}&fmt=json&limit=5`
   const data = await fetchMusicBrainz(url, 'release search (title only)')
   return mapReleaseSearchResults(data)
+}
+
+export type AppleMusicUrlMatch = { mbid: string; name: string }
+
+/**
+ * MusicBrainzのurlエンティティに登録されているApple Music/iTunesアーティストページの
+ * リンクから、うちのapple_music_artist_id(storefrontに依らないグローバルな数値ID)を
+ * 手がかりに直接MBIDを引く。アルバムタイトルでの投票制照合(resolveArtistMbid)は
+ * 「Apple Music独自のサフィックス付きタイトルがMusicBrainzの正式タイトルと一致しない」
+ * 「アーティスト名で絞り込めない」という制約があるが、この数値IDはstorefront
+ * (us/jp等)を問わずグローバルに一意なため、見つかれば誤マッチの余地がほぼ無い。
+ * ただしMusicBrainz側にApple Musicリンクが登録されていないアーティストも多いため、
+ * 見つからない場合はnullを返す(呼び出し元でタイトル照合にフォールバックする想定)。
+ *
+ * urlエンティティのresourceがstorefrontごとに異なる(海外アーティストは.../us/artist/
+ * <id>、国内アーティストは.../jp/artist/<id>等)ため、storefrontを固定した直接
+ * lookup(?resource=...)ではなく、Lucene検索(?query=url:*<id>*)でstorefrontを
+ * 問わず探す。ただしワイルドカード検索は「そのIDを含む」ため、末尾が完全一致する
+ * ことをこちら側で厳密に確認してから採用する(部分文字列一致による誤マッチ防止)。
+ */
+export async function findArtistMbidByAppleMusicId(appleMusicArtistId: string): Promise<AppleMusicUrlMatch | null> {
+  const searchUrl = `${MUSICBRAINZ_BASE}/url?query=${encodeURIComponent(`url:*${appleMusicArtistId}*`)}&fmt=json`
+  const data = await fetchMusicBrainz(searchUrl, 'url search (apple music id)')
+
+  const exactIdAtEnd = new RegExp(
+    `(?:music|itunes)\\.apple\\.com/[a-z]{2}/artist/(?:[^/]+/)?(?:id)?${appleMusicArtistId}$`,
+    'i'
+  )
+
+  for (const urlEntity of data.urls ?? []) {
+    const resource: string | undefined = urlEntity.resource
+    if (!resource || !exactIdAtEnd.test(resource)) continue
+    for (const relList of urlEntity['relation-list'] ?? []) {
+      for (const rel of relList.relations ?? []) {
+        // urlの検索API(このエンドポイント)が返すrelationにはtarget-typeが無い
+        // (browse/lookup系エンドポイントとフォーマットが異なる)。rel.artistの
+        // 有無で十分に判別できる。
+        if (rel.artist?.id && rel.artist?.name) {
+          return { mbid: rel.artist.id, name: rel.artist.name }
+        }
+      }
+    }
+  }
+  return null
 }
 
 export type MusicBrainzReleaseCredit = {

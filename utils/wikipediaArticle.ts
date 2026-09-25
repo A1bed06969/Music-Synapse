@@ -42,3 +42,26 @@ export async function fetchWikipediaLeadText(lang: 'ja' | 'en', title: string): 
   const cleaned = stripWikitextMarkup(fetched.wikitext)
   return cleaned.length > 0 ? cleaned : null
 }
+
+// section=0(冒頭セクション)だけだと「1990年8月16日生まれ、ロンドンを拠点に
+// 活動するシンガーソングライター」のような定義文1文だけで終わる記事が多く
+// (実際の経歴・来歴は「略歴」「キャリア」等の後続セクションにある)、
+// 紹介文生成のソースとしては薄すぎる(2026-09-20、ユーザー指摘)。
+// MediaWikiのextracts APIはセクション境界を跨いで記事本文をプレーンテキスト化
+// して返してくれるため、冒頭に留まらず経歴セクションの内容まで自然に含まれる。
+// wikitext自前パースが不要になる副次的な利点もある。
+export async function fetchWikipediaExtract(
+  lang: 'ja' | 'en',
+  title: string,
+  maxChars = 1800
+): Promise<string | null> {
+  const url = `https://${lang}.wikipedia.org/w/api.php?action=query&prop=extracts&titles=${encodeURIComponent(title)}&exchars=${maxChars}&explaintext=1&redirects=1&format=json`
+  const res = await fetch(url, { headers: { 'User-Agent': 'MusicSynapse/1.0 (https://github.com/A1bed06969/Music-Synapse)' } })
+  if (!res.ok) return null
+  const data = await res.json()
+  const pages = data?.query?.pages
+  if (!pages) return null
+  const page = Object.values(pages)[0] as { extract?: string } | undefined
+  const extract = page?.extract?.trim()
+  return extract ? extract : null
+}

@@ -1,5 +1,10 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { searchReleaseByTitle, fetchArtistDetails, type MusicBrainzArtistDetails } from '@/utils/musicbrainz'
+import {
+  searchReleaseByTitle,
+  fetchArtistDetails,
+  findArtistMbidByAppleMusicId,
+  type MusicBrainzArtistDetails,
+} from '@/utils/musicbrainz'
 import { normalizeAlbumTitle } from '@/utils/creditImport'
 import { resolveArtistImageByName } from '@/utils/appleMusicImage'
 import { fetchOriginCoordinates, fetchRecordLabels } from '@/utils/wikidata'
@@ -448,13 +453,38 @@ export async function autoImportArtistProfileFromMusicBrainz(
   supabase: SupabaseClient,
   artistId: string
 ): Promise<string> {
-  const { data: artistRow } = await supabase.from('artist').select('musicbrainz_id').eq('id', artistId).single()
+  const { data: artistRow } = await supabase
+    .from('artist')
+    .select('musicbrainz_id, apple_music_artist_id')
+    .eq('id', artistId)
+    .single()
 
   let mbid = artistRow?.musicbrainz_id as string | null | undefined
 
+  if (!mbid && artistRow?.apple_music_artist_id) {
+    // Apple MusicアーティストページのURLがMusicBrainz側にurl関係として登録されて
+    // いれば、その数値ID(storefront不問でグローバルに一意)で直接引く。アルバム
+    // タイトル照合より確度が高いため、これを優先し、見つからない場合のみ
+    // タイトル照合にフォールバックする(2026-09-20追加)。
+    try {
+      const urlMatch = await findArtistMbidByAppleMusicId(artistRow.apple_music_artist_id as string)
+      if (urlMatch) mbid = urlMatch.mbid
+    } catch (err) {
+      console.error(`Apple Music URLによるMBID照合に失敗しました(${artistId}):`, err)
+    }
+  }
+
   if (!mbid) {
-    const { data: albums } = await supabase.from('album').select('title').eq('artist_id', artistId)
-    const knownTitles = (albums ?? []).map((a) => a.title as string)
+    const { data: albums } = await supabase.from('album').select('title, album_type').eq('artist_id', artistId)
+    // resolveArtistMbidは先頭5件だけを照合対象にする(API負荷対策)。シングル中心の
+    // アーティストだと先頭がApple Music独自のサフィックス付きシングルタイトルで埋まり、
+    // MusicBrainz側の正式タイトルと一致しやすいAlbum/EPが候補から漏れてしまうため、
+    // Album→EP→Single→その他の優先順で並べ替えてから渡す(2026-09-20修正)。
+    const typePriority: Record<string, number> = { Album: 0, EP: 1, Single: 2 }
+    const sortedAlbums = [...(albums ?? [])].sort(
+      (a, b) => (typePriority[a.album_type as string] ?? 3) - (typePriority[b.album_type as string] ?? 3)
+    )
+    const knownTitles = sortedAlbums.map((a) => a.title as string)
 
     const resolved = await resolveArtistMbid(knownTitles)
     if (!resolved.matched) {
@@ -470,7 +500,12 @@ export async function autoImportArtistProfileFromMusicBrainz(
     return `MusicBrainz詳細取得失敗: ${(err as Error).message}`
   }
 
-  const result = await writeArtistProfileFromMusicBrainzDetails(supabase, artistId, mbid, details)
+  // メンバー・クレジット情報は現在のデータ登録方針でスコープ外
+  // (docs/data-registration-guidelines.md参照)。相関図機能が実装されるまでは
+  // artist_relationへの書き込みを行わない。
+  const result = await writeArtistProfileFromMusicBrainzDetails(supabase, artistId, mbid, details, {
+    skipMemberships: true,
+  })
   const unresolvedNote =
     result.membershipsUnresolved.length > 0 ? `・未解決メンバー${result.membershipsUnresolved.length}件` : ''
   const originNote = result.originResolved ? '・出身地座標取込' : ''
