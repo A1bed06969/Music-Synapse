@@ -3,11 +3,18 @@ import { createClient } from '@/utils/Supabase/server'
 import { formatRotationPeriod } from '@/utils/format'
 import { fetchAllRows } from '@/utils/fetchAllRows'
 import PrefectureMap, { type PrefectureEntry, type PrefectureMapData } from '@/app/components/PrefectureMap'
+import DetailPageShell from '@/app/components/detail/DetailPageShell'
+import PageTitleHeading from '@/app/components/detail/PageTitleHeading'
+import BackLink from '@/app/components/navigation/BackLink'
+import OnAirMobileTabs from './OnAirMobileTabs'
 
 const MUSIC_TYPE_LABEL: Record<string, string> = {
   DOMESTIC: '邦楽',
   OVERSEAS: '洋楽',
 }
+
+// ランキングTop3の順位番号は金・銀・銅で表現する(2026-09-23、ユーザー要望)
+const RANKING_MEDAL_COLORS = ['#e5c158', '#c7ccd6', '#c98a4b']
 
 function firstOf<T>(value: T | T[] | null | undefined): T | null {
   if (Array.isArray(value)) return value[0] ?? null
@@ -141,6 +148,7 @@ export default async function OnAirPage({
     sub: string | null
     href: string
     musicType: string
+    jacketUrl: string | null
     mediaIds: Set<string>
   }
   const rankingMap = new Map<string, RankingRow>()
@@ -153,6 +161,7 @@ export default async function OnAirPage({
     const artist = firstOf(row.artist)
     const trackArtist = track ? firstOf(track.artist) : null
     const albumArtist = album ? firstOf(album.artist) : null
+    const trackAlbum = track ? firstOf(track.album) : null
 
     if (!rankingMap.has(key)) {
       rankingMap.set(key, {
@@ -161,6 +170,7 @@ export default async function OnAirPage({
         sub: track ? (trackArtist?.name ?? null) : album ? (albumArtist?.name ?? null) : null,
         href: track ? `/tracks/${track.id}` : album ? `/albums/${album.id}` : artist ? `/artists/${artist.id}` : '',
         musicType: row.music_type,
+        jacketUrl: track ? (trackAlbum?.jacket_url ?? null) : album ? (album.jacket_url ?? null) : null,
         mediaIds: new Set(),
       })
     }
@@ -217,11 +227,17 @@ export default async function OnAirPage({
     entries: agg.entries.slice().sort((a, b) => a.stationName.localeCompare(b.stationName, 'ja')),
   }))
 
-  return (
-    <div className="mx-auto max-w-[1600px] px-6 py-12">
-      <h1 className="text-2xl font-bold">パワープレイ&ヘビロテ</h1>
-      <p className="mt-2 text-sm text-white/50">全国ラジオ局の週間・月間プッシュ楽曲データ。</p>
+  const titleBlock = (
+    <PageTitleHeading
+      index="03"
+      titleLines={['Monthly', 'Next Break']}
+      accent="#f0975a"
+      description="全国ラジオ局の週間・月間プッシュ楽曲データ。"
+    />
+  )
 
+  const monthNavBlock = (
+    <>
       <div className="mt-6 flex items-center gap-3">
         {prevMonth ? (
           <Link
@@ -233,7 +249,7 @@ export default async function OnAirPage({
         ) : (
           <span className="rounded-md border border-white/5 px-3 py-1.5 text-sm text-white/20">← 前月</span>
         )}
-        <span className="min-w-[110px] text-center text-sm font-semibold">{monthLabel(currentMonth)}</span>
+        <span className="min-w-[90px] text-center text-sm font-semibold">{monthLabel(currentMonth)}</span>
         {nextMonth ? (
           <Link
             href={buildQuery({ media: mediaId, music_type: musicType, month: nextMonth })}
@@ -244,180 +260,259 @@ export default async function OnAirPage({
         ) : (
           <span className="rounded-md border border-white/5 px-3 py-1.5 text-sm text-white/20">次月 →</span>
         )}
+      </div>
 
-        {availableMonths.length > 0 && (
-          <form action="/media/on-air" className="ml-2 flex items-center gap-2 border-l border-white/10 pl-3">
-            <input type="hidden" name="media" value={mediaId ?? ''} />
-            <input type="hidden" name="music_type" value={musicType ?? ''} />
+      {availableMonths.length > 0 && (
+        <form action="/media/on-air" className="mt-3 flex items-center gap-2">
+          <input type="hidden" name="media" value={mediaId ?? ''} />
+          <input type="hidden" name="music_type" value={musicType ?? ''} />
+          <select
+            key={currentMonth}
+            name="month"
+            defaultValue={currentMonth}
+            className="w-full rounded-md border border-white/15 bg-white/5 px-2 py-1.5 text-xs text-white focus:border-white/30 focus:outline-none"
+          >
+            {availableMonths
+              .slice()
+              .reverse()
+              .map((m) => (
+                <option key={m} value={m}>
+                  {monthLabel(m)}
+                </option>
+              ))}
+          </select>
+          <button type="submit" className="shrink-0 text-xs text-white/40 hover:text-white/70">
+            移動
+          </button>
+        </form>
+      )}
+    </>
+  )
+
+  const rankingBlock =
+    ranking.length > 0 ? (
+      <div>
+        <h2 className="text-lg font-semibold">🏆 {monthLabel(currentMonth)}のランキング</h2>
+
+        {/* Top3はジャケットを大きめにして目立たせる。4位以降は小さめの
+         * サムネイル付きリストに(2026-09-23、ユーザー要望)。 */}
+        <ol className="mt-4 space-y-2.5">
+          {ranking.slice(0, 3).map((r, i) => (
+            <li key={r.key}>
+              <Link href={r.href || '#'} className="flex items-center gap-3 rounded-lg p-1 transition hover:bg-white/5">
+                <span
+                  className="w-6 shrink-0 text-center text-2xl font-bold"
+                  style={{ color: RANKING_MEDAL_COLORS[i] }}
+                >
+                  {i + 1}
+                </span>
+                <div className="h-16 w-16 shrink-0 overflow-hidden rounded bg-white/5">
+                  {r.jacketUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={r.jacketUrl} alt="" className="h-full w-full object-cover" />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center text-[9px] text-white/20">
+                      No Art
+                    </div>
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-base font-semibold">{r.label}</p>
+                  {r.sub && <p className="truncate text-xs text-white/50">{r.sub}</p>}
+                  <p className="mt-0.5 text-xs text-white/30">
+                    {r.mediaIds.size}局選出 · {MUSIC_TYPE_LABEL[r.musicType]}
+                  </p>
+                </div>
+              </Link>
+            </li>
+          ))}
+        </ol>
+
+        {ranking.length > 3 && (
+          <ul className="mt-3 divide-y divide-white/5">
+            {ranking.slice(3).map((r, i) => (
+              <li key={r.key}>
+                <Link href={r.href || '#'} className="flex items-center gap-3 py-2.5 transition hover:bg-white/5">
+                  <span className="w-5 shrink-0 text-right text-xs font-bold text-white/30">{i + 4}</span>
+                  <div className="h-10 w-10 shrink-0 overflow-hidden rounded bg-white/5">
+                    {r.jacketUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={r.jacketUrl} alt="" className="h-full w-full object-cover" />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center text-[8px] text-white/20">
+                        No Art
+                      </div>
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium">{r.label}</p>
+                    {r.sub && <p className="truncate text-xs text-white/40">{r.sub}</p>}
+                  </div>
+                  <span className="shrink-0 text-xs text-white/40">{r.mediaIds.size}局</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    ) : (
+      <p className="text-sm text-white/40">{monthLabel(currentMonth)}のパワープレイ実績はまだありません。</p>
+    )
+
+  const mapBlock = (
+    <section>
+      <h2 className="text-lg font-semibold">都道府県別プッシュ状況</h2>
+      <p className="mt-1 text-xs text-white/40">数字はその月にプッシュした局数</p>
+      <div className="mt-4">
+        <PrefectureMap data={prefectureData} />
+      </div>
+    </section>
+  )
+
+  const entriesBlock = (
+    <div>
+      <h2 className="text-lg font-semibold">エントリ一覧</h2>
+      <form className="mt-4 flex flex-wrap gap-2" action="/media/on-air">
+            <input type="hidden" name="month" value={currentMonth} />
             <select
-              name="month"
-              defaultValue={currentMonth}
-              className="rounded-md border border-white/15 bg-white/5 px-2 py-1 text-xs text-white focus:border-white/30 focus:outline-none"
+              name="media"
+              defaultValue={mediaId ?? ''}
+              className="rounded-md border border-white/15 bg-white/5 px-3 py-2 text-sm text-white focus:border-white/30 focus:outline-none"
             >
-              {availableMonths
-                .slice()
-                .reverse()
-                .map((m) => (
-                  <option key={m} value={m}>
-                    {monthLabel(m)}
-                  </option>
-                ))}
+              <option value="">すべての局</option>
+              {(mediaList ?? []).map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name}
+                  {m.area ? `(${m.area})` : ''}
+                </option>
+              ))}
             </select>
-            <button type="submit" className="text-xs text-white/40 hover:text-white/70">
-              移動
+            <select
+              name="music_type"
+              defaultValue={musicType ?? ''}
+              className="rounded-md border border-white/15 bg-white/5 px-3 py-2 text-sm text-white focus:border-white/30 focus:outline-none"
+            >
+              <option value="">邦楽・洋楽すべて</option>
+              <option value="DOMESTIC">邦楽</option>
+              <option value="OVERSEAS">洋楽</option>
+            </select>
+            <button
+              type="submit"
+              className="rounded-md bg-white px-4 py-2 text-sm font-medium text-black transition hover:bg-white/85"
+            >
+              絞り込む
             </button>
           </form>
-        )}
-      </div>
 
-      <div className="mt-8 flex flex-col gap-8 lg:flex-row lg:items-start">
-        <section className="lg:flex-1">
-          <h2 className="text-lg font-semibold">都道府県別プッシュ状況</h2>
-          <p className="mt-1 text-xs text-white/40">数字はその月にプッシュした局数</p>
-          <div className="mt-4">
-            <PrefectureMap data={prefectureData} />
-          </div>
-        </section>
+          {!rotations || rotations.length === 0 ? (
+            <p className="mt-10 text-sm text-white/40">この月のオンエアデータはまだ登録されていません。</p>
+          ) : (
+            <ul className="mt-6 divide-y divide-white/10">
+              {rotations.map((row) => {
+                const program = firstOf(row.media_program)
+                const media = program ? firstOf(program.media) : null
+                const track = firstOf(row.track)
+                const album = firstOf(row.album)
+                const artist = firstOf(row.artist)
+                const trackArtist = track ? firstOf(track.artist) : null
+                const albumArtist = album ? firstOf(album.artist) : null
 
-        {ranking.length > 0 && (
-          <section className="lg:w-[480px] lg:shrink-0">
-            <h2 className="text-lg font-semibold">🏆 {monthLabel(currentMonth)}のパワープレイ&ヘビロテ ランキング</h2>
-            <table className="mt-4 w-full border-collapse text-sm">
-              <thead>
-                <tr className="border-b border-white/10 text-left text-xs text-white/40">
-                  <th className="py-2 pr-2">#</th>
-                  <th className="py-2">曲 / アーティスト</th>
-                  <th className="py-2 text-right">選出局数</th>
-                </tr>
-              </thead>
-              <tbody>
-                {ranking.map((r, i) => (
-                  <tr key={r.key} className="border-b border-white/5">
-                    <td className="py-2 pr-2 font-bold text-white/40">{i + 1}</td>
-                    <td className="py-2">
-                      {r.href ? (
-                        <Link href={r.href} className="font-medium hover:opacity-70">
-                          {r.label}
+                const targetLabel = track?.title ?? album?.title ?? artist?.name ?? '—'
+                const targetHref = track
+                  ? `/tracks/${track.id}`
+                  : album
+                    ? `/albums/${album.id}`
+                    : artist
+                      ? `/artists/${artist.id}`
+                      : null
+                const subLabel = track ? trackArtist?.name : album ? albumArtist?.name : null
+
+                return (
+                  <li key={row.id} className="py-4">
+                    <div>
+                      {targetHref ? (
+                        <Link href={targetHref} className="font-medium hover:opacity-70">
+                          {targetLabel}
                         </Link>
                       ) : (
-                        r.label
+                        <span className="font-medium">{targetLabel}</span>
                       )}
-                      {r.sub && <span className="ml-2 text-xs text-white/40">{r.sub}</span>}
-                      <span className="ml-2 text-xs text-white/30">({MUSIC_TYPE_LABEL[r.musicType]})</span>
-                    </td>
-                    <td className="py-2 text-right text-white/60">{r.mediaIds.size}局</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </section>
-        )}
-      </div>
-
-      <h2 className="mt-10 text-lg font-semibold">エントリ一覧</h2>
-      <form className="mt-4 flex flex-wrap gap-2" action="/media/on-air">
-        <input type="hidden" name="month" value={currentMonth} />
-        <select
-          name="media"
-          defaultValue={mediaId ?? ''}
-          className="rounded-md border border-white/15 bg-white/5 px-3 py-2 text-sm text-white focus:border-white/30 focus:outline-none"
-        >
-          <option value="">すべての局</option>
-          {(mediaList ?? []).map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.name}
-              {m.area ? `(${m.area})` : ''}
-            </option>
-          ))}
-        </select>
-        <select
-          name="music_type"
-          defaultValue={musicType ?? ''}
-          className="rounded-md border border-white/15 bg-white/5 px-3 py-2 text-sm text-white focus:border-white/30 focus:outline-none"
-        >
-          <option value="">邦楽・洋楽すべて</option>
-          <option value="DOMESTIC">邦楽</option>
-          <option value="OVERSEAS">洋楽</option>
-        </select>
-        <button
-          type="submit"
-          className="rounded-md bg-white px-4 py-2 text-sm font-medium text-black transition hover:bg-white/85"
-        >
-          絞り込む
-        </button>
-      </form>
-
-      {!rotations || rotations.length === 0 ? (
-        <p className="mt-10 text-sm text-white/40">この月のオンエアデータはまだ登録されていません。</p>
-      ) : (
-        <ul className="mt-6 divide-y divide-white/10">
-          {rotations.map((row) => {
-            const program = firstOf(row.media_program)
-            const media = program ? firstOf(program.media) : null
-            const track = firstOf(row.track)
-            const album = firstOf(row.album)
-            const artist = firstOf(row.artist)
-            const trackArtist = track ? firstOf(track.artist) : null
-            const albumArtist = album ? firstOf(album.artist) : null
-
-            const targetLabel = track?.title ?? album?.title ?? artist?.name ?? '—'
-            const targetHref = track ? `/tracks/${track.id}` : album ? `/albums/${album.id}` : artist ? `/artists/${artist.id}` : null
-            const subLabel = track ? trackArtist?.name : album ? albumArtist?.name : null
-
-            return (
-              <li key={row.id} className="flex items-center justify-between gap-4 py-4">
-                <div>
-                  {targetHref ? (
-                    <Link href={targetHref} className="font-medium hover:opacity-70">
-                      {targetLabel}
-                    </Link>
-                  ) : (
-                    <span className="font-medium">{targetLabel}</span>
-                  )}
-                  {subLabel && <p className="text-xs text-white/40">{subLabel}</p>}
-                </div>
-                <div className="shrink-0 text-right text-xs text-white/40">
-                  <p>
-                    {media?.name} {program?.program_name}
-                  </p>
-                  <p>
-                    {formatRotationPeriod(row.period_start_date, row.period_type)}
-                    {row.period_type === 'weekly' ? '(週間)' : ''} · {MUSIC_TYPE_LABEL[row.music_type]}
-                  </p>
-                </div>
-              </li>
-            )
-          })}
-        </ul>
-      )}
-
-      {totalPages > 1 && (
-        <div className="mt-6 flex items-center justify-center gap-3 text-sm">
-          {currentPage > 1 ? (
-            <Link
-              href={buildQuery({ media: mediaId, music_type: musicType, month: currentMonth, page: String(currentPage - 1) })}
-              className="rounded-md border border-white/15 px-3 py-1.5 hover:bg-white/5"
-            >
-              ← 前へ
-            </Link>
-          ) : (
-            <span className="rounded-md border border-white/5 px-3 py-1.5 text-white/20">← 前へ</span>
+                      {subLabel && <p className="text-xs text-white/40">{subLabel}</p>}
+                    </div>
+                    <div className="mt-1 text-xs text-white/40">
+                      <p>
+                        {media?.name} {program?.program_name}
+                      </p>
+                      <p>
+                        {formatRotationPeriod(row.period_start_date, row.period_type)}
+                        {row.period_type === 'weekly' ? '(週間)' : ''} · {MUSIC_TYPE_LABEL[row.music_type]}
+                      </p>
+                    </div>
+                  </li>
+                )
+              })}
+            </ul>
           )}
-          <span className="text-white/50">
-            {currentPage} / {totalPages}
-          </span>
-          {currentPage < totalPages ? (
-            <Link
-              href={buildQuery({ media: mediaId, music_type: musicType, month: currentMonth, page: String(currentPage + 1) })}
-              className="rounded-md border border-white/15 px-3 py-1.5 hover:bg-white/5"
-            >
-              次へ →
-            </Link>
-          ) : (
-            <span className="rounded-md border border-white/5 px-3 py-1.5 text-white/20">次へ →</span>
+
+          {totalPages > 1 && (
+            <div className="mt-6 flex items-center justify-center gap-3 text-sm">
+              {currentPage > 1 ? (
+                <Link
+                  href={buildQuery({
+                    media: mediaId,
+                    music_type: musicType,
+                    month: currentMonth,
+                    page: String(currentPage - 1),
+                  })}
+                  className="rounded-md border border-white/15 px-3 py-1.5 hover:bg-white/5"
+                >
+                  ← 前へ
+                </Link>
+              ) : (
+                <span className="rounded-md border border-white/5 px-3 py-1.5 text-white/20">← 前へ</span>
+              )}
+              <span className="text-white/50">
+                {currentPage} / {totalPages}
+              </span>
+              {currentPage < totalPages ? (
+                <Link
+                  href={buildQuery({
+                    media: mediaId,
+                    music_type: musicType,
+                    month: currentMonth,
+                    page: String(currentPage + 1),
+                  })}
+                  className="rounded-md border border-white/15 px-3 py-1.5 hover:bg-white/5"
+                >
+                  次へ →
+                </Link>
+              ) : (
+                <span className="rounded-md border border-white/5 px-3 py-1.5 text-white/20">次へ →</span>
+              )}
+            </div>
           )}
-        </div>
-      )}
     </div>
+  )
+
+  return (
+    <DetailPageShell
+      topBar={<BackLink fallbackHref="/media" fallbackLabel="メディア&パワープレイに戻る" />}
+      left={
+        <div className="mt-4">
+          {titleBlock}
+          {monthNavBlock}
+          <div className="mt-8">{rankingBlock}</div>
+        </div>
+      }
+      center={mapBlock}
+      right={entriesBlock}
+      mobileContent={
+        <div className="mt-4">
+          {titleBlock}
+          {monthNavBlock}
+          <OnAirMobileTabs ranking={rankingBlock} map={mapBlock} entries={entriesBlock} />
+        </div>
+      }
+    />
   )
 }

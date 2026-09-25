@@ -389,13 +389,26 @@ export default async function ArtistOverviewPage({ params }: { params: Promise<{
           <h2 className="text-xs uppercase tracking-wide text-white/40">Latest Media</h2>
           <ul className="mt-3 divide-y divide-white/5">
             {relatedNews.map((item) => (
-              <li key={item.id} className="py-2 text-sm">
-                <a href={item.link} target="_blank" rel="noopener noreferrer" className="hover:underline">
-                  {item.title}
+              <li key={item.id} className="py-2">
+                <a
+                  href={item.link}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="group -m-1 flex gap-4 rounded-md p-1 hover:bg-white/5"
+                >
+                  <div className="h-14 w-14 shrink-0 overflow-hidden rounded-md bg-white/5">
+                    {item.thumbnailUrl && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={item.thumbnailUrl} alt="" className="h-full w-full object-cover" />
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm group-hover:underline">{item.title}</p>
+                    <p className="mt-0.5 text-xs text-white/40">
+                      {item.source} · {formatRelativeTime(item.publishedAt)}
+                    </p>
+                  </div>
                 </a>
-                <p className="mt-0.5 text-xs text-white/40">
-                  {item.source} · {formatRelativeTime(item.publishedAt)}
-                </p>
               </li>
             ))}
           </ul>
