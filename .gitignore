@@ -46,6 +46,12 @@ next-env.d.ts
 # tesseract.js downloads language data into cwd at runtime
 *.traineddata
 
+# ローカルDBバックアップ(scripts/db-backup.sh)。実データを含むためコミットしない
+/backups/
+
+# utils/itunes.tsのプロセス間レート制限状態(ローカル限定の実行時状態)
+/.itunes-rate-limit.json
+
 # superpowers brainstorming visual companion scratch files
 .superpowers/
 .worktrees/

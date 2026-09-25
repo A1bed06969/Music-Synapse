@@ -115,6 +115,18 @@ function isRetryableStatus(status: unknown): boolean {
   return status === 503 || status === 429
 }
 
+/** GoogleGenAI SDKの例外は.messageに生のJSONエラーボディ(数百文字)がそのまま
+ * 入ることがあり、そのままUIに出すと読めない(2026-09-25、ユーザー報告)。
+ * クォータ超過は専用の分かりやすい文言にし、それ以外は妥当な長さに切り詰める。 */
+export function summarizeGeminiError(err: unknown): string {
+  const message = err instanceof Error ? err.message : String(err)
+  if (message.includes('RESOURCE_EXHAUSTED') || message.includes('429')) {
+    return 'Geminiの無料枠を使い切っています。しばらく時間をおいてからもう一度お試しください。'
+  }
+  const MAX_LEN = 200
+  return message.length > MAX_LEN ? `${message.slice(0, MAX_LEN)}…` : message
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }

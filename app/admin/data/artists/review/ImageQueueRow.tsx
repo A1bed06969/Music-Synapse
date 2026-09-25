@@ -8,6 +8,7 @@ import { confirmArtistAppleMusicId, skipImageMatch } from './actions'
 export default function ImageQueueRow({ artistId, name }: { artistId: string; name: string }) {
   const [expanded, setExpanded] = useState(false)
   const [candidates, setCandidates] = useState<ItunesArtistSearchResultWithImage[] | null>(null)
+  const [searchError, setSearchError] = useState<string | null>(null)
   const [done, setDone] = useState<'confirmed' | 'skipped' | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<number | 'skip' | null>(null)
@@ -21,8 +22,12 @@ export default function ImageQueueRow({ artistId, name }: { artistId: string; na
     setExpanded(true)
     if (candidates !== null) return
     startTransition(async () => {
-      const results = await searchAppleMusicArtist(name)
-      setCandidates(results)
+      const outcome = await searchAppleMusicArtist(name)
+      if (outcome.ok) {
+        setCandidates(outcome.results)
+      } else {
+        setSearchError(outcome.error)
+      }
     })
   }
 
@@ -87,7 +92,9 @@ export default function ImageQueueRow({ artistId, name }: { artistId: string; na
 
       {expanded && (
         <div className="mt-3 flex flex-col gap-2 border-t border-white/10 pt-3">
-          {candidates === null ? (
+          {searchError ? (
+            <p className="text-xs text-red-400">検索に失敗しました({searchError})。iTunes側の一時的な制限の可能性があります。しばらくしてから再度お試しください。</p>
+          ) : candidates === null ? (
             <p className="text-xs text-white/40">検索中...</p>
           ) : candidates.length === 0 ? (
             <p className="text-xs text-white/40">候補が見つかりませんでした。</p>

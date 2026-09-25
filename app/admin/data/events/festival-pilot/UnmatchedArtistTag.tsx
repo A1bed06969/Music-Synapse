@@ -28,6 +28,7 @@ type PickInput = {
 export default function UnmatchedArtistTag({ pick }: { pick: PickInput }) {
   const [expanded, setExpanded] = useState(false)
   const [candidates, setCandidates] = useState<ItunesArtistSearchResultWithImage[] | null>(null)
+  const [searchError, setSearchError] = useState<string | null>(null)
   const [registered, setRegistered] = useState<{ artistId: string; registeredName: string } | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [registeringId, setRegisteringId] = useState<number | null>(null)
@@ -39,6 +40,7 @@ export default function UnmatchedArtistTag({ pick }: { pick: PickInput }) {
   const [collabMode, setCollabMode] = useState(false)
   const [collabQuery, setCollabQuery] = useState(pick.artistName)
   const [collabCandidates, setCollabCandidates] = useState<ItunesArtistSearchResultWithImage[] | null>(null)
+  const [collabSearchError, setCollabSearchError] = useState<string | null>(null)
   const [collabSearching, setCollabSearching] = useState(false)
   const [selectedMembers, setSelectedMembers] = useState<ItunesArtistSearchResultWithImage[]>([])
 
@@ -50,8 +52,12 @@ export default function UnmatchedArtistTag({ pick }: { pick: PickInput }) {
     setExpanded(true)
     if (candidates !== null) return
     startTransition(async () => {
-      const results = await searchAppleMusicArtist(pick.artistName)
-      setCandidates(results)
+      const outcome = await searchAppleMusicArtist(pick.artistName)
+      if (outcome.ok) {
+        setCandidates(outcome.results)
+      } else {
+        setSearchError(outcome.error)
+      }
     })
   }
 
@@ -85,9 +91,15 @@ export default function UnmatchedArtistTag({ pick }: { pick: PickInput }) {
   function handleCollabSearch() {
     if (!collabQuery.trim()) return
     setCollabSearching(true)
+    setCollabSearchError(null)
     startTransition(async () => {
-      const results = await searchAppleMusicArtist(collabQuery.trim())
-      setCollabCandidates(results)
+      const outcome = await searchAppleMusicArtist(collabQuery.trim())
+      if (outcome.ok) {
+        setCollabCandidates(outcome.results)
+      } else {
+        setCollabSearchError(outcome.error)
+        setCollabCandidates(null)
+      }
       setCollabSearching(false)
     })
   }
@@ -170,7 +182,9 @@ export default function UnmatchedArtistTag({ pick }: { pick: PickInput }) {
         <span className="mt-1 flex flex-col gap-2 rounded-md border border-white/15 bg-[#111] p-2 text-xs">
           {!collabMode && (
             <>
-              {candidates === null ? (
+              {searchError ? (
+                <span className="text-red-400">検索に失敗しました({searchError})。iTunes側の一時的な制限の可能性があります。</span>
+              ) : candidates === null ? (
                 <span className="text-white/40">Apple Musicを検索中...</span>
               ) : candidates.length === 0 ? (
                 <span className="text-white/40">候補が見つかりませんでした。</span>
@@ -274,6 +288,8 @@ export default function UnmatchedArtistTag({ pick }: { pick: PickInput }) {
 
               {collabSearching ? (
                 <span className="text-white/40">検索中...</span>
+              ) : collabSearchError ? (
+                <span className="text-red-400">検索に失敗しました({collabSearchError})。iTunes側の一時的な制限の可能性があります。</span>
               ) : collabCandidates && collabCandidates.length > 0 ? (
                 <span className="flex flex-col gap-1">
                   {collabCandidates.map((c) => {

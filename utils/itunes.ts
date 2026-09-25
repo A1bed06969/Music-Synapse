@@ -2,6 +2,9 @@
 // iTunes Search/Lookup APIとのやり取りをまとめたユーティリティ
 // 参考: https://performance-partners.apple.com/search-api
 
+import { readFileSync, writeFileSync } from 'fs'
+import { join } from 'path'
+
 const ITUNES_LOOKUP_BASE = 'https://itunes.apple.com/lookup'
 
 export type ItunesArtist = {
@@ -45,29 +48,85 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-// iTunes Search/Lookup APIは非公式かつ無認証で、明文化されたレート制限が無い。
-// これまでfetchTracksForAlbumだけ個別にsleep(400)していたが、それ以外の呼び出し元
-// (ディスクガイドの自動マッチングなど、1エントリごとに複数回呼ぶ経路)には何も
-// 挟んでおらず、間隔なしで連続アクセスした結果403 Forbiddenが実際に発生した
-// (このファイルの全関数からのアクセスが数分間ブロックされた)。呼び出し元を問わず
-// プロセス全体で最低限の間隔を強制する共通fetchに一本化し、403/429時は
-// 指数バックオフで数回リトライする。
-const MIN_REQUEST_INTERVAL_MS = 400
-let lastRequestAt = 0
+// iTunes Search/Lookup APIは非公式かつ無認証で、明文化されたレート制限が無いが、
+// Apple公式の目安は「約20件/分」(https://performance-partners.apple.com/search-api、
+// 2026年8月時点でも変更なしと確認済み)。以前はMIN_REQUEST_INTERVAL_MS=400
+// (理論上150件/分)で運用しており、この枠を7.5倍超過していた上に、間隔管理が
+// プロセス内メモリだけだったため複数スクリプトを同時実行すると合算でさらに
+// 超過し、2026-09-24〜25に20時間以上ブロックされる事態が発生した
+// (403/429時も次のアイテムへ即座に進み叩き続けていたため悪化した可能性が高い)。
+// これを受けて以下の2点を追加:
+// ①間隔を3.5秒(約17件/分、20件/分の枠に余裕を持たせる)に引き上げ
+// ②間隔・連続失敗回数をプロセス間で共有するファイル(.itunes-rate-limit.json、
+//   gitignore対象)に持たせ、同時に複数スクリプトが動いても合算で枠を守る
+// ③サーキットブレーカー: 連続403/429がCIRCUIT_BREAKER_THRESHOLD回に達したら
+//   CIRCUIT_BREAKER_COOLDOWN_MSの間はネットワークに一切アクセスせず即座に
+//   失敗させる(ブロック中に叩き続けて悪化させるのを防ぐ)。クールダウンが
+//   明ければ自動的に通常動作へ戻る。
+const MIN_REQUEST_INTERVAL_MS = 3500
+const CIRCUIT_BREAKER_THRESHOLD = 3
+const CIRCUIT_BREAKER_COOLDOWN_MS = 10 * 60 * 1000
+
+const RATE_LIMIT_STATE_PATH = join(process.cwd(), '.itunes-rate-limit.json')
+
+type ItunesRateLimitState = {
+  lastRequestAt: number
+  consecutiveFailures: number
+  cooldownUntil: number
+}
+
+function readRateLimitState(): ItunesRateLimitState {
+  try {
+    return JSON.parse(readFileSync(RATE_LIMIT_STATE_PATH, 'utf-8'))
+  } catch {
+    return { lastRequestAt: 0, consecutiveFailures: 0, cooldownUntil: 0 }
+  }
+}
+
+function writeRateLimitState(state: ItunesRateLimitState) {
+  try {
+    writeFileSync(RATE_LIMIT_STATE_PATH, JSON.stringify(state))
+  } catch (err) {
+    console.error('iTunesレート制限状態の保存に失敗しました:', (err as Error).message)
+  }
+}
 
 async function fetchItunes(url: string, label: string): Promise<any> {
   const maxAttempts = 4
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    const waitMs = MIN_REQUEST_INTERVAL_MS - (Date.now() - lastRequestAt)
+    const state = readRateLimitState()
+
+    if (state.cooldownUntil > Date.now()) {
+      const remainingSec = Math.ceil((state.cooldownUntil - Date.now()) / 1000)
+      throw new Error(`iTunes API error (${label}): クールダウン中(あと約${remainingSec}秒はリクエストを送らない)`)
+    }
+
+    const waitMs = MIN_REQUEST_INTERVAL_MS - (Date.now() - state.lastRequestAt)
     if (waitMs > 0) await sleep(waitMs)
-    lastRequestAt = Date.now()
+    writeRateLimitState({ ...state, lastRequestAt: Date.now() })
 
     const res = await fetch(url)
-    if (res.ok) return res.json()
+    if (res.ok) {
+      writeRateLimitState({ ...readRateLimitState(), consecutiveFailures: 0 })
+      return res.json()
+    }
 
-    if ((res.status === 403 || res.status === 429) && attempt < maxAttempts) {
-      await sleep(2000 * attempt)
-      continue
+    if (res.status === 403 || res.status === 429) {
+      const current = readRateLimitState()
+      const consecutiveFailures = current.consecutiveFailures + 1
+      if (consecutiveFailures >= CIRCUIT_BREAKER_THRESHOLD) {
+        writeRateLimitState({
+          lastRequestAt: Date.now(),
+          consecutiveFailures: 0,
+          cooldownUntil: Date.now() + CIRCUIT_BREAKER_COOLDOWN_MS,
+        })
+        throw new Error(`iTunes API error (${label}): ${res.status}(連続失敗のためクールダウンに入りました)`)
+      }
+      writeRateLimitState({ ...current, lastRequestAt: Date.now(), consecutiveFailures })
+      if (attempt < maxAttempts) {
+        await sleep(2000 * attempt)
+        continue
+      }
     }
     throw new Error(`iTunes API error (${label}): ${res.status}`)
   }
@@ -287,39 +346,117 @@ export async function searchArtist(name: string, country = 'JP'): Promise<Itunes
 }
 
 /**
+ * feat.抽出で判明したアーティスト名から、Apple Music上のartistIdを解決する。
+ * 完全一致が1件だけならそれを採用するが、"Boyish"のように完全一致が複数ある
+ * 同名アーティストの場合は、それだけでは正しい方を選べない。そこで各候補の
+ * カタログ(fetchArtistWithAlbums)を実際に取得し、元曲のアルバム/シングルの
+ * collectionIdがその候補の作品一覧に含まれているかで絞り込む(Apple Musicは
+ * フィーチャリング曲を「参加作品」として当人のカタログにも同じcollectionIdで
+ * 掲載する挙動があり、utils/itunes.tsの他の同期処理でも同じ前提を使っている)。
+ *
+ * confirmedIdは本人確認済み(apple_music_artist_idに保存してよい確度)。
+ * bestGuessIdは裏取りしきれず確定できなかった場合でも、画像取得など
+ * 「間違っていても実害の小さい用途」向けに検索結果の先頭候補を返す
+ * (2026-09-24、ユーザー要望「featアーティストも画像だけは拾いたい」)。
+ * 候補が0件の場合は両方nullになる。 */
+export async function resolveFeaturedArtistCandidate(
+  name: string,
+  sourceAlbumId: string | null,
+  country = 'JP'
+): Promise<{ confirmedId: string | null; bestGuessId: string | null }> {
+  const candidates = await searchArtist(name, country)
+  const normalize = (s: string) => s.trim().toLowerCase()
+  const exactMatches = candidates.filter((c) => normalize(c.artistName) === normalize(name))
+
+  if (exactMatches.length === 0) return { confirmedId: null, bestGuessId: null }
+  if (exactMatches.length === 1) {
+    const id = String(exactMatches[0].artistId)
+    return { confirmedId: id, bestGuessId: id }
+  }
+  if (!sourceAlbumId) return { confirmedId: null, bestGuessId: String(exactMatches[0].artistId) }
+
+  const catalogMatches: string[] = []
+  for (const candidate of exactMatches) {
+    const candidateId = String(candidate.artistId)
+    try {
+      const { albums } = await fetchArtistWithAlbums(candidateId, country)
+      if (albums.some((a) => String(a.collectionId) === sourceAlbumId)) {
+        catalogMatches.push(candidateId)
+      }
+    } catch (err) {
+      console.error(`カタログ照合に失敗しました(候補artistId=${candidateId}):`, (err as Error).message)
+    }
+  }
+  return {
+    confirmedId: catalogMatches.length === 1 ? catalogMatches[0] : null,
+    bestGuessId: catalogMatches[0] ?? String(exactMatches[0].artistId),
+  }
+}
+
+/** resolveFeaturedArtistCandidateの本人確認済み結果だけを返す薄いラッパー。
+ * apple_music_artist_idの確定用途(既存呼び出し元)向け。 */
+export async function resolveFeaturedArtistAppleMusicId(
+  name: string,
+  sourceAlbumId: string | null,
+  country = 'JP'
+): Promise<string | null> {
+  const { confirmedId } = await resolveFeaturedArtistCandidate(name, sourceAlbumId, country)
+  return confirmedId
+}
+
+/**
  * アルバム一覧のartistNameから、本人名義と異なる連名クレジットを人名単位に分解して返す。
  * 括弧の深さを追跡し、深さ0の「,」「&」でのみ分割する(例:
  * "ACAね(ずっと真夜中でいいのに。), Rin音, Yaffle" は
  * ["ACAね(ずっと真夜中でいいのに。)", "Rin音", "Yaffle"] に分解され、本人名義"Yaffle"は除外される)。
  */
+/** "ACAね(ずっと真夜中でいいのに。), Rin音, Yaffle"のような連名クレジット文字列を、
+ * 括弧の深さを追跡しながら深さ0の「,」「&」でのみ分割して人名単位の配列にする。 */
+export function splitCollabArtistName(rawName: string): string[] {
+  let depth = 0
+  let current = ''
+  const parts: string[] = []
+  for (const ch of rawName) {
+    if (ch === '(' || ch === '（') depth++
+    if (ch === ')' || ch === '）') depth = Math.max(0, depth - 1)
+    if (depth === 0 && (ch === ',' || ch === '&')) {
+      parts.push(current)
+      current = ''
+    } else {
+      current += ch
+    }
+  }
+  parts.push(current)
+  return parts.map((p) => p.trim()).filter(Boolean)
+}
+
 export function extractCollaboratorNames(primaryArtistName: string, albums: ItunesAlbum[]): string[] {
   const names = new Set<string>()
 
   for (const album of albums) {
     if (!album.artistName || album.artistName === primaryArtistName) continue
-
-    let depth = 0
-    let current = ''
-    const parts: string[] = []
-    for (const ch of album.artistName) {
-      if (ch === '(' || ch === '（') depth++
-      if (ch === ')' || ch === '）') depth = Math.max(0, depth - 1)
-      if (depth === 0 && (ch === ',' || ch === '&')) {
-        parts.push(current)
-        current = ''
-      } else {
-        current += ch
-      }
-    }
-    parts.push(current)
-
-    for (const part of parts) {
-      const trimmed = part.trim()
-      if (trimmed && trimmed !== primaryArtistName) {
-        names.add(trimmed)
-      }
+    for (const part of splitCollabArtistName(album.artistName)) {
+      if (part !== primaryArtistName) names.add(part)
     }
   }
 
   return Array.from(names)
+}
+
+/**
+ * ある1枚のアルバム/シングルについて、そのartistName連名クレジットの中から
+ * 「今同期しようとしているアーティスト(syncingArtistName、例: feat.抽出された
+ * 「Grandma」)」以外の名義が1つだけ残る場合、それを本来の主アーティスト名として返す。
+ * feat.アーティスト自身のカタログ同期(dispatchAlbumSync)で、そのアーティストが
+ * 実はフィーチャリング側でしかない作品(主アーティストが別に存在する)を
+ * そのまま同期すると、主アーティストが一切登録されないままfeat.アーティストの
+ * 名義で作品が計上されてしまう(2026-09-22、ユーザー報告「Grandma」の誕生日ソング
+ * 単体シングルの例)。連名が2名以上に分かれる、または該当アーティスト名が
+ * 連名に含まれない場合はnullを返し、判定を諦める(安全側)。 */
+export function resolveTruePrimaryArtistName(syncingArtistName: string, albumArtistName: string): string | null {
+  if (!albumArtistName || albumArtistName === syncingArtistName) return null
+  const parts = splitCollabArtistName(albumArtistName)
+  if (!parts.includes(syncingArtistName)) return null
+  const others = parts.filter((p) => p !== syncingArtistName)
+  return others.length === 1 ? others[0] : null
 }

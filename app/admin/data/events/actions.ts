@@ -8,6 +8,7 @@ import {
   extractOgImage,
   stripHtmlToText,
   extractFestivalLineupWithGemini,
+  summarizeGeminiError,
   type FestivalLineupCandidate,
 } from '@/utils/geminiFestivalLineupExtract'
 
@@ -692,10 +693,7 @@ export async function extractFestivalLineupCandidates(
   try {
     candidates = await extractFestivalLineupWithGemini(pageText)
   } catch (err) {
-    return {
-      success: false,
-      message: err instanceof Error ? `AI抽出に失敗しました: ${err.message}` : 'AI抽出に失敗しました。',
-    }
+    return { success: false, message: `AI抽出に失敗しました: ${summarizeGeminiError(err)}` }
   }
 
   const result: FestivalExtractResult = {

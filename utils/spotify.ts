@@ -34,6 +34,50 @@ async function getSpotifyAccessToken(): Promise<string> {
   return cachedToken.token
 }
 
+export type SpotifyArtistSearchResult = {
+  id: string
+  name: string
+  imageUrl: string | null
+}
+
+/**
+ * アーティスト名でSpotifyを検索し、候補を返す(上位5件)。画像URLはAPIレスポンスに
+ * 直接含まれるため(og:imageスクレイピング不要)、iTunesより確度高く取得できる。
+ * feat.アーティストの画像取得フォールバック用(2026-09-24、iTunesの検索APIが
+ * レート制限(403)にかかりやすい問題を受けて追加)。
+ */
+export async function searchSpotifyArtist(name: string): Promise<SpotifyArtistSearchResult[]> {
+  const token = await getSpotifyAccessToken()
+  const url = `https://api.spotify.com/v1/search?type=artist&market=JP&limit=5&q=${encodeURIComponent(name)}`
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+  if (!res.ok) {
+    throw new Error(`Spotify APIエラー (artist search): ${res.status}`)
+  }
+  const data = await res.json()
+  type RawArtist = { id: string; name: string; images?: { url: string }[] }
+  const items: RawArtist[] = data.artists?.items ?? []
+  return items.map((a) => ({
+    id: a.id,
+    name: a.name,
+    imageUrl: a.images?.[0]?.url ?? null,
+  }))
+}
+
+/**
+ * feat.抽出で判明したアーティスト名から、Apple Musicで解決できなかった場合の
+ * フォールバックとして画像だけをベストエフォートで取得する。名前の完全一致が
+ * 1件ならそれを、複数/0件の場合でも検索結果の先頭候補を採用する(本人特定用途
+ * ではなく画像取得のみが目的のため、多少の誤爆は許容する)。
+ */
+export async function resolveFeaturedArtistImageFromSpotify(name: string): Promise<string | null> {
+  const candidates = await searchSpotifyArtist(name)
+  if (candidates.length === 0) return null
+
+  const normalize = (s: string) => s.trim().toLowerCase()
+  const exactMatch = candidates.find((c) => normalize(c.name) === normalize(name))
+  return (exactMatch ?? candidates[0]).imageUrl
+}
+
 /** SpotifyのアルバムページURL(https://open.spotify.com/album/{id}、
  * 地域プレフィックス付きのintl-ja/album/{id}等も含む)からアルバムIDを取り出す。 */
 export function parseSpotifyAlbumUrl(url: string): string | null {

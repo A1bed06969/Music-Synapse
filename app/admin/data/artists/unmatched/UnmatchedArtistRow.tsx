@@ -32,8 +32,12 @@ export default function UnmatchedArtistRow({ artist }: { artist: StubArtist }) {
     setSearching(true)
     setErrorMessage(null)
     startTransition(async () => {
-      const results = await searchAppleMusicArtistForStub(query.trim())
-      setCandidates(results)
+      const outcome = await searchAppleMusicArtistForStub(query.trim())
+      if (outcome.ok) {
+        setCandidates(outcome.results)
+      } else {
+        setErrorMessage(`検索に失敗しました(${outcome.error})。iTunes側の一時的な制限の可能性があります。`)
+      }
       setSearching(false)
     })
   }

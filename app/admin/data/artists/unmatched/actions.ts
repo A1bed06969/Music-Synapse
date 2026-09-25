@@ -9,28 +9,39 @@ import { dispatchAlbumSync } from '@/utils/albumSyncDispatch'
 
 export type ItunesArtistSearchResultWithImage = ItunesArtistSearchResult & { imageUrl: string | null; country: string }
 
+export type ArtistSearchOutcome =
+  | { ok: true; results: ItunesArtistSearchResultWithImage[] }
+  | { ok: false; error: string }
+
 /** 未マッチアーティスト(apple_music_artist_id未設定のスタブ)の名前でApple Musicを
  * 検索する。festival-pilot/actions.tsのsearchAppleMusicArtistと同じ方針
  * (候補の顔写真も並行取得し、同名・類似名の別人を判別しやすくする)。
  * 日本のカタログに0件の場合、米国ストアフロントでも検索する
  * (例: マキシマム ザ ホルモンのように国内配信が無くとも海外で解禁されているケース)。
  * 呼び出し側はcandidate.countryを見て、紐付け時に同じ国を指定する必要がある
- * (国が食い違うとfetchArtistWithAlbumsが0件を返す)。 */
-export async function searchAppleMusicArtistForStub(name: string): Promise<ItunesArtistSearchResultWithImage[]> {
+ * (国が食い違うとfetchArtistWithAlbumsが0件を返す)。
+ * 検索自体が失敗した場合(iTunesのレート制限等)は「候補0件」と区別できるよう
+ * ok: falseを返す(2026-09-25、festival-pilot側の同種の不具合修正に合わせて統一)。 */
+export async function searchAppleMusicArtistForStub(name: string): Promise<ArtistSearchOutcome> {
   let country = 'JP'
-  let candidates = await searchArtist(name, country)
-  if (candidates.length === 0) {
-    country = 'US'
+  let candidates: ItunesArtistSearchResult[]
+  try {
     candidates = await searchArtist(name, country)
+    if (candidates.length === 0) {
+      country = 'US'
+      candidates = await searchArtist(name, country)
+    }
+  } catch (err) {
+    return { ok: false, error: (err as Error).message }
   }
-  const withImages = await Promise.all(
+  const results = await Promise.all(
     candidates.map(async (c) => ({
       ...c,
       country,
       imageUrl: await fetchAppleMusicArtistImage(String(c.artistId), country).catch(() => null),
     }))
   )
-  return withImages
+  return { ok: true, results }
 }
 
 export type LinkStubResult = { success: true; registeredName: string } | { success: false; message: string }

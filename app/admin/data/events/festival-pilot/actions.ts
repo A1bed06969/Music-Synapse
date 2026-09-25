@@ -342,21 +342,33 @@ export async function registerFestivalAppearance(formData: FormData) {
 
 export type ItunesArtistSearchResultWithImage = ItunesArtistSearchResult & { imageUrl: string | null }
 
+export type ArtistSearchOutcome =
+  | { ok: true; results: ItunesArtistSearchResultWithImage[] }
+  | { ok: false; error: string }
+
 /**
  * カタログに無いアーティスト名でApple Musicを検索する(候補を人間が選ぶ前提、自動確定はしない)。
  * 同名・類似名の別人が候補に並ぶことがあり、名前だけでは判別しづらいため、各候補の
  * 顔写真(og:imageスクレイピング。fetchAppleMusicArtistImageと同じ手法)も並行取得して返す。
- * 取得に失敗した候補はimageUrl: nullのまま返す(呼び出し側でプレースホルダー表示)
+ * 取得に失敗した候補はimageUrl: nullのまま返す(呼び出し側でプレースホルダー表示)。
+ * 検索自体が失敗した場合(iTunesのレート制限等)は「候補0件」と区別できるよう
+ * ok: falseを返す(2026-09-25、レート制限中に「該当なし」と誤表示されたユーザー
+ * 報告を受けて、例外を握りつぶす実装から変更)。
  */
-export async function searchAppleMusicArtist(name: string): Promise<ItunesArtistSearchResultWithImage[]> {
-  const candidates = await searchArtist(name)
-  const withImages = await Promise.all(
+export async function searchAppleMusicArtist(name: string): Promise<ArtistSearchOutcome> {
+  let candidates: ItunesArtistSearchResult[]
+  try {
+    candidates = await searchArtist(name)
+  } catch (err) {
+    return { ok: false, error: (err as Error).message }
+  }
+  const results = await Promise.all(
     candidates.map(async (c) => ({
       ...c,
       imageUrl: await fetchAppleMusicArtistImage(String(c.artistId)).catch(() => null),
     }))
   )
-  return withImages
+  return { ok: true, results }
 }
 
 export type ImportAndRegisterInput = {

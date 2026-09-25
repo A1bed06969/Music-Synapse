@@ -93,7 +93,11 @@ export async function runGeminiMatchForStub(stubArtistId: string, rankingId: str
     }
   }
 
-  const candidates = await searchAppleMusicArtistForStub(stub.name)
+  const searchOutcome = await searchAppleMusicArtistForStub(stub.name)
+  if (!searchOutcome.ok) {
+    return { status: 'error', message: `Apple Music検索に失敗しました: ${searchOutcome.error}` }
+  }
+  const candidates = searchOutcome.results
   if (candidates.length === 0) {
     return { status: 'no_match', message: 'Apple Musicで候補が見つかりませんでした。' }
   }
@@ -172,7 +176,17 @@ export async function runGeminiMatchForRanking(rankingId: string): Promise<Gemin
     const artist = Array.isArray(row.artist) ? row.artist[0] : row.artist
     if (!artist) continue
     result.processed += 1
-    const r = await runGeminiMatchForStub(artist.id, rankingId)
+    // 1件の一時的なエラー(iTunesレート制限等)でバッチ全体を止めない。
+    // 実際にNME100/RADARの一括処理中、fetchArtistWithAlbumsが投げた例外で
+    // 処理途中の残り全件が未処理のまま落ちた事故があった(2026-09-19)。
+    let r: GeminiMatchStubResult
+    try {
+      r = await runGeminiMatchForStub(artist.id, rankingId)
+    } catch (err) {
+      console.error(`Geminiマッチ判定に失敗しました(${artist.id}):`, (err as Error).message)
+      result.errors += 1
+      continue
+    }
     if (r.status === 'auto_applied') result.autoApplied += 1
     else if (r.status === 'needs_review') result.needsReview += 1
     else if (r.status === 'no_match') result.noMatch += 1

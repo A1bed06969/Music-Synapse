@@ -1,27 +1,5 @@
 import { searchArtist } from '@/utils/itunes'
-
-const USER_AGENT =
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36'
-
-function decodeHtmlEntities(str: string): string {
-  return str
-    .replace(/&amp;/g, '&')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-}
-
-// <meta property="og:image" content="..."> を属性順序に関わらず拾う
-function extractOgImage(html: string): string | null {
-  const metaTagMatch = html.match(/<meta\s+[^>]*property=["']og:image["'][^>]*>/i)
-  if (!metaTagMatch) return null
-
-  const contentMatch = metaTagMatch[0].match(/content=["']([^"']+)["']/i)
-  if (!contentMatch) return null
-
-  return decodeHtmlEntities(contentMatch[1])
-}
+import { fetchOgImage } from '@/utils/ogImage'
 
 // URL末尾のサイズ指定(例: /1200x630cw.png)を600x600bb.pngに置換する。
 // パターンに合わない場合は元のURLをそのまま返す。
@@ -36,23 +14,8 @@ function toSquareUrl(url: string): string {
  */
 export async function fetchAppleMusicArtistImage(appleMusicArtistId: string, country = 'jp'): Promise<string | null> {
   const url = `https://music.apple.com/${country.toLowerCase()}/artist/${appleMusicArtistId}`
-
-  try {
-    const res = await fetch(url, {
-      headers: {
-        'User-Agent': USER_AGENT,
-        'Accept-Language': 'ja-JP,ja;q=0.9',
-      },
-      signal: AbortSignal.timeout(15000),
-    })
-    if (!res.ok) return null
-
-    const html = await res.text()
-    const imageUrl = extractOgImage(html)
-    return imageUrl ? toSquareUrl(imageUrl) : null
-  } catch {
-    return null
-  }
+  const imageUrl = await fetchOgImage(url)
+  return imageUrl ? toSquareUrl(imageUrl) : null
 }
 
 /**
