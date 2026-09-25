@@ -1,8 +1,8 @@
 import { createClient } from '@/utils/Supabase/server'
 import { tomorrowJST } from '@/utils/homeCards'
-import CalendarView, { type CalendarAlbum } from './CalendarView'
-import RecentReleasesCarousel, { type RecentReleaseAlbum } from './RecentReleasesCarousel'
-import BackLink from '@/app/components/navigation/BackLink'
+import { type CalendarAlbum } from './CalendarView'
+import { type RecentReleaseAlbum } from './RecentReleasesCarousel'
+import CalendarPageClient from './CalendarPageClient'
 
 function monthRange(month: string) {
   const [y, m] = month.split('-').map(Number)
@@ -125,26 +125,13 @@ export default async function AlbumCalendarPage({
     })
 
   return (
-    <div className="mx-auto max-w-[1600px] px-6 py-12">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">新譜カレンダー</h1>
-          <p className="mt-2 text-sm text-white/50">
-            リリース日ごとに新譜をカレンダー表示します。日付をクリックすると詳細が表示されます。
-          </p>
-        </div>
-        <BackLink fallbackHref="/albums" fallbackLabel="アルバム一覧に戻る" />
-      </div>
-
-      <RecentReleasesCarousel albums={recentReleases} />
-
-      <CalendarView
-        month={currentMonth}
-        monthLabel={monthLabel(currentMonth)}
-        prevMonthHref={`/albums/calendar?month=${shiftMonth(currentMonth, -1)}`}
-        nextMonthHref={`/albums/calendar?month=${shiftMonth(currentMonth, 1)}`}
-        albums={albums}
-      />
-    </div>
+    <CalendarPageClient
+      month={currentMonth}
+      monthLabel={monthLabel(currentMonth)}
+      prevMonthHref={`/albums/calendar?month=${shiftMonth(currentMonth, -1)}`}
+      nextMonthHref={`/albums/calendar?month=${shiftMonth(currentMonth, 1)}`}
+      albums={albums}
+      recentReleases={recentReleases}
+    />
   )
 }

@@ -18,25 +18,41 @@ export default function DetailPageShell({
   left,
   center,
   right,
+  mobileContent,
 }: {
   topBar?: ReactNode
   left: ReactNode
   center: ReactNode
   right: ReactNode
+  // モバイル(lg:未満)でLEFT→CENTER→RIGHTの単純な縦積みではなく独自の構成
+  // (タブ切り替え等)にしたいページ向け。指定時はここだけがtopBarの下に
+  // 描画され、left/center/rightのモバイル縦積みは行わない
+  // (2026-09-23、パワープレイ&ヘビロテページのモバイルタブ化で追加)。
+  mobileContent?: ReactNode
 }) {
   return (
     <div
       className="lg:flex lg:flex-row lg:overflow-hidden"
       style={{ ['--detail-shell-h' as string]: `calc(100vh - ${HEADER_HEIGHT_PX}px)` }}
     >
-      {/* Mobile(lg:未満): 通常のページスクロール、LEFT→CENTER→RIGHTの縦積み */}
+      {/* Mobile(lg:未満): 通常のページスクロール。mobileContent未指定時は
+          LEFT→CENTER→RIGHTの縦積み、指定時はそちらを優先する */}
       <div className="px-6 lg:hidden">
-        <div className="pt-3">
-          {topBar}
-          {left}
-        </div>
-        <div className="mt-8 min-w-0">{center}</div>
-        <div className="mt-8 min-w-0 pb-8">{right}</div>
+        {mobileContent ? (
+          <div className="pt-3 pb-8">
+            {topBar}
+            {mobileContent}
+          </div>
+        ) : (
+          <>
+            <div className="pt-3">
+              {topBar}
+              {left}
+            </div>
+            <div className="mt-8 min-w-0">{center}</div>
+            <div className="mt-8 min-w-0 pb-8">{right}</div>
+          </>
+        )}
       </div>
       <div className="lg:hidden">
         <SiteFooter />

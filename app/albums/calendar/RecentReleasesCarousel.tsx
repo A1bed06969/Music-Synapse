@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { startTransition, useEffect, useRef, useState } from 'react'
-import { formatDate } from '@/utils/format'
+import AlbumDetailCard from './AlbumDetailCard'
 
 export type RecentReleaseTrack = { id: string; trackNo: number | null; title: string }
 
@@ -94,7 +94,12 @@ export default function RecentReleasesCarousel({ albums }: { albums: RecentRelea
     <section className="mt-8">
       <h2 className="text-sm font-semibold uppercase tracking-wide text-white/50">今週の新譜ピックアップ</h2>
 
-      <div className="mt-4 grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:items-start">
+      {/* かつては画面幅いっぱいの単カラムページで使われていたため、ビューポートが
+       * 広ければlg:で横2列にする作りだったが、3カラム化後はこのカルーセル自体が
+       * 左カラム(狭いときは320px程度)の中に収まるため、ビューポート基準の判定だと
+       * 「PCなら広い」という前提が崩れ、狭い左カラムの中に2列を押し込んで収録曲が
+       * 潰れてしまう(2026-09-23、ユーザー報告)。常に縦積みにする。 */}
+      <div className="mt-4 flex flex-col gap-6">
         <div className="relative">
           <div
             ref={containerRef}
@@ -163,60 +168,7 @@ export default function RecentReleasesCarousel({ albums }: { albums: RecentRelea
 
         {/* フォーカス中のアルバムの詳細。カルーセル側の状態(activeIndex)をそのまま
          * 参照するだけなので、スクロールに合わせて自動的に切り替わる */}
-        <div key={active.id} className="animate-banner-in rounded-lg border border-white/10 bg-white/[0.02] p-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-3">
-              <Link href={`/artists/${active.artistId ?? ''}`} className="shrink-0">
-                <div className="h-12 w-12 overflow-hidden rounded-full bg-white/5 ring-1 ring-white/10">
-                  {active.artistImageUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={active.artistImageUrl} alt={active.artistName} className="h-full w-full object-cover" />
-                  ) : (
-                    <div className="flex h-full w-full items-center justify-center text-lg text-white/20">🎤</div>
-                  )}
-                </div>
-              </Link>
-              <div>
-                <Link href={`/artists/${active.artistId ?? ''}`} className="text-sm font-medium text-white/80 hover:text-white">
-                  {active.artistName}
-                </Link>
-                {active.artistId && (
-                  <Link
-                    href={`/artists/${active.artistId}`}
-                    className="block text-xs text-white/40 hover:text-white/70"
-                  >
-                    プロフィールを見る →
-                  </Link>
-                )}
-              </div>
-            </div>
-            <p className="text-xs text-white/40">{formatDate(active.releaseDate)}</p>
-          </div>
-
-          <Link href={`/albums/${active.id}`} className="mt-1 block text-lg font-bold hover:opacity-80">
-            {active.title}
-          </Link>
-
-          {active.tracks.length > 0 && (
-            // 9曲を超えると縦スクロールに隠れてしまっていたため、2段組みにして
-            // 10曲目以降は隣の列へ折り返す(それでも収まりきらない大曲数の
-            // アルバムのみ、保険として縦スクロールも残す)
-            <ol className="mt-3 max-h-64 columns-2 gap-x-4 overflow-y-auto text-sm text-white/60">
-              {active.tracks.map((t) => (
-                <li key={t.id} className="flex gap-2 break-inside-avoid py-0.5">
-                  <span className="w-5 shrink-0 text-right text-white/30">{t.trackNo ?? '-'}</span>
-                  <span className="min-w-0 truncate">{t.title}</span>
-                </li>
-              ))}
-            </ol>
-          )}
-
-          {active.review ? (
-            <p className="mt-3 text-sm leading-relaxed text-white/70">{active.review}</p>
-          ) : (
-            <p className="mt-3 text-xs text-white/25">紹介文はまだ登録されていません。</p>
-          )}
-        </div>
+        <AlbumDetailCard album={active} />
       </div>
     </section>
   )

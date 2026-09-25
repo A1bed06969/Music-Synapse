@@ -25,6 +25,14 @@ export default async function AlbumDetailPage({
     .eq('id', id)
     .single()
 
+  // PGRST116は「該当行が無い」場合にPostgRESTが返す専用コード。それ以外の
+  // エラー(例: statement timeoutの57014)は「アルバムが存在しない」ことを
+  // 意味しないため、notFound()にせず例外として投げてerror.tsxに処理させる
+  // (以前はここで一律404にしていたため、DBが一時的に詰まっただけのタイミングで
+  // 実在するアルバムが「見つかりません」と誤表示されていた。2026-09-21修正)。
+  if (error && error.code !== 'PGRST116') {
+    throw new Error(`アルバム取得に失敗しました(${id}): ${error.message}`)
+  }
   if (error || !album) {
     notFound()
   }
@@ -67,6 +75,20 @@ export default async function AlbumDetailPage({
       .order('period_start_date', { ascending: false }),
   ])
 
+  // トラック側のフィーチャリングクレジット(track_artist)は、album_artistとは
+  // 別テーブルであるため、ここで明示的に取得してマージしないとアルバムページの
+  // アーティスト表示に一切反映されない(シングルの"(feat. X)"曲でXがtrack_artistに
+  // 登録されていても、album_artistが空ならXが表示されなかった。2026-09-21修正)
+  const trackIds = (tracks ?? []).map((t) => t.id)
+  const { data: trackArtistRows } =
+    trackIds.length > 0
+      ? await supabase
+          .from('track_artist')
+          .select('artist_id, billing_order, artist:artist_id(id, name)')
+          .in('track_id', trackIds)
+          .order('billing_order', { ascending: true, nullsFirst: false })
+      : { data: null }
+
   const groupAnchorId = album.primary_album_id ?? album.id
   const { data: otherVersions } = await supabase
     .from('album')
@@ -93,8 +115,13 @@ export default async function AlbumDetailPage({
   const additionalArtists: ArtistRef[] = (coArtistRows ?? [])
     .map((row) => (Array.isArray(row.artist) ? row.artist[0] : row.artist))
     .filter((a): a is ArtistRef => a != null)
+  const trackFeaturedArtists: ArtistRef[] = (trackArtistRows ?? [])
+    .map((row) => (Array.isArray(row.artist) ? row.artist[0] : row.artist))
+    .filter((a): a is ArtistRef => a != null)
   const seenArtistIds = new Set<string>()
-  const allArtists: ArtistRef[] = (artist ? [artist, ...additionalArtists] : additionalArtists).filter((a) => {
+  const allArtists: ArtistRef[] = (
+    artist ? [artist, ...additionalArtists, ...trackFeaturedArtists] : [...additionalArtists, ...trackFeaturedArtists]
+  ).filter((a) => {
     if (seenArtistIds.has(a.id)) return false
     seenArtistIds.add(a.id)
     return true

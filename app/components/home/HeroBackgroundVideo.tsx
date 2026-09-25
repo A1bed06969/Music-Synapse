@@ -20,10 +20,37 @@ export default function HeroBackgroundVideo() {
     // その設定が有効な環境で背景が静止画+再生ボタンの状態に見えてしまい
     // 「動画が壊れている」ように受け取られたため、常に再生する形に戻した。
     // 音は鳴らず(muted)、ループする装飾なので、静止させる必然性は低いと判断している。
-    video.play().catch(() => {
-      // 一部ブラウザは自動再生をブロックすることがあるが、
-      // 背景演出の失敗はページ表示自体を妨げないので無視してよい
-    })
+    //
+    // muted+playsInline+autoPlayを揃えていても、低電力モード・データセーバー・
+    // バックグラウンドタブからの復帰直後などでplay()がrejectされることがあり
+    // (ブラウザ側のヒューリスティック依存で発生が不定期)、以前はここで諦めた
+    // ままリトライが無かった。ユーザー報告(2026-09-22、「時々自動再生されない」)を
+    // 受け、初回タップ/スクロール操作とタブ復帰のタイミングで再試行するようにする。
+    let retrying = false
+    function tryPlay() {
+      if (retrying || !video || !video.paused) return
+      retrying = true
+      video.play().catch(() => {
+        // それでも失敗する場合(ネットワーク未読み込み等)は静止画のままで許容する
+      }).finally(() => {
+        retrying = false
+      })
+    }
+
+    tryPlay()
+
+    const retryEvents: (keyof DocumentEventMap)[] = ['pointerdown', 'touchstart', 'scroll']
+    for (const eventName of retryEvents) {
+      document.addEventListener(eventName, tryPlay, { passive: true })
+    }
+    document.addEventListener('visibilitychange', tryPlay)
+
+    return () => {
+      for (const eventName of retryEvents) {
+        document.removeEventListener(eventName, tryPlay)
+      }
+      document.removeEventListener('visibilitychange', tryPlay)
+    }
   }, [])
 
   return (

@@ -34,6 +34,15 @@ export default function StickyMiniHeader({
   const pathname = usePathname()
 
   useEffect(() => {
+    // レイアウト側(app/artists/[id]/layout.tsx等)がページ遷移をまたいで
+    // このコンポーネント自身を再マウントしないため、watchElementIdが常に
+    // 同じ文字列だとこのeffectが再実行されず、前のページでpinned=trueに
+    // なっていた場合そのまま新しいページの先頭にも縮小バーが表示され続けて
+    // しまう(スクロール位置は0なのに、既にスクロールした状態に見える不具合。
+    // 2026-09-21ユーザー報告)。pathnameもキーに含めて、遷移のたびに
+    // 明示的にリセットしてから監視をやり直す。
+    setPinned(false)
+
     const target = document.getElementById(watchElementId)
     if (!target) return
 
@@ -45,7 +54,7 @@ export default function StickyMiniHeader({
     )
     observer.observe(target)
     return () => observer.disconnect()
-  }, [watchElementId])
+  }, [watchElementId, pathname])
 
   // バー自体が隠れたらメニューも閉じる(開いたトグルボタンごと消えて閉じる手段が
   // 無くなるのを防ぐ)
