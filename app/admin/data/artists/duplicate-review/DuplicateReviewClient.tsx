@@ -39,6 +39,19 @@ export default function DuplicateReviewClient({ groups: initialGroups }: { group
     })
   }
 
+  // 統合先(残す側)を選ぶ。「これを残す」はどの候補にも常時表示し、選んだ時点で
+  // その候補も自動的にチェック済みにする(統合先自身が未チェックだと「統合先が
+  // どれか画面上わからない」まま統合されてしまうユーザー報告を受けての修正、
+  // 2026-09-25)。
+  function selectKeeper(groupName: string, candidateId: string) {
+    setKeeperByGroup((prev) => ({ ...prev, [groupName]: candidateId }))
+    setCheckedByGroup((prev) => {
+      const current = new Set(prev[groupName] ?? [])
+      current.add(candidateId)
+      return { ...prev, [groupName]: current }
+    })
+  }
+
   function removeGroup(groupName: string) {
     setGroups((prev) => prev.filter((g) => g.name !== groupName))
   }
@@ -81,7 +94,7 @@ export default function DuplicateReviewClient({ groups: initialGroups }: { group
     <div className="mx-auto max-w-[1200px] px-6 py-12">
       <h1 className="text-2xl font-bold">アーティスト重複レビュー</h1>
       <p className="mt-2 text-sm text-white/50">
-        同名で複数登録されているが、Apple Music側のIDが異なるため自動統合できなかった組み合わせです。同一人物なら候補をチェックして統合、別人なら「別人として確定」を押してください。
+        同名で複数登録されているが、Apple Music側のIDが異なるため自動統合できなかった組み合わせです。同一人物なら、統合先(★のもの。各候補の「これを統合先にする」で変更可)を決めたうえで、統合したい候補にチェックを入れて「選択した候補を統合」を押してください。統合先以外の候補のデータは統合先に移され、削除されます。別人なら「別人として確定」を押してください。
       </p>
       <p className="mt-1 text-xs text-white/30">残り{groups.length}グループ</p>
 
@@ -162,20 +175,22 @@ export default function DuplicateReviewClient({ groups: initialGroups }: { group
                           <p className="text-[11px] text-white/30">
                             Apple ID: {c.appleMusicArtistId ?? 'なし'}
                           </p>
-                          {isChecked && (
-                            <label className="mt-1 flex items-center gap-1 text-[11px] text-white/50">
-                              <input
-                                type="radio"
-                                name={`keeper-${group.name}`}
-                                checked={keeperId === c.id}
-                                onChange={(e) => {
-                                  e.stopPropagation()
-                                  setKeeperByGroup((prev) => ({ ...prev, [group.name]: c.id }))
-                                }}
-                              />
-                              これを残す
-                            </label>
-                          )}
+                          <label
+                            className={`mt-1 flex items-center gap-1 text-[11px] ${
+                              keeperId === c.id ? 'font-medium text-amber-300' : 'text-white/50'
+                            }`}
+                          >
+                            <input
+                              type="radio"
+                              name={`keeper-${group.name}`}
+                              checked={keeperId === c.id}
+                              onChange={(e) => {
+                                e.stopPropagation()
+                                selectKeeper(group.name, c.id)
+                              }}
+                            />
+                            {keeperId === c.id ? '★ 統合先(これが残る)' : 'これを統合先にする'}
+                          </label>
                         </div>
                       </label>
                     )

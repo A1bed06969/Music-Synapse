@@ -44,6 +44,16 @@ export const ADMIN_TOOL_GROUPS: AdminToolGroup[] = [
         description: 'Apple Musicで確証が持てず名前のみで登録されたスタブを検索し、本人に紐付ける。',
       },
       {
+        href: '/admin/data/artists/duplicate-review',
+        label: 'アーティスト重複レビュー',
+        description: '同名でapple_music_artist_idが異なる候補を、統合するか別人として確定するか判断する。',
+      },
+      {
+        href: '/admin/data/artists/featured-review',
+        label: '確認待ちfeat.アーティスト',
+        description: 'トラックタイトルの「(feat. X)」から自動作成されたアーティストが正しく1人を指しているか確認する。',
+      },
+      {
         href: '/admin/data/artists/unreleased',
         label: '未解禁アーティスト検出',
         description: 'Discogsにリンクがあるがサブスク配信状況が未設定のアーティスト候補を検出する。',
@@ -112,11 +122,6 @@ export const ADMIN_TOOL_GROUPS: AdminToolGroup[] = [
         href: '/admin/data/media',
         label: 'メディア&オンエア',
         description: 'ラジオ局・番組・オンエア実績(パワープレイ等)を登録する。',
-      },
-      {
-        href: '/admin/data/media/radio-pilot',
-        label: 'ラジオ局PP収集(パイロット)',
-        description: 'J-WAVE・FM福井・FMノースウェーブの最新パワープレイ/ヘビーローテーションを取得する。',
       },
       {
         href: '/admin/data/media/radio-airplay-pick',
