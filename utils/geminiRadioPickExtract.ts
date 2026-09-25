@@ -2,8 +2,9 @@
 //
 // ラジオ局PP(パワープレイ/ヘビーローテーション)ページから、選曲候補をGeminiで
 // 抽出する。utils/geminiFestivalLineupExtract.tsと同じ方針(無料枠内で収まる
-// gemini-3.1-flash-lite)。局ごとにサイト構造が異なるため、正規表現ベースの
-// 構造化抽出(utils/radioScrape.ts、3局限定パイロット)の対象外の局はこちらを使う。
+// gemini-3.1-flash-lite)。局ごとにサイト構造が異なるため、全局共通でこちらを使う
+// (以前は3局限定の正規表現パイロット(utils/radioScrape.ts)と併用していたが、
+// 廃止しこちらに一本化した)。
 import { GoogleGenAI, Type } from '@google/genai'
 import { stripHtmlToText } from './geminiFestivalLineupExtract.ts'
 

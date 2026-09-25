@@ -18,8 +18,13 @@
 // 実行方法:
 //   npx tsx --env-file=.env.local scripts/verify-radio-pick-matches.ts [--limit=N]
 import { createAdminClient } from '@/utils/Supabase/admin'
+import { internalApiBaseUrl } from '@/utils/internalApiBaseUrl'
 
-const BASE_URL = 'https://music-synapse.vercel.app'
+// 2026-09-18のプロダクションSupabase障害・復旧断念(ローカル専用構成への全面移行)
+// 以降、本番Vercelデプロイは存在しないためローカル開発サーバーへ向ける
+// (utils/internalApiBaseUrl.tsはVERCEL_URL系の環境変数が無ければ
+// http://localhost:3000にフォールバックする)。
+const BASE_URL = internalApiBaseUrl()
 
 const limitArg = process.argv.find((a) => a.startsWith('--limit='))
 const LIMIT = limitArg ? Number(limitArg.split('=')[1]) : undefined

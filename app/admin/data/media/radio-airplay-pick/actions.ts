@@ -1,6 +1,5 @@
 'use server'
 
-import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { createAdminClient } from '@/utils/Supabase/admin'
 import { searchTracks, fetchTrackById, searchAlbums, fetchAlbumById, fetchTracksForAlbum, parseAppleMusicAlbumUrl } from '@/utils/itunes'
@@ -122,7 +121,7 @@ export async function setPickCandidateFromSearch(pickId: string, trackId: string
     return { success: false, message: `保存に失敗しました: ${error.message}` }
   }
 
-  revalidatePath('/admin/data/media/radio-airplay-pick')
+  safeRevalidatePath('/admin/data/media/radio-airplay-pick')
   return {
     success: true,
     message: '保存しました。',
@@ -163,7 +162,7 @@ export async function setAlbumCandidateFromSearch(pickId: string, collectionId: 
     return { success: false, message: `保存に失敗しました: ${error.message}` }
   }
 
-  revalidatePath('/admin/data/media/radio-airplay-pick')
+  safeRevalidatePath('/admin/data/media/radio-airplay-pick')
   return {
     success: true,
     message: '保存しました。',
@@ -211,7 +210,7 @@ export async function setPickCandidateFromUrl(pickId: string, url: string, album
       return { success: false, message: `保存に失敗しました: ${error.message}` }
     }
 
-    revalidatePath('/admin/data/media/radio-airplay-pick')
+    safeRevalidatePath('/admin/data/media/radio-airplay-pick')
     return {
       success: true,
       message: '保存しました。',
@@ -265,7 +264,7 @@ export async function setPickCandidateFromUrl(pickId: string, url: string, album
     return { success: false, message: `保存に失敗しました: ${error.message}` }
   }
 
-  revalidatePath('/admin/data/media/radio-airplay-pick')
+  safeRevalidatePath('/admin/data/media/radio-airplay-pick')
   return {
     success: true,
     message: '保存しました。',
@@ -291,7 +290,7 @@ export async function clearPickCandidate(formData: FormData) {
     })
     .eq('id', pickId)
 
-  revalidatePath('/admin/data/media/radio-airplay-pick')
+  safeRevalidatePath('/admin/data/media/radio-airplay-pick')
 }
 
 /** 本登録済み一覧での誤登録の取り消し用。radio_rotationの行を削除し、
@@ -311,12 +310,29 @@ export async function unregisterPickFromRotation(formData: FormData) {
     .single()
 
   if (pick?.registered_rotation_id) {
-    await supabase.from('radio_rotation').delete().eq('id', pick.registered_rotation_id)
-    await supabase.from('radio_airplay_pick').update({ registered_rotation_id: null }).eq('id', pickId)
+    const rotationId = pick.registered_rotation_id
+    // radio_airplay_pick.registered_rotation_id → radio_rotation(id) の外部キーが
+    // 張られているため、参照を外す前にradio_rotation側を消そうとすると
+    // 制約違反で失敗する。supabase-jsの.delete()はエラーを投げず{error}を返すだけ
+    // なので、チェックしていないと気づかずスタブ行が孤立して残り続ける事故が
+    // 実際に発生した(2026-09-19、sorato「tomato」等で19件の誤登録が削除されずに
+    // 残っていた)。参照を先に外してから削除する順序に修正済み。
+    const { error: clearError } = await supabase
+      .from('radio_airplay_pick')
+      .update({ registered_rotation_id: null })
+      .eq('id', pickId)
+    if (!clearError) {
+      const { error: deleteError } = await supabase.from('radio_rotation').delete().eq('id', rotationId)
+      if (deleteError) {
+        console.error(`radio_rotation削除に失敗しました(${rotationId}):`, deleteError.message)
+      }
+    } else {
+      console.error(`registered_rotation_idのクリアに失敗しました(${pickId}):`, clearError.message)
+    }
   }
 
-  revalidatePath('/admin/data/media/radio-airplay-pick')
-  revalidatePath('/media/on-air')
+  safeRevalidatePath('/admin/data/media/radio-airplay-pick')
+  safeRevalidatePath('/media/on-air')
 }
 
 function redirectWith(result: 'success' | 'error', message: string): never {
@@ -328,8 +344,8 @@ export type RegisterToRotationResult = { success: boolean; message: string }
 /** マッチ済み候補を本番のradio_rotationへ登録する(パワープレイ&ヘビロテページに反映)。
  * カタログに未登録のアーティスト/トラックは、検索・選択式バルク登録と同じ
  * registerTrackFromSearch(アルバム単位の正規登録、MusicBrainz補完・版統合込み)で
- * その場で登録してから紐付ける。局・番組も既存の手動登録(radio-pilot)と同じく
- * 名前一致がなければ新規作成する。/admin/data/media/radio-airplay-pickの「登録」ボタン
+ * その場で登録してから紐付ける。局・番組も名前一致がなければ新規作成する。
+ * /admin/data/media/radio-airplay-pickの「登録」ボタン
  * (registerPickToRotation)と、ファクトチェックでApple Music候補が確定した時点での
  * 即時登録(radio-fact-check/actions.ts)の両方から共通で呼ばれる。 */
 export async function registerPickIdToRotation(
@@ -350,7 +366,7 @@ export async function registerPickIdToRotation(
     return { success: false, message: '候補情報が見つかりませんでした。' }
   }
 
-  const albumMode = isAlbumCampaign(pick.campaign_name)
+  const albumMode = isAlbumCampaign(pick.station_name, pick.campaign_name)
   const candidateLabel = albumMode ? pick.candidate_collection_name : pick.candidate_track_name
 
   let trackId: string | null = null

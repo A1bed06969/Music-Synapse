@@ -50,14 +50,32 @@ export default async function RadioFactCheckPage({
   const { month } = await searchParams
   const supabase = await createClient()
 
-  const [{ data: dateRows }, { data: stations }, { data: programRows }] = await Promise.all([
-    supabase
-      .from('radio_airplay_pick')
-      .select('picked_date')
-      .not('artist_name', 'is', null)
-      .not('track_title', 'is', null)
-      .order('picked_date', { ascending: false })
-      .limit(5000),
+  // radio_airplay_pickは手動シート取込(1989〜2026年、5,000件超)を含むため、
+  // PostgRESTの1リクエスト上限(既定1000件)に収まる.limit(5000)固定値だと
+  // 古い月がドロップダウンから丸ごと消えてしまう(2026-09-24、HR/PP全期間取込で
+  // 実際に発生)。range()で全件ページングして取得する。
+  async function fetchAllPickedDates(): Promise<{ picked_date: string }[]> {
+    const rows: { picked_date: string }[] = []
+    const pageSize = 1000
+    let offset = 0
+    while (true) {
+      const { data } = await supabase
+        .from('radio_airplay_pick')
+        .select('picked_date')
+        .not('artist_name', 'is', null)
+        .not('track_title', 'is', null)
+        .order('picked_date', { ascending: false })
+        .range(offset, offset + pageSize - 1)
+      const page = data ?? []
+      rows.push(...page)
+      if (page.length < pageSize) break
+      offset += pageSize
+    }
+    return rows
+  }
+
+  const [dateRows, { data: stations }, { data: programRows }] = await Promise.all([
+    fetchAllPickedDates(),
     supabase.from('media').select('id, name, area, prefecture').eq('media_type', 'radio').order('name'),
     supabase
       .from('media_program')

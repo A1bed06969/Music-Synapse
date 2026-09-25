@@ -1,6 +1,5 @@
 'use server'
 
-import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/utils/Supabase/admin'
 import { searchTracks, searchAlbums } from '@/utils/itunes'
 import { judgeRadioPickMatchWithGemini, type RadioPickCandidate, type RadioPickContext } from '@/utils/geminiRadioPickMatch'
@@ -24,7 +23,7 @@ type PickRow = {
 
 async function fetchCandidates(pick: PickRow): Promise<RadioPickCandidate[]> {
   const query = `${pick.artist_name} ${pick.track_title}`
-  if (isAlbumCampaign(pick.campaign_name)) {
+  if (isAlbumCampaign(pick.station_name, pick.campaign_name)) {
     const results = await searchAlbums(query, CANDIDATE_LIMIT)
     return results.map((r, index) => ({
       index,
@@ -174,7 +173,7 @@ export async function runGeminiMatchForAllUnmatched(): Promise<GeminiRadioPickBu
     else result.errors += 1
   }
 
-  revalidatePath('/admin/data/media/radio-airplay-pick')
+  safeRevalidatePath('/admin/data/media/radio-airplay-pick')
   return result
 }
 
@@ -309,7 +308,7 @@ export async function confirmRadioPickMatchLog(logId: string): Promise<ActionRes
   if (error) return { success: false, message: `反映に失敗しました: ${error.message}` }
 
   await supabase.from('radio_pick_match_log').update({ auto_applied: true }).eq('id', logId)
-  revalidatePath('/admin/data/media/radio-airplay-pick')
+  safeRevalidatePath('/admin/data/media/radio-airplay-pick')
   return { success: true, message: '候補を反映しました。' }
 }
 
@@ -356,6 +355,6 @@ export async function revertRadioPickMatchLog(logId: string): Promise<ActionResu
   if (error) return { success: false, message: `取消に失敗しました: ${error.message}` }
 
   await supabase.from('radio_pick_match_log').update({ reverted: true, reverted_at: new Date().toISOString() }).eq('id', logId)
-  revalidatePath('/admin/data/media/radio-airplay-pick')
+  safeRevalidatePath('/admin/data/media/radio-airplay-pick')
   return { success: true, message: '候補を元に戻しました。' }
 }

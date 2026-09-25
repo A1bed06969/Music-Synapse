@@ -194,14 +194,14 @@ export default async function RadioAirplayPickAdminPage({
             </div>
             {viewState === 'unmatched' && (
               <div className="w-full max-w-xs shrink-0">
-                <RadioPickMatcher pickId={p.id} albumMode={isAlbumCampaign(p.campaign_name)} />
+                <RadioPickMatcher pickId={p.id} albumMode={isAlbumCampaign(p.station_name, p.campaign_name)} />
               </div>
             )}
             {viewState === 'matched' && (
               <MatchedCandidateActions
                 pickId={p.id}
-                albumMode={isAlbumCampaign(p.campaign_name)}
-                candidateLabel={`${isAlbumCampaign(p.campaign_name) ? p.candidate_collection_name : (p.candidate_track_name ?? p.candidate_collection_name)} — ${p.candidate_artist_name}`}
+                albumMode={isAlbumCampaign(p.station_name, p.campaign_name)}
+                candidateLabel={`${isAlbumCampaign(p.station_name, p.campaign_name) ? p.candidate_collection_name : (p.candidate_track_name ?? p.candidate_collection_name)} — ${p.candidate_artist_name}`}
                 candidateArtworkUrl={p.candidate_artwork_url}
                 isDomestic={p.is_domestic}
                 registerAction={registerPickToRotation}
@@ -216,7 +216,7 @@ export default async function RadioAirplayPickAdminPage({
                     <img src={p.candidate_artwork_url} alt="" className="h-8 w-8 shrink-0 rounded object-cover" />
                   )}
                   <span className="max-w-[220px] truncate">
-                    {isAlbumCampaign(p.campaign_name) ? p.candidate_collection_name : (p.candidate_track_name ?? p.candidate_collection_name)} — {p.candidate_artist_name}
+                    {isAlbumCampaign(p.station_name, p.campaign_name) ? p.candidate_collection_name : (p.candidate_track_name ?? p.candidate_collection_name)} — {p.candidate_artist_name}
                   </span>
                 </div>
                 <form action={unregisterPickFromRotation}>

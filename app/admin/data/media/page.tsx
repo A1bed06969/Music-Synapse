@@ -55,8 +55,8 @@ export default async function MediaAdminPage({
       <div className="mt-4 flex items-baseline justify-between">
         <h1 className="text-2xl font-bold">メディア&オンエア</h1>
         <div className="flex gap-3">
-          <Link href="/admin/data/media/radio-pilot" className="text-xs text-white/40 hover:text-white/70">
-            ラジオ局PP収集(パイロット) →
+          <Link href="/admin/data/media/radio-power-play-collect" className="text-xs text-white/40 hover:text-white/70">
+            ラジオ局PP収集 →
           </Link>
           <Link href="/admin/data/media/radio-fact-check" className="text-xs text-white/40 hover:text-white/70">
             ラジオPP ファクトチェック →
