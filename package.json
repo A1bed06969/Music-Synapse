@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --env-file-if-exists=.env.local --test \"__tests__/**/*.test.ts\""
+    "test": "node --env-file-if-exists=.env.local --test \"__tests__/**/*.test.ts\"",
+    "db:backup": "bash scripts/db-backup.sh",
+    "db:restore": "bash scripts/db-restore.sh"
   },
   "dependencies": {
     "@google/genai": "^2.18.0",
