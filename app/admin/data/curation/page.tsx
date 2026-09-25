@@ -3,7 +3,10 @@ import { createClient } from '@/utils/Supabase/server'
 import { inputClass, buttonClass } from '../adminUi'
 import SearchableSelect from '../SearchableSelect'
 import { searchTracks, searchAlbums, searchArtists } from '../actions'
-import { createRanking, createRankingEntry } from './actions'
+import { createRanking, createRankingEntry, updateRankingSourceUrl, fetchRankingImageFromSource } from './actions'
+
+const smallButtonClass =
+  'shrink-0 rounded-md border border-white/15 px-3 py-2 text-xs text-white/70 transition hover:bg-white/[0.06] hover:text-white'
 
 export default async function CurationPage({
   searchParams,
@@ -21,7 +24,7 @@ export default async function CurationPage({
   // (SQL側でGROUP BY集計)に置き換え、返り値を企画数(現状6件)程度に抑える。
   const [{ data: mediaList }, { data: rankings }, { data: stubCounts }] = await Promise.all([
     supabase.from('media').select('id, name').order('name'),
-    supabase.from('ranking').select('id, name, source, list_type, media:media_id(name)').order('name'),
+    supabase.from('ranking').select('id, name, source, list_type, image_url, source_url, media:media_id(name)').order('name'),
     supabase.rpc('count_unmatched_ranking_entries'),
   ])
 
@@ -76,23 +79,55 @@ export default async function CurationPage({
       </form>
 
       {rankingOptions.length > 0 && (
-        <ul className="mt-6 flex flex-wrap gap-2">
+        <ul className="mt-6 flex flex-col gap-3">
           {rankingOptions.map((r) => {
             const stubCount = stubCountByRanking.get(r.id) ?? 0
             return (
-              <li key={r.id} className="flex items-center gap-1 rounded-md border border-white/10 px-3 py-1.5 text-xs text-white/60">
-                <span>{r.name}</span>
-                {stubCount > 0 && (
-                  <Link
-                    href={`/admin/data/curation/${r.id}/match`}
-                    className="rounded-full border border-orange-400/40 px-1.5 py-0.5 text-[10px] text-orange-300 hover:bg-orange-400/10"
-                  >
-                    要マッチング{stubCount}件
+              <li key={r.id} className="rounded-md border border-white/10 px-4 py-3">
+                <div className="flex flex-wrap items-center gap-2 text-sm">
+                  <span className="font-medium">{r.name}</span>
+                  {stubCount > 0 && (
+                    <Link
+                      href={`/admin/data/curation/${r.id}/match`}
+                      className="rounded-full border border-orange-400/40 px-1.5 py-0.5 text-[10px] text-orange-300 hover:bg-orange-400/10"
+                    >
+                      要マッチング{stubCount}件
+                    </Link>
+                  )}
+                  <Link href={`/media/features/${r.id}`} className="text-xs text-white/30 hover:text-white/60">
+                    一覧を見る →
                   </Link>
-                )}
-                <Link href={`/media/features/${r.id}`} className="text-white/30 hover:text-white/60">
-                  一覧を見る →
-                </Link>
+                </div>
+
+                <div className="mt-3 flex flex-wrap items-start gap-3">
+                  {r.image_url && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={r.image_url}
+                      alt=""
+                      className="h-14 w-24 shrink-0 rounded object-cover"
+                    />
+                  )}
+                  <form action={updateRankingSourceUrl} className="flex min-w-[280px] flex-1 gap-2">
+                    <input type="hidden" name="ranking_id" value={r.id} />
+                    <input
+                      name="source_url"
+                      type="url"
+                      placeholder="出典ページURL(例: 公式の企画ページ)"
+                      defaultValue={r.source_url ?? ''}
+                      className={`${inputClass} text-xs`}
+                    />
+                    <button type="submit" className={smallButtonClass}>
+                      URL保存
+                    </button>
+                  </form>
+                  <form action={fetchRankingImageFromSource}>
+                    <input type="hidden" name="ranking_id" value={r.id} />
+                    <button type="submit" className={smallButtonClass}>
+                      OGP画像を取得
+                    </button>
+                  </form>
+                </div>
               </li>
             )
           })}
