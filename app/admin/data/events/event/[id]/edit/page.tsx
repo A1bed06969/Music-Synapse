@@ -17,6 +17,7 @@ import {
   deleteFestivalAppearance,
   createFestivalEditionDates,
   deleteFestivalEditionDate,
+  fetchEventDescriptionFromSource,
   type FestivalExtractResult,
 } from '../../../actions'
 
@@ -263,6 +264,12 @@ export default async function EditEventPage({
         />
         <button type="submit" className={buttonClass}>
           基本情報を更新する
+        </button>
+      </form>
+      <form action={fetchEventDescriptionFromSource} className="mt-2">
+        <input type="hidden" name="event_id" value={entry.id} />
+        <button type="submit" className="text-xs text-white/50 underline hover:text-white/80">
+          公式サイトのOGPから紹介文を取得する
         </button>
       </form>
 

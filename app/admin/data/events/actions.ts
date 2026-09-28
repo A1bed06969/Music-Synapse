@@ -11,6 +11,7 @@ import {
   summarizeGeminiError,
   type FestivalLineupCandidate,
 } from '@/utils/geminiFestivalLineupExtract'
+import { fetchOgDescription } from '@/utils/ogImage'
 
 function redirectWith(result: 'success' | 'error', message: string) {
   redirect(`/admin/data/events?${result}=${encodeURIComponent(message)}`)
@@ -737,6 +738,41 @@ export async function setEventImageFromUrl(eventId: string, imageUrl: string): P
 
 function redirectToEventEdit(eventId: string, result: 'success' | 'error', message: string): never {
   redirect(`/admin/data/events/event/${eventId}/edit?${result}=${encodeURIComponent(message)}`)
+}
+
+/** イベントのofficial_site_urlのOGP(og:description、無ければdescription)から
+ * 紹介文を自動取得して保存する。手入力の手間を省くため
+ * (キュレーション企画のOGP画像取得ボタンと同じ狙い、2026-09-28)。 */
+export async function fetchEventDescriptionFromSource(formData: FormData) {
+  const eventId = String(formData.get('event_id') ?? '')
+  if (!eventId) {
+    redirectWith('error', 'イベントが指定されていません。')
+  }
+
+  const supabase = createAdminClient()
+  const { data: event } = await supabase.from('event').select('name, official_site_url').eq('id', eventId).maybeSingle()
+
+  if (!event) {
+    redirectWith('error', '指定のイベントが見つかりませんでした。')
+  }
+  if (!event!.official_site_url) {
+    redirectToEventEdit(eventId, 'error', '先に公式サイトURLを保存してください。')
+  }
+
+  const description = await fetchOgDescription(event!.official_site_url!)
+  if (!description) {
+    redirectToEventEdit(eventId, 'error', `「${event!.name}」の公式サイトから紹介文を取得できませんでした。`)
+  }
+
+  const { error } = await supabase.from('event').update({ description }).eq('id', eventId)
+  if (error) {
+    redirectToEventEdit(eventId, 'error', `紹介文の保存に失敗しました: ${error.message}`)
+  }
+
+  revalidatePath('/admin/data/events')
+  revalidatePath(`/admin/data/events/event/${eventId}/edit`)
+  revalidatePath(`/events/${eventId}`)
+  redirectToEventEdit(eventId, 'success', `「${event!.name}」の紹介文を取得しました。`)
 }
 
 /** フェス登録画面(会場)からの追加。追加後は同じフェスの編集画面に戻る。 */
