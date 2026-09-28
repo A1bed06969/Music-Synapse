@@ -1,10 +1,13 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/utils/Supabase/server'
-import { extractYoutubeVideoId } from '@/utils/format'
 import type { MapMarker } from '@/app/map/LeafletMap'
 import { findRelatedNews, formatRelativeTime } from '@/utils/newsParser'
 import { fetchCachedNews } from '@/utils/newsCache'
+import DetailPageShell from '@/app/components/detail/DetailPageShell'
+import StickyMiniHeader from '@/app/components/detail/StickyMiniHeader'
+import BackLink from '@/app/components/navigation/BackLink'
+import EventIdentityPanel from '@/app/components/event-detail/EventIdentityPanel'
 import EventScheduleView, { type Appearance, type EditionDateEntry } from './EventScheduleView'
 
 const EVENT_TYPE_LABEL: Record<string, string> = {
@@ -24,78 +27,6 @@ function toHHMM(isoStr: string): string {
   const jst = new Date(date.getTime() + 9 * 60 * 60 * 1000)
   const pad = (n: number) => String(n).padStart(2, '0')
   return `${pad(jst.getUTCHours())}:${pad(jst.getUTCMinutes())}`
-}
-
-/** イベントの画像を、出典(公式サイト or 公式YouTube)へのリンク付きで表示する。
- * 著作権的に問題が起きにくいよう、画像は必ずその出典元へ戻れる形にする。
- * image_urlが無い場合はofficial_youtube_url(動画URL)からサムネイルを導出する
- * フォールバックも用意している(動画しか無いイベント向け)。
- * official_site_urlがあれば、画像とは別に小さな公式サイトリンクも添える。
- * どちらも無ければプレースホルダーを出す */
-function EventThumbnail({
-  imageUrl,
-  youtubeUrl,
-  officialSiteUrl,
-  eventName,
-}: {
-  imageUrl: string | null
-  youtubeUrl: string | null
-  officialSiteUrl: string | null
-  eventName: string
-}) {
-  // image_urlが未設定なら、動画URLからサムネイルを導出するフォールバック
-  const videoId = !imageUrl && youtubeUrl ? extractYoutubeVideoId(youtubeUrl) : null
-  const displayImageUrl = imageUrl ?? (videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : null)
-  // 画像のリンク先は、その画像の出典元(YouTubeチャンネル/動画があればそちら、
-  // 無ければ公式サイト)にする。出典と違う場所へリンクすると「引用」の理屈が弱くなるため
-  const imageLinkUrl = youtubeUrl ?? officialSiteUrl
-  const sourceLabel = videoId || youtubeUrl ? '公式YouTubeより' : '公式サイトより'
-
-  if (!displayImageUrl) {
-    return (
-      <div className="flex aspect-video w-full shrink-0 items-center justify-center rounded-lg border border-white/10 bg-gradient-to-br from-white/[0.07] to-white/[0.01] sm:w-96">
-        <span className="text-6xl">🎪</span>
-      </div>
-    )
-  }
-
-  return (
-    <div className="w-full shrink-0 sm:w-96">
-      <a
-        href={imageLinkUrl ?? displayImageUrl}
-        target="_blank"
-        rel="noreferrer"
-        className="group relative block aspect-video overflow-hidden rounded-lg border border-white/10 bg-black"
-      >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={displayImageUrl}
-          alt={eventName}
-          className="h-full w-full object-contain transition group-hover:opacity-80"
-        />
-        {videoId && (
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-black/60 transition group-hover:bg-black/75">
-              <svg viewBox="0 0 24 24" className="ml-0.5 h-5 w-5 fill-white">
-                <path d="M8 5v14l11-7z" />
-              </svg>
-            </div>
-          </div>
-        )}
-        <span className="absolute bottom-1.5 right-2 text-[10px] text-white/70">{sourceLabel}</span>
-      </a>
-      {officialSiteUrl && (
-        <a
-          href={officialSiteUrl}
-          target="_blank"
-          rel="noreferrer"
-          className="mt-1.5 block text-center text-xs text-white/40 hover:text-white/70"
-        >
-          公式サイトへ →
-        </a>
-      )}
-    </div>
-  )
 }
 
 export default async function EventDetailPage({
@@ -242,39 +173,13 @@ export default async function EventDetailPage({
 
   const relatedNews = await relatedNewsPromise
 
-  return (
-    <div className="mx-auto max-w-[1600px] px-6 py-12">
-      <Link href="/events" className="text-xs text-white/40 hover:text-white/70">
-        ← イベント一覧
-      </Link>
-
-      <div className="mt-6 flex flex-col gap-6 sm:flex-row">
-        <EventThumbnail
-          imageUrl={event.image_url}
-          youtubeUrl={event.official_youtube_url}
-          officialSiteUrl={event.official_site_url}
-          eventName={event.name}
-        />
-        <div className="min-w-0 flex-1">
-          <p className="text-xs text-white/40">
-            {event.event_type ? EVENT_TYPE_LABEL[event.event_type] ?? event.event_type : ''}
-            {event.founded_year ? ` · ${event.founded_year}年〜` : ''}
-          </p>
-          <h1 className="mt-1 text-2xl font-bold">{event.name}</h1>
-          {(event.country || event.prefecture) && (
-            <p className="mt-1 text-sm text-white/50">
-              {[event.country, event.prefecture].filter(Boolean).join(' / ')}
-            </p>
-          )}
-          {event.description && <p className="mt-3 text-sm leading-relaxed text-white/70">{event.description}</p>}
-        </div>
-      </div>
-
+  const centerColumn = (
+    <>
       {editionList.length === 0 || !selectedEdition ? (
-        <p className="mt-10 text-sm text-white/40">まだ開催情報が登録されていません。</p>
+        <p className="text-sm text-white/40">まだ開催情報が登録されていません。</p>
       ) : (
         <>
-          <div className="mt-8 flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2">
             {editionList.map((ed) => (
               <Link
                 key={ed.id}
@@ -301,11 +206,15 @@ export default async function EventDetailPage({
           />
         </>
       )}
+    </>
+  )
 
+  const rightColumn = (
+    <>
       {relatedNews.length > 0 && (
-        <div className="mt-10">
+        <div>
           <h2 className="text-lg font-semibold">関連ニュース</h2>
-          <div className="mt-3 space-y-2 sm:grid sm:grid-cols-3 sm:gap-4 sm:space-y-0">
+          <div className="mt-3 space-y-2">
             {relatedNews.map((item) => (
               <a
                 key={item.id}
@@ -341,6 +250,37 @@ export default async function EventDetailPage({
           </div>
         </div>
       )}
-    </div>
+    </>
+  )
+
+  return (
+    <>
+      <StickyMiniHeader
+        watchElementId="event-header"
+        imageUrl={event.image_url}
+        title={event.name}
+        subtitle={event.event_type ? EVENT_TYPE_LABEL[event.event_type] ?? event.event_type : null}
+      />
+      <DetailPageShell
+        topBar={<BackLink fallbackHref="/events" fallbackLabel="イベント一覧" />}
+        left={
+          <EventIdentityPanel
+            data={{
+              name: event.name,
+              eventTypeLabel: event.event_type ? EVENT_TYPE_LABEL[event.event_type] ?? event.event_type : null,
+              foundedYear: event.founded_year,
+              country: event.country,
+              prefecture: event.prefecture,
+              description: event.description,
+              imageUrl: event.image_url,
+              youtubeUrl: event.official_youtube_url,
+              officialSiteUrl: event.official_site_url,
+            }}
+          />
+        }
+        center={centerColumn}
+        right={rightColumn}
+      />
+    </>
   )
 }
