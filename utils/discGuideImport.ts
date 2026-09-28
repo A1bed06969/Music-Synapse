@@ -41,8 +41,17 @@ type FuzzyAlbumRow = {
   jacket_url: string | null;
 };
 
+// カーブ型の引用符(’‘“”)と直線の引用符(' ")は見た目が違うだけで意味は
+// 同じだが、文字としては一致しないため厳密一致チェックで弾かれる
+// (例: CSV側 "What’s Going On" vs iTunes側 "What's Going On"。Rolling Stone
+// 500の一括登録で著名盤が軒並み不一致になったことで発覚、2026-09-27)。
 function normalizeForMatch(s: string): string {
-  return s.trim().toLowerCase().replace(/\s+/g, ' ');
+  return s
+    .trim()
+    .toLowerCase()
+    .replace(/[‘’]/g, "'")
+    .replace(/[“”]/g, '"')
+    .replace(/\s+/g, ' ');
 }
 
 // 自前DB(search_albums_fuzzy)には無いアルバムが大半なため、Apple Musicの
@@ -236,14 +245,38 @@ export async function findAppleMusicAlbumMatch(artistName: string, title: string
       return null
     }
 
-    const matches = candidates.filter(
-      (c) =>
-        normalizeForMatch(c.collectionName) === normalizedTitle &&
-        (normalizeForMatch(c.artistName).includes(normalizedArtist) ||
-          normalizedArtist.includes(normalizeForMatch(c.artistName)))
-    )
+    const artistMatches = (c: ItunesAlbum) =>
+      normalizeForMatch(c.artistName).includes(normalizedArtist) || normalizedArtist.includes(normalizeForMatch(c.artistName))
 
-    return matches.length === 1 ? matches[0] : null
+    const exactMatches = candidates.filter((c) => normalizeForMatch(c.collectionName) === normalizedTitle && artistMatches(c))
+    if (exactMatches.length === 1) return exactMatches[0]
+    if (exactMatches.length > 1) return null
+
+    // 古い名盤はiTunes側にもう裸のタイトルが存在せず、「Abbey Road (Remastered)」
+    // 「Abbey Road (2019 Mix)」のように接尾辞付きでしか無いことが多く、完全一致
+    // だと0件になる(Rolling Stone 500の一括登録で著名盤の過半数がこれで
+    // 「最小限登録」に落ちたことで発覚、2026-09-27)。「裸タイトル + " ("」で
+    // 始まる候補を救済する。候補が1件だけならそれを採用し、複数残る場合は
+    // "remaster"を含むものが1件だけならそれを正規版とみなして採用する。
+    // それでも絞れなければ無理に選ばない(過検出より過小検出を優先する既存方針を維持)。
+    // "(Super Deluxe Edition) [2019 Remix & Remaster]"のような特典盤も
+    // "remaster"を含んでしまい、"(Remastered)"単体の通常盤と共に複数残って
+    // 絞れないことがある(実例: Abbey Road)。まず「裸タイトル + " (Remastered)"」
+    // ちょうどの候補を最優先で探し、無ければ緩い前方一致にフォールバックする。
+    const remasteredExact = candidates.filter(
+      (c) => normalizeForMatch(c.collectionName) === `${normalizedTitle} (remastered)` && artistMatches(c)
+    )
+    if (remasteredExact.length === 1) return remasteredExact[0]
+
+    const prefixMatches = candidates.filter(
+      (c) => normalizeForMatch(c.collectionName).startsWith(`${normalizedTitle} (`) && artistMatches(c)
+    )
+    if (prefixMatches.length === 1) return prefixMatches[0]
+    if (prefixMatches.length > 1) {
+      const remastered = prefixMatches.filter((c) => normalizeForMatch(c.collectionName).includes('remaster'))
+      if (remastered.length === 1) return remastered[0]
+    }
+    return null
   }
 
   const jpMatch = await findExactMatch('JP')
