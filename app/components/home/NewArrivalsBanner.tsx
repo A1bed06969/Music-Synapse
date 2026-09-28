@@ -3,7 +3,7 @@ import { Sparkles } from 'lucide-react'
 import type { NewArrivalsSummary } from '@/utils/newArrivals'
 
 const STATS: {
-  key: 'artistCount' | 'albumCount' | 'trackCount' | 'eventCount' | 'curationCount'
+  key: 'artistCount' | 'albumCount' | 'trackCount' | 'eventCount' | 'curationCount' | 'mvCount'
   label: string
   tab: string
 }[] = [
@@ -12,11 +12,17 @@ const STATS: {
   { key: 'trackCount', label: 'トラック', tab: 'track' },
   { key: 'eventCount', label: 'フェス', tab: 'festival' },
   { key: 'curationCount', label: 'キュレーション', tab: 'curation' },
+  { key: 'mvCount', label: 'MV', tab: 'mv' },
 ]
 
 export default function NewArrivalsBanner({ summary }: { summary: NewArrivalsSummary }) {
   const total =
-    summary.artistCount + summary.albumCount + summary.trackCount + summary.eventCount + summary.curationCount
+    summary.artistCount +
+    summary.albumCount +
+    summary.trackCount +
+    summary.eventCount +
+    summary.curationCount +
+    summary.mvCount
   const nonZeroStats = STATS.filter((s) => summary[s.key] > 0)
 
   return (

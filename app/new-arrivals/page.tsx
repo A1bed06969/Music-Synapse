@@ -11,7 +11,7 @@ function formatBoundary(iso: string): string {
   return `${y}/${m}/${d} 8:00〜`
 }
 
-const TABS = ['all', 'artist', 'album', 'track', 'festival', 'curation'] as const
+const TABS = ['all', 'artist', 'album', 'track', 'festival', 'curation', 'mv'] as const
 type Tab = (typeof TABS)[number]
 
 function isTab(value: string | undefined): value is Tab {
@@ -27,9 +27,10 @@ export default async function NewArrivalsPage({
   const tab: Tab = isTab(rawTab) ? rawTab : 'all'
 
   const supabase = await createClient()
-  const { boundary, counts, artists, albums, tracks, events, curationEntries } = await fetchNewArrivalsDetail(supabase)
+  const { boundary, counts, artists, albums, tracks, events, curationEntries, mvs } =
+    await fetchNewArrivalsDetail(supabase)
 
-  const total = counts.artist + counts.album + counts.track + counts.event + counts.curation
+  const total = counts.artist + counts.album + counts.track + counts.event + counts.curation + counts.mv
 
   const tabDefs: { key: Tab; label: string; count: number }[] = [
     { key: 'all', label: '全て', count: total },
@@ -38,6 +39,7 @@ export default async function NewArrivalsPage({
     { key: 'track', label: 'トラック', count: counts.track },
     { key: 'festival', label: 'フェス', count: counts.event },
     { key: 'curation', label: 'キュレーション', count: counts.curation },
+    { key: 'mv', label: 'MV', count: counts.mv },
   ]
 
   const showAll = tab === 'all'
@@ -165,6 +167,33 @@ export default async function NewArrivalsPage({
                 </li>
               ))}
             </ul>
+          </section>
+        )}
+
+        {(showAll || tab === 'mv') && mvs.length > 0 && (
+          <section className="rounded-xl border border-white/10 p-6">
+            <h2 className="text-lg font-semibold">
+              MV({counts.mv})
+              {truncatedNote(counts.mv, mvs.length) && (
+                <span className="ml-2 text-xs font-normal text-white/30">{truncatedNote(counts.mv, mvs.length)}</span>
+              )}
+            </h2>
+            <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4 lg:grid-cols-6">
+              {mvs.map((m) => (
+                <Link key={m.id} href={`/tracks/${m.id}`} className="group block">
+                  <div className="aspect-video overflow-hidden rounded-md bg-white/5">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={`https://i.ytimg.com/vi/${m.youtubeVideoId}/hqdefault.jpg`}
+                      alt={m.title}
+                      className="h-full w-full object-cover transition group-hover:scale-105"
+                    />
+                  </div>
+                  <p className="mt-2 truncate text-sm group-hover:opacity-70">{m.title}</p>
+                  <p className="truncate text-xs text-white/40">{m.artistName}</p>
+                </Link>
+              ))}
+            </div>
           </section>
         )}
 

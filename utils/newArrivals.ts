@@ -28,6 +28,7 @@ export type NewArrivalsSummary = {
   trackCount: number
   eventCount: number
   curationCount: number
+  mvCount: number
 }
 
 type NewArrivalsCountsRpcRow = {
@@ -36,6 +37,7 @@ type NewArrivalsCountsRpcRow = {
   track_count: number
   event_count: number
   curation_count: number
+  mv_count: number
 }
 
 /** ホーム画面ウィジェット用。件数だけを軽量に取得する。
@@ -56,6 +58,7 @@ export async function fetchNewArrivalsSummary(supabase: Supabase): Promise<NewAr
     trackCount: row?.track_count ?? 0,
     eventCount: row?.event_count ?? 0,
     curationCount: row?.curation_count ?? 0,
+    mvCount: row?.mv_count ?? 0,
   }
 }
 
@@ -64,6 +67,7 @@ export type NewAlbumItem = { id: string; title: string; jacketUrl: string | null
 export type NewTrackItem = { id: string; title: string; artistName: string; albumTitle: string | null }
 export type NewEventItem = { id: string; artistId: string; artistName: string; eventName: string }
 export type NewCurationItem = { id: number; rankingName: string; targetLabel: string }
+export type NewMvItem = { id: string; title: string; artistName: string; youtubeVideoId: string }
 
 export type NewArrivalsCounts = {
   artist: number
@@ -71,6 +75,7 @@ export type NewArrivalsCounts = {
   track: number
   event: number
   curation: number
+  mv: number
 }
 
 export type NewArrivalsDetail = {
@@ -83,6 +88,7 @@ export type NewArrivalsDetail = {
   tracks: NewTrackItem[]
   events: NewEventItem[]
   curationEntries: NewCurationItem[]
+  mvs: NewMvItem[]
 }
 
 // 一覧に表示する件数の上限。1000件超のカテゴリでも一覧は絞ってよいとのことなので、
@@ -94,7 +100,7 @@ export async function fetchNewArrivalsDetail(supabase: Supabase): Promise<NewArr
   const boundary = mostRecentEightAmJST()
 
   // 件数の5並列(count:exact)は1本のRPCにまとめる(fetchNewArrivalsSummaryと同じ理由)。
-  const [countsRes, artistRes, albumRes, trackRes, eventRes, curationRes] =
+  const [countsRes, artistRes, albumRes, trackRes, eventRes, curationRes, mvRes] =
     await Promise.all([
       supabase.rpc('new_arrivals_counts', { p_boundary: boundary }),
       supabase
@@ -131,6 +137,12 @@ export async function fetchNewArrivalsDetail(supabase: Supabase): Promise<NewArr
         .gte('created_at', boundary)
         .order('created_at', { ascending: false })
         .limit(DETAIL_LIST_LIMIT),
+      supabase
+        .from('track')
+        .select('id, title, youtube_video_id, artist:artist_id(name), album:album_id(artist:artist_id(name))')
+        .gte('youtube_video_id_set_at', boundary)
+        .order('youtube_video_id_set_at', { ascending: false })
+        .limit(DETAIL_LIST_LIMIT),
     ])
 
   const countsRow = (countsRes.data as NewArrivalsCountsRpcRow[] | null)?.[0]
@@ -140,6 +152,7 @@ export async function fetchNewArrivalsDetail(supabase: Supabase): Promise<NewArr
     track: countsRow?.track_count ?? 0,
     event: countsRow?.event_count ?? 0,
     curation: countsRow?.curation_count ?? 0,
+    mv: countsRow?.mv_count ?? 0,
   }
 
   const artists: NewArtistItem[] = (artistRes.data ?? []).map((a) => ({
@@ -195,5 +208,20 @@ export async function fetchNewArrivalsDetail(supabase: Supabase): Promise<NewArr
     }
   })
 
-  return { boundary, counts, artists, albums, tracks, events, curationEntries }
+  const mvs: NewMvItem[] = (mvRes.data ?? [])
+    .map((t) => {
+      const directArtist = firstOf(t.artist)
+      const album = firstOf(t.album)
+      const albumArtist = album ? firstOf(album.artist) : null
+      if (!t.youtube_video_id) return null
+      return {
+        id: t.id,
+        title: t.title,
+        artistName: directArtist?.name ?? albumArtist?.name ?? '不明',
+        youtubeVideoId: t.youtube_video_id,
+      }
+    })
+    .filter((m): m is NewMvItem => m !== null)
+
+  return { boundary, counts, artists, albums, tracks, events, curationEntries, mvs }
 }
