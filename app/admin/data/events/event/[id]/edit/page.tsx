@@ -455,6 +455,7 @@ export default async function EditEventPage({
                 <FestivalLineupExtractor
                   eventId={entry.id}
                   eventEditionId={ed.id}
+                  officialSiteUrl={entry.official_site_url}
                   initialResult={pendingByEdition.get(ed.id) ?? null}
                   registeredArtistNames={Array.from(registeredNamesByEdition.get(ed.id) ?? [])}
                 />

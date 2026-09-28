@@ -9,11 +9,15 @@ import { quickAddFestivalPilotDataset } from '../../../festival-pilot/actions'
 export default function FestivalLineupExtractor({
   eventId,
   eventEditionId,
+  officialSiteUrl,
   initialResult = null,
   registeredArtistNames = [],
 }: {
   eventId: string
   eventEditionId: string
+  /** イベント本体の公式サイトURL(基本情報欄の値)。ラインナップページのURL入力欄の
+   * placeholderとして使う(未入力ならこのURLがそのまま使われる)。 */
+  officialSiteUrl?: string | null
   /** 前回このevent_editionで抽出した結果(festival_extract_pendingにキャッシュ済みのもの)。
    * 画面遷移・再読み込みで消えないよう、あればこれをそのまま初期表示に使う。 */
   initialResult?: FestivalExtractResult | null
@@ -23,6 +27,10 @@ export default function FestivalLineupExtractor({
   registeredArtistNames?: string[]
 }) {
   const [result, setResult] = useState<FestivalExtractResult | null>(initialResult)
+  // 公式サイトのトップページとラインナップページのURLが別なフェスが多いため
+  // (例: fujirockfestival.comのトップはニュース中心、ラインナップは/artist/index)、
+  // 基本情報のofficial_site_urlとは別に、抽出だけに使うURLを上書きできるようにする
+  const [extractUrl, setExtractUrl] = useState('')
   const registeredNameSet = new Set(registeredArtistNames)
   const [imageApplied, setImageApplied] = useState(false)
   const [imageMessage, setImageMessage] = useState<string | null>(null)
@@ -37,7 +45,7 @@ export default function FestivalLineupExtractor({
     setPilotAdded(null)
     setPilotError(null)
     startTransition(async () => {
-      const res = await extractFestivalLineupCandidates(eventId, eventEditionId)
+      const res = await extractFestivalLineupCandidates(eventId, eventEditionId, extractUrl.trim() || undefined)
       setResult(res)
     })
   }
@@ -64,10 +72,17 @@ export default function FestivalLineupExtractor({
 
   return (
     <div className="mt-3 rounded-md border border-white/10 bg-white/[0.02] p-3">
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-xs text-white/40">
-          公式サイトURLから画像・出演者候補をAIで抽出します(自動登録はされません。候補を確認してから登録してください)。
-        </p>
+      <p className="text-xs text-white/40">
+        公式サイトURLから画像・出演者候補をAIで抽出します(自動登録はされません。候補を確認してから登録してください)。トップページとラインナップページが別URLのフェスも多いため、必要なら下の欄に抽出対象のURLを指定してください(空欄なら基本情報のURLを使用)。
+      </p>
+      <div className="mt-2 flex items-center gap-2">
+        <input
+          type="url"
+          value={extractUrl}
+          onChange={(e) => setExtractUrl(e.target.value)}
+          placeholder={officialSiteUrl ?? '抽出対象URL'}
+          className="min-w-0 flex-1 rounded border border-white/15 bg-transparent px-2 py-1 text-xs text-white placeholder:text-white/30 focus:border-white/30 focus:outline-none"
+        />
         <button
           type="button"
           onClick={handleExtract}

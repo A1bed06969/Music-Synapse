@@ -661,10 +661,17 @@ export type FestivalExtractResult =
   | { success: false; message: string }
 
 /** フェスの公式サイトURLからキービジュアル(og:image)とラインナップ候補をAIで
- * 抽出する(自動登録はしない、確認画面用の候補を返すだけ)。 */
+ * 抽出する(自動登録はしない、確認画面用の候補を返すだけ)。
+ * overrideUrlを指定した場合はevent.official_site_url(トップページであることが
+ * 多い)の代わりにそのURLを取得する。フェス公式サイトはトップページと出演者
+ * ページが別URLに分かれていることが多く(例: fujirockfestival.comのトップは
+ * ニュース中心で、ラインナップは/artist/indexにある)、トップページのテキストを
+ * 読ませてもGeminiが候補0件を返すだけになるため、抽出時だけ差し替えられるように
+ * する(event本体のURLは変更しない。2026-09-26)。 */
 export async function extractFestivalLineupCandidates(
   eventId: string,
-  eventEditionId: string
+  eventEditionId: string,
+  overrideUrl?: string
 ): Promise<FestivalExtractResult> {
   const supabase = createAdminClient()
   const [{ data: event }, { data: edition }] = await Promise.all([
@@ -675,13 +682,14 @@ export async function extractFestivalLineupCandidates(
   if (!event || !edition) {
     return { success: false, message: '対象が見つかりませんでした。' }
   }
-  if (!event.official_site_url) {
+  const targetUrl = overrideUrl?.trim() || event.official_site_url
+  if (!targetUrl) {
     return { success: false, message: '公式サイトURLが未設定です。先に基本情報欄で登録してください。' }
   }
 
   let html: string
   try {
-    html = await fetchFestivalPageHtml(event.official_site_url)
+    html = await fetchFestivalPageHtml(targetUrl)
   } catch (err) {
     return { success: false, message: err instanceof Error ? err.message : 'ページ取得に失敗しました。' }
   }
