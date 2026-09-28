@@ -77,7 +77,7 @@ const EMPTY_POLYGONS: MapPolygon[] = []
 export default function LeafletMap({
   markers,
   polygons = EMPTY_POLYGONS,
-  heightClassName = 'h-[600px]',
+  heightClassName = 'h-[360px] sm:h-[600px]',
   focusId,
   showMarkerLabels = false,
   viewOverride,
@@ -149,12 +149,14 @@ export default function LeafletMap({
     const map = L.map(containerRef.current).setView([35.6812, 139.7671], 5)
     mapRef.current = map
 
-    // 白ベース(CartoDB Positron)ですっきりとした明るい地図にする
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-      attribution:
-        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-      subdomains: 'abcd',
-      maxZoom: 20,
+    // CARTOの無料匿名タイル配信(CartoDB Positron)がAPIキー必須になり、
+    // キー無しだと"API KEY REQUIRED"の透かし入りタイルしか返らなくなったため、
+    // キー不要のOpenStreetMap標準タイルに切り替える(2026-09-27)。
+    // 見た目は白ベースの落ち着いた配色ではなくなるが、キー登録なしで確実に動く。
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      subdomains: 'abc',
+      maxZoom: 19,
     }).addTo(map)
 
     return () => {

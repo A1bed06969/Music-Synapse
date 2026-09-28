@@ -152,19 +152,36 @@ async function repairMissingBoundaries(
 async function main() {
   const supabase = createAdminClient()
 
-  const { data: artists, error } = await supabase
-    .from('artist')
-    .select('id, name, origin_latitude, origin_longitude')
-    .not('origin_latitude', 'is', null)
-    .not('origin_longitude', 'is', null)
-    .is('origin_country_code', null)
-
-  if (error) {
-    console.error('アーティスト取得に失敗しました:', error.message)
-    process.exit(1)
+  // origin_country_codeだけを別経路(Wikidata座標一括更新のPoint-in-Polygon解決、
+  // 2026-09-28)で先に埋めた場合でも取りこぼさないよう、country_code基準ではなく
+  // region_code/muni_codeが両方とも未設定であることを条件にする(country_code IS
+  // NULLだけを条件にすると、country_codeだけ先に埋まっているアーティストが
+  // 市区町村/州地域コード・境界ポリゴンの解決対象から漏れてしまう)。
+  // PostgRESTの1リクエスト既定上限(1000件)を超えるため、ページングして全件取得する
+  // (2026-09-28、対象が1000件で打ち切られていたことが判明したため追加)。
+  const rows: ArtistRow[] = []
+  {
+    let offset = 0
+    while (true) {
+      const { data, error } = await supabase
+        .from('artist')
+        .select('id, name, origin_latitude, origin_longitude')
+        .not('origin_latitude', 'is', null)
+        .not('origin_longitude', 'is', null)
+        .is('origin_region_code', null)
+        .is('origin_muni_code', null)
+        .order('id', { ascending: true })
+        .range(offset, offset + 999)
+      if (error) {
+        console.error('アーティスト取得に失敗しました:', error.message)
+        process.exit(1)
+      }
+      const page = (data ?? []) as ArtistRow[]
+      rows.push(...page)
+      if (page.length < 1000) break
+      offset += 1000
+    }
   }
-
-  const rows = (artists ?? []) as ArtistRow[]
 
   console.log('Natural Earthの州・地域データを取得中(約40MB、数十秒かかります)...')
   const admin1Features = await fetchNaturalEarthAdmin1Features()

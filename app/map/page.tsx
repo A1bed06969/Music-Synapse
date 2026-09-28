@@ -10,16 +10,52 @@ import type { NaturalEarthCountryFeature } from '@/utils/artistOriginMap'
 import type { BoundaryCodeSet } from '@/utils/artistOriginBoundary'
 import type { ArtistOriginRow } from './ArtistOriginMap'
 
+type ArtistOriginQueryRow = {
+  id: string
+  name: string
+  image_url: string | null
+  origin_latitude: number | null
+  origin_longitude: number | null
+  origin_prefecture: string | null
+  hometown_city: string | null
+  hometown_country: string | null
+  origin_country_code: string | null
+  origin_region_code: string | null
+  origin_muni_code: string | null
+}
+
+/** PostgRESTの1リクエストあたり行数上限(既定1000件)を超えるため、単純な
+ * .select()だと座標を持つアーティストが5,554件中1000件で打ち切られ、地図に
+ * その分しかプロットされない不具合があった(2026-09-28発覚)。ページングして
+ * 全件取得する(utils/fetchAllRows.tsは.not()フィルタを渡せないため専用に書く)。 */
+async function fetchAllArtistOriginRows(
+  supabase: Awaited<ReturnType<typeof createClient>>
+): Promise<ArtistOriginQueryRow[]> {
+  const rows: ArtistOriginQueryRow[] = []
+  const pageSize = 1000
+  let offset = 0
+  while (true) {
+    const { data } = await supabase
+      .from('artist')
+      .select(
+        'id, name, image_url, origin_latitude, origin_longitude, origin_prefecture, hometown_city, hometown_country, origin_country_code, origin_region_code, origin_muni_code'
+      )
+      .not('origin_latitude', 'is', null)
+      .not('origin_longitude', 'is', null)
+      .order('id', { ascending: true })
+      .range(offset, offset + pageSize - 1)
+    const page = (data ?? []) as ArtistOriginQueryRow[]
+    rows.push(...page)
+    if (page.length < pageSize) break
+    offset += pageSize
+  }
+  return rows
+}
+
 export default async function MapPage() {
   const supabase = await createClient()
 
-  const { data: artistsWithMembers } = await supabase
-    .from('artist')
-    .select(
-      'id, name, image_url, origin_latitude, origin_longitude, origin_prefecture, hometown_city, hometown_country, origin_country_code, origin_region_code, origin_muni_code'
-    )
-    .not('origin_latitude', 'is', null)
-    .not('origin_longitude', 'is', null)
+  const artistsWithMembers = await fetchAllArtistOriginRows(supabase)
 
   // バンドメンバー個人のページ(自身のリリースを持たない)は、マップ上では
   // 所属バンド自体と重複表示になるため除外する(検索・一覧ページと同じ扱い)
@@ -34,17 +70,50 @@ export default async function MapPage() {
   const albumsByArtist = new Map<string, { id: string; title: string; jacketUrl: string | null }[]>()
 
   if (artistIds.length > 0) {
-    const albumResults = await Promise.all(
-      artistIds.map((id) =>
-        supabase
+    // 以前はアーティスト1件ごとに個別クエリを投げていた(最大5,554並列、地図の
+    // 1000件上限バグを直したことでN+1問題が顕在化し読み込みが極端に遅くなった。
+    // 2026-09-28)。artist_idのIN句を200件ずつのチャンクにまとめ、各チャンクは
+    // (album件数がPostgRESTの1000件上限を超える場合に備えて)ページングして
+    // 全件取得したのち、JS側でartist_idごとにグルーピングして新しい順3件に絞る。
+    // ローカルPostgresへのクエリなので(iTunes等の外部APIと違ってレート制限を
+    // 気にする必要が無い)、チャンクは直列ではなく並列に取得する。
+    const CHUNK_SIZE = 200
+    type AlbumRow = { id: string; title: string; jacket_url: string | null; release_date: string | null; artist_id: string }
+
+    async function fetchChunk(chunk: string[]): Promise<AlbumRow[]> {
+      const rows: AlbumRow[] = []
+      let offset = 0
+      while (true) {
+        const { data } = await supabase
           .from('album')
-          .select('id, title, jacket_url, release_date')
-          .eq('artist_id', id)
+          .select('id, title, jacket_url, release_date, artist_id')
+          .in('artist_id', chunk)
           .is('primary_album_id', null)
           .order('release_date', { ascending: false, nullsFirst: false })
-          .limit(3)
-      )
-    )
+          .range(offset, offset + 999)
+        const page = (data ?? []) as AlbumRow[]
+        rows.push(...page)
+        if (page.length < 1000) break
+        offset += 1000
+      }
+      return rows
+    }
+
+    const chunks: string[][] = []
+    for (let i = 0; i < artistIds.length; i += CHUNK_SIZE) {
+      chunks.push(artistIds.slice(i, i + CHUNK_SIZE))
+    }
+    const chunkResults = await Promise.all(chunks.map(fetchChunk))
+    const allAlbumRows = chunkResults.flat()
+
+    const rowsByArtist = new Map<string, AlbumRow[]>()
+    for (const row of allAlbumRows) {
+      const bucket = rowsByArtist.get(row.artist_id)
+      if (bucket) bucket.push(row)
+      else rowsByArtist.set(row.artist_id, [row])
+    }
+
+    const albumResults = artistIds.map((id) => ({ data: (rowsByArtist.get(id) ?? []).slice(0, 3) }))
     artistIds.forEach((id, i) => {
       const rows = albumResults[i].data ?? []
       albumsByArtist.set(

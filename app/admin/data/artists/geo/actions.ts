@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/utils/Supabase/admin'
 import { fetchOriginCoordinates } from '@/utils/wikidata'
+import { resolveCountryCodeFromCoordinates } from '@/utils/countryFromCoordinates'
 
 const MAX_PER_RUN = 30
 
@@ -54,9 +55,18 @@ export async function runBulkOriginUpdate() {
       continue
     }
 
+    // 座標だけでなくorigin_country_codeも一緒に解決しておく(マップの世界地図は
+    // 大陸集計にorigin_country_codeを使うため、座標だけだと世界地図に何も
+    // プロットされない不具合があった。2026-09-28)
+    const countryCode = resolveCountryCodeFromCoordinates(coords.latitude, coords.longitude)
+
     const { error } = await supabase
       .from('artist')
-      .update({ origin_latitude: coords.latitude, origin_longitude: coords.longitude })
+      .update({
+        origin_latitude: coords.latitude,
+        origin_longitude: coords.longitude,
+        origin_country_code: countryCode,
+      })
       .eq('id', artistId)
     if (error) {
       console.error(`座標の保存に失敗しました(${name}):`, error)
