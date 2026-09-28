@@ -61,12 +61,32 @@ export async function importArtistsFromItunes(artistUrls: string[]): Promise<Imp
   return results
 }
 
+// コラボ企画曲・オムニバス盤等で、Apple Music側のartistNameが連名クレジット全部を
+// 1つの文字列にまとめて返してくる場合がある(実データで確認済み: "DOYOUNG, SEULGI,
+// ... & TRI.BE"のように37名分が連結された例。2026-09-28、ユーザー報告を受けて発覚。
+// scripts/split-collab-artists-once.tsで既存87件をバックフィル済み)。これをそのまま
+// artist.nameに保存すると表示上「1人の巨大な合成名アーティスト」になってしまうため、
+// 生成/更新前に先頭の1名だけを名前として採用する(残りの連名メンバーの個別登録・
+// album_artistへの追加は、頻度が低いことと影響範囲が広いことから、このリアルタイム
+// パスでは行わずバックフィルスクリプトの再実行に委ねる)。commaが3個以上=4パート以上に
+// 分割される場合のみ発火させることで、"Emerson, Lake & Palmer"のような実在の
+// 3人組みバンド名(3パート)を誤って分割しないようにしている。
+const KNOWN_MULTI_COMMA_BAND_NAMES = new Set(['Crosby, Stills, Nash, and Young'])
+
+function resolveEffectiveArtistName(rawName: string): string {
+  if (KNOWN_MULTI_COMMA_BAND_NAMES.has(rawName)) return rawName
+  const parts = splitCollabArtistName(rawName)
+  return parts.length >= 4 ? parts[0] : rawName
+}
+
 /** アーティスト本体だけをupsertする(apple_music_artist_idで既存判定)。
  * アルバム・トラックの取込は含まないため高速(呼び出し側で別途 syncAlbumsAndTracksForArtist を呼ぶこと) */
 export async function upsertArtistFromItunes(
   supabase: SupabaseClient,
   itunesArtist: ItunesArtist
 ): Promise<{ artistId: string | null; errorMessage: string | null }> {
+  const effectiveName = resolveEffectiveArtistName(itunesArtist.artistName)
+
   const { data: existingArtist } = await supabase
     .from('artist')
     .select('id, official_site_url')
@@ -77,7 +97,7 @@ export async function upsertArtistFromItunes(
     await supabase
       .from('artist')
       .update({
-        name: itunesArtist.artistName,
+        name: effectiveName,
         // 手動編集フォームで設定済みの値は、再取込では上書きしない(空のときだけiTunesの値で埋める)
         official_site_url: existingArtist.official_site_url ?? (itunesArtist.artistLinkUrl ?? null),
         last_synced_at: new Date().toISOString(),
@@ -93,7 +113,7 @@ export async function upsertArtistFromItunes(
   const { data: sameNameCandidates } = await supabase
     .from('artist')
     .select('id, official_site_url')
-    .eq('name', itunesArtist.artistName)
+    .eq('name', effectiveName)
     .is('apple_music_artist_id', null)
     .limit(1)
 
@@ -124,7 +144,7 @@ export async function upsertArtistFromItunes(
   const { data: sameNameRegistered } = await supabase
     .from('artist')
     .select('id, hometown_country')
-    .eq('name', itunesArtist.artistName)
+    .eq('name', effectiveName)
     .not('apple_music_artist_id', 'is', null)
     .limit(1)
     .maybeSingle()
@@ -145,11 +165,11 @@ export async function upsertArtistFromItunes(
     let judgement: { sameArtist: boolean; confidence: number; reasoning: string }
     try {
       judgement = await judgeSameArtistWithGemini(
-        { name: itunesArtist.artistName, primaryGenreName: existingGenreName, hometownCountry: sameNameRegistered.hometown_country },
-        { name: itunesArtist.artistName, primaryGenreName: itunesArtist.primaryGenreName ?? null }
+        { name: effectiveName, primaryGenreName: existingGenreName, hometownCountry: sameNameRegistered.hometown_country },
+        { name: effectiveName, primaryGenreName: itunesArtist.primaryGenreName ?? null }
       )
     } catch (err) {
-      console.error(`同名アーティスト同一判定に失敗(${itunesArtist.artistName}): ${(err as Error).message}`)
+      console.error(`同名アーティスト同一判定に失敗(${effectiveName}): ${(err as Error).message}`)
       judgement = { sameArtist: false, confidence: 0, reasoning: '判定処理でエラーが発生したため未確認扱い' }
     }
 
@@ -158,7 +178,7 @@ export async function upsertArtistFromItunes(
     }
 
     console.warn(
-      `⚠️ 同名アーティスト「${itunesArtist.artistName}」が既に本登録済み(id=${sameNameRegistered.id})ですが、別のapple_music_artist_idのため同一人物と確信できず(確信度${judgement.confidence}: ${judgement.reasoning})、新規に登録します。要確認。`
+      `⚠️ 同名アーティスト「${effectiveName}」が既に本登録済み(id=${sameNameRegistered.id})ですが、別のapple_music_artist_idのため同一人物と確信できず(確信度${judgement.confidence}: ${judgement.reasoning})、新規に登録します。要確認。`
     )
     collisionLog = { existingArtistId: sameNameRegistered.id, confidence: judgement.confidence, reasoning: judgement.reasoning }
   }
@@ -166,7 +186,7 @@ export async function upsertArtistFromItunes(
   const { data: inserted, error: insertError } = await supabase
     .from('artist')
     .insert({
-      name: itunesArtist.artistName,
+      name: effectiveName,
       apple_music_artist_id: String(itunesArtist.artistId),
       official_site_url: itunesArtist.artistLinkUrl ?? null,
       last_synced_at: new Date().toISOString(),
@@ -181,7 +201,7 @@ export async function upsertArtistFromItunes(
   if (collisionLog) {
     const { error: logError } = await supabase.from('artist_match_log').insert({
       stub_artist_id: inserted.id,
-      stub_artist_name: itunesArtist.artistName,
+      stub_artist_name: effectiveName,
       chosen_apple_music_artist_id: null,
       chosen_artist_name: null,
       chosen_country: null,
