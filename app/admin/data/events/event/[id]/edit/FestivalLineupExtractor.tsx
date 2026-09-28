@@ -27,6 +27,21 @@ export default function FestivalLineupExtractor({
   registeredArtistNames?: string[]
 }) {
   const [result, setResult] = useState<FestivalExtractResult | null>(initialResult)
+  // 「出演を追加」等、このコンポーネントの外側のフォームを送信するとサーバー
+  // アクションが同じURL(検索パラメータのみ違う)へredirectする。Next.jsの
+  // App Routerはこのソフトナビゲーションではクライアントコンポーネントの
+  // インスタンス(=useStateの初期値は初回マウント時のみ有効)を再利用するため、
+  // 何もしないとfestival_extract_pendingに保存済みの最新の抽出結果が画面に
+  // 反映されず「抽出したアーティストが全て消えた」ように見えてしまう
+  // (2026-09-28ユーザー報告)。initialResultが変わった(=サーバー側で新しく
+  // 読み直された)ら、レンダー中にローカル状態を追従させる(Reactの「propsが
+  // 変わったらstateを調整する」推奨パターン。useEffect内でのsetStateは
+  // カスケード再レンダーを招くため避け、レンダー本体で直接比較する)。
+  const [prevInitialResult, setPrevInitialResult] = useState(initialResult)
+  if (initialResult !== prevInitialResult) {
+    setPrevInitialResult(initialResult)
+    if (initialResult) setResult(initialResult)
+  }
   // 公式サイトのトップページとラインナップページのURLが別なフェスが多いため
   // (例: fujirockfestival.comのトップはニュース中心、ラインナップは/artist/index)、
   // 基本情報のofficial_site_urlとは別に、抽出だけに使うURLを上書きできるようにする
