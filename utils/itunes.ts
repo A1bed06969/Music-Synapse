@@ -48,6 +48,12 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+// これまでUser-Agent未設定(Node fetchの既定値)でリクエストしており、
+// 素のスクリプトからのアクセスとしてボット判定されやすかった可能性がある
+// (utils/ogImage.tsのスクレイピングと同じUAに揃える。2026-09-26)。
+const USER_AGENT =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36'
+
 // iTunes Search/Lookup APIは非公式かつ無認証で、明文化されたレート制限が無いが、
 // Apple公式の目安は「約20件/分」(https://performance-partners.apple.com/search-api、
 // 2026年8月時点でも変更なしと確認済み)。以前はMIN_REQUEST_INTERVAL_MS=400
@@ -105,7 +111,7 @@ async function fetchItunes(url: string, label: string): Promise<any> {
     if (waitMs > 0) await sleep(waitMs)
     writeRateLimitState({ ...state, lastRequestAt: Date.now() })
 
-    const res = await fetch(url)
+    const res = await fetch(url, { headers: { 'User-Agent': USER_AGENT } })
     if (res.ok) {
       writeRateLimitState({ ...readRateLimitState(), consecutiveFailures: 0 })
       return res.json()
