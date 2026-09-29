@@ -6,6 +6,8 @@ import { after } from 'next/server'
 import { createAdminClient } from '@/utils/Supabase/admin'
 import { fetchGoogleBooksCover } from '@/utils/googleBooksApi'
 import { fetchTowerProductInfo } from '@/utils/towerRecords'
+import { parseAppleMusicAlbumUrl } from '@/utils/itunes'
+import { registerAlbumFromSearch } from '@/app/admin/import/search/actions'
 
 function redirectWith(result: 'success' | 'error', message: string): never {
   redirect(`/admin/data/discguides?${result}=${encodeURIComponent(message)}`)
@@ -173,6 +175,79 @@ export async function updateDiscGuideSelection(formData: FormData) {
   revalidatePath(`/albums/${albumId}`)
   if (previousAlbumId && previousAlbumId !== albumId) revalidatePath(`/albums/${previousAlbumId}`)
   redirectWith('success', '掲載データを更新しました。')
+}
+
+/** 最小限登録(streaming_status='unreleased')になった掲載データを、
+ * Apple MusicアプリからコピーしたアルバムURLを直接貼り付けて実データに差し替える。
+ * 自動検索(iTunes完全一致・Discogs完全一致)のどちらでも見つからなかった時の
+ * 手動フォールバック用(app/admin/data/curation/[id]/match/actions.tsの
+ * linkRankingEntryByAppleMusicUrlと同じ考え方のディスクガイド版)。 */
+export async function applyAppleMusicUrlToDiscGuideSelection(formData: FormData) {
+  const selectionId = String(formData.get('selection_id') ?? '')
+  const url = String(formData.get('apple_music_url') ?? '').trim()
+
+  if (!selectionId || !url) {
+    redirectWith('error', 'アルバムURLを入力してください。')
+  }
+
+  const parsed = parseAppleMusicAlbumUrl(url)
+  if (!parsed) {
+    redirectWith('error', 'Apple MusicのアルバムURLとして認識できませんでした。')
+  }
+
+  const supabase = createAdminClient()
+  const { data: selection } = await supabase
+    .from('disc_guide_selection')
+    .select('id, album_id')
+    .eq('id', selectionId)
+    .maybeSingle()
+  if (!selection) {
+    redirectWith('error', '掲載データが見つかりませんでした。')
+  }
+  const oldAlbumId = selection!.album_id
+
+  const registerResult = await registerAlbumFromSearch(parsed!.collectionId)
+  if (!registerResult.success) {
+    redirectWith('error', `Apple Musicからの登録に失敗しました: ${registerResult.message}`)
+  }
+
+  const { data: newAlbum } = await supabase
+    .from('album')
+    .select('id')
+    .eq('apple_music_album_id', String(parsed!.collectionId))
+    .maybeSingle()
+  if (!newAlbum) {
+    redirectWith('error', '登録後のアルバムが見つかりませんでした。')
+  }
+
+  const { error: updateError } = await supabase
+    .from('disc_guide_selection')
+    .update({ album_id: newAlbum!.id })
+    .eq('id', selectionId)
+  if (updateError) {
+    if (updateError.code === '23505') {
+      // 同じディスクガイド内で既に同じアルバムが別の掲載データとして登録済み。
+      // 重複するのでこの掲載データ自体を削除する(実アルバムは既存のものを使う)
+      await supabase.from('disc_guide_selection').delete().eq('id', selectionId)
+    } else {
+      redirectWith('error', `掲載データの更新に失敗しました: ${updateError.message}`)
+    }
+  }
+
+  // 差し替えで最小限アルバムを参照する行が無くなったら削除する
+  if (oldAlbumId) {
+    const [{ count: selRefs }, { count: trackRefs }] = await Promise.all([
+      supabase.from('disc_guide_selection').select('id', { count: 'exact', head: true }).eq('album_id', oldAlbumId),
+      supabase.from('track').select('id', { count: 'exact', head: true }).eq('album_id', oldAlbumId),
+    ])
+    if (!selRefs && !trackRefs) {
+      await supabase.from('album').delete().eq('id', oldAlbumId)
+    }
+  }
+
+  revalidatePath('/admin/data/discguides')
+  revalidatePath(`/albums/${newAlbum!.id}`)
+  redirectWith('success', 'Apple Musicの情報を反映しました。')
 }
 
 export async function deleteDiscGuideSelection(formData: FormData) {

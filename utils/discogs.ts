@@ -62,6 +62,45 @@ export type DiscogsReleaseSearchResult = {
   format: string | null
 }
 
+// カーブ型の引用符('‘’)と直線の引用符(' ")は見た目が違うだけで意味は同じだが
+// 文字としては一致しないため厳密一致チェックで弾かれる
+// (utils/discGuideImport.tsのnormalizeForMatchと同じ対策、2026-09-27に発覚)。
+function normalizeForMatch(s: string): string {
+  return s
+    .trim()
+    .toLowerCase()
+    .replace(/[‘’]/g, "'")
+    .replace(/[“”]/g, '"')
+    .replace(/\s+/g, ' ')
+}
+
+/**
+ * アーティスト名・タイトルでDiscogsを検索し、確信を持てる場合のみ1件を返す。
+ * ディスクガイドの一括登録で「あいまい検索の上位候補を無条件採用」した結果、
+ * 無関係な既存アルバムへ大量誤登録した反省(2026-09-29)を踏まえ、ここでも
+ * 同じ轍を踏まないよう、Discogsの検索結果("アーティスト名 - タイトル"形式)を
+ * 自前で正規化してタイトル完全一致するものだけを候補として扱う。同じ作品の
+ * 複数プレス盤(国・年違い)がヒットすることが多いため、完全一致が2件以上でも
+ * 別作品扱いにはせず、日本盤を優先し、無ければ検索結果の先頭(Discogs側の
+ * 関連度順)を採用する。
+ */
+export async function findDiscogsReleaseMatch(
+  artistName: string,
+  title: string
+): Promise<DiscogsReleaseSearchResult | null> {
+  const candidates = await searchRelease(title, artistName)
+  const normalizedTitle = normalizeForMatch(title)
+
+  const exactMatches = candidates.filter((c) => {
+    const separatorIndex = c.title.indexOf(' - ')
+    const candidateTitle = separatorIndex === -1 ? c.title : c.title.slice(separatorIndex + 3)
+    return normalizeForMatch(candidateTitle) === normalizedTitle
+  })
+  if (exactMatches.length === 0) return null
+
+  return exactMatches.find((c) => c.country === 'Japan') ?? exactMatches[0]
+}
+
 export async function searchRelease(title: string, artistName: string): Promise<DiscogsReleaseSearchResult[]> {
   const params = new URLSearchParams({
     type: 'release',

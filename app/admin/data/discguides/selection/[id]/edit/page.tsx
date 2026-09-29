@@ -4,7 +4,7 @@ import { createClient } from '@/utils/Supabase/server'
 import { inputClass, buttonClass } from '../../../../adminUi'
 import SearchableSelect from '../../../../SearchableSelect'
 import { searchAlbums } from '../../../../actions'
-import { updateDiscGuideSelection, deleteDiscGuideSelection } from '../../../actions'
+import { updateDiscGuideSelection, deleteDiscGuideSelection, applyAppleMusicUrlToDiscGuideSelection } from '../../../actions'
 
 export default async function EditDiscGuideSelectionPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -50,6 +50,19 @@ export default async function EditDiscGuideSelectionPage({ params }: { params: P
           </Link>
         </div>
       )}
+
+      <form action={applyAppleMusicUrlToDiscGuideSelection} className="mt-6 flex flex-wrap items-center gap-2">
+        <input type="hidden" name="selection_id" value={selection.id} />
+        <input
+          name="apple_music_url"
+          type="url"
+          placeholder="配信が始まっていた場合: Apple MusicのアルバムURLを貼り付け"
+          className={`${inputClass} max-w-md`}
+        />
+        <button type="submit" className={buttonClass}>
+          Apple Musicから取込
+        </button>
+      </form>
 
       <form action={updateDiscGuideSelection} className="mt-6 flex flex-wrap items-center gap-2">
         <input type="hidden" name="id" value={selection.id} />

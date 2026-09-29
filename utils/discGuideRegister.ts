@@ -81,10 +81,14 @@ export async function registerOneConfirmedAlbum(
       // dataがnullのまま握りつぶされるため、既に候補が複数ある場合も
       // 「存在しない」扱いになって重複作成されてしまう。.limit(1).maybeSingle()
       // なら該当が2件以上あっても先頭1件を安全に拾える。
+      // 完全一致(.eq)にする: 以前は.ilikeの部分一致(%name%)だったため、
+      // 短い/よくある名前(例:「Y」)が無関係な既存アーティストにマッチし、
+      // 誤って別人のディスクガイド選出として紐付いてしまう恐れがあった
+      // (2026-09-29、642件の一括登録前に発見・修正)。
       const { data: existingArtist } = await supabase
         .from('artist')
         .select('id')
-        .ilike('name', `%${albumData.artist_name}%`)
+        .eq('name', albumData.artist_name)
         .limit(1)
         .maybeSingle();
 
