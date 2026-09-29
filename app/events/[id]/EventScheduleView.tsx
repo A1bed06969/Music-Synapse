@@ -6,6 +6,8 @@ import { formatDate } from '@/utils/format'
 import MapClientWrapper from '@/app/map/MapClientWrapper'
 import type { MapMarker } from '@/app/map/LeafletMap'
 
+export type EventContentView = 'artists' | 'timetable' | 'map'
+
 const WEEKDAY_LABEL_JA = ['日', '月', '火', '水', '木', '金', '土']
 
 function formatDayHeading(dateStr: string): string {
@@ -38,6 +40,7 @@ const NO_DATE = '__no_date__'
 const ALL_REGIONS = '__all__'
 
 export default function EventScheduleView({
+  view,
   editionDates,
   editionDescription,
   venueSummary,
@@ -46,6 +49,10 @@ export default function EventScheduleView({
   venueMarkers,
   appearances,
 }: {
+  /** 右カラムのメニューで選ばれた表示内容(アーティスト一覧/タイムテーブル/マップ)。
+   * 地域タブ・フィルタリングのstateはこのコンポーネントが持ったまま、
+   * 描画するセクションだけをこのpropで切り替える。 */
+  view: EventContentView
   editionDates: EditionDateEntry[]
   editionDescription: string | null
   venueSummary: string | null
@@ -116,41 +123,126 @@ export default function EventScheduleView({
     return a.localeCompare(b)
   })
 
+  const regionTabs = regions.length >= 2 && (
+    <div className="flex flex-wrap gap-1.5">
+      <button
+        type="button"
+        onClick={() => setSelectedRegion(ALL_REGIONS)}
+        className={`rounded-full border px-3 py-1 text-xs ${
+          selectedRegion === ALL_REGIONS
+            ? 'border-white bg-white text-black'
+            : 'border-white/15 text-white/60 hover:border-white/30'
+        }`}
+      >
+        すべて
+      </button>
+      {regions.map((region) => (
+        <button
+          key={region}
+          type="button"
+          onClick={() => setSelectedRegion(region)}
+          className={`rounded-full border px-3 py-1 text-xs ${
+            selectedRegion === region
+              ? 'border-white bg-white text-black'
+              : 'border-white/15 text-white/60 hover:border-white/30'
+          }`}
+        >
+          {region}
+        </button>
+      ))}
+    </div>
+  )
+
+  if (view === 'map') {
+    return (
+      <>
+        {regionTabs}
+        {filteredVenueMarkers.length === 0 ? (
+          <p className="mt-4 text-sm text-white/40">会場情報が登録されていません。</p>
+        ) : (
+          <div className="mt-4">
+            <MapClientWrapper markers={filteredVenueMarkers} heightClassName="h-[520px]" />
+          </div>
+        )}
+      </>
+    )
+  }
+
+  if (view === 'artists') {
+    return (
+      <>
+        {regionTabs}
+        {filteredAppearances.length === 0 ? (
+          <p className="mt-4 text-sm text-white/40">まだ出演アーティストが登録されていません。</p>
+        ) : (
+          <div className="mt-4 space-y-8">
+            {sortedDayKeys.map((dayKey, dayIndex) => {
+              const rows = dayGroups.get(dayKey)!
+
+              // 日ごとに、ステージ違い・複数出演を重複無しでまとめる(コラボ出演は
+              // artists配列を展開して個別に数える。LA LOMのように同じ日に同じ
+              // ステージへ複数回出る場合も1回だけ表示する)。
+              const byStage = new Map<string, Map<string, AppearanceArtist>>()
+              for (const row of rows) {
+                const stageKey = row.stage ?? 'その他'
+                const artistsInStage = byStage.get(stageKey) ?? new Map<string, AppearanceArtist>()
+                for (const artist of row.artists) {
+                  if (artist.id) artistsInStage.set(artist.id, artist)
+                }
+                byStage.set(stageKey, artistsInStage)
+              }
+              const stageEntries = Array.from(byStage.entries())
+              const hasStagesThisDay = stageEntries.length > 1 || (stageEntries.length === 1 && stageEntries[0][0] !== 'その他')
+
+              return (
+                <div key={dayKey}>
+                  <h3 className="font-semibold">
+                    {dayKey === NO_DATE ? '日程未定' : `Day ${dayIndex + 1} ・ ${formatDayHeading(dayKey)}`}
+                  </h3>
+                  <div className="mt-4 space-y-5">
+                    {stageEntries.map(([stage, artists]) => (
+                      <div key={stage}>
+                        {hasStagesThisDay && (
+                          <h4 className="text-xs font-medium uppercase tracking-wide text-white/40">{stage}</h4>
+                        )}
+                        <div className="mt-2 grid grid-cols-2 gap-4 sm:grid-cols-3">
+                          {Array.from(artists.values()).map((artist) => (
+                            <Link key={artist.id} href={`/artists/${artist.id}`} className="group block">
+                              <div className="aspect-square overflow-hidden rounded-xl bg-white/5">
+                                {artist.imageUrl ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img
+                                    src={artist.imageUrl}
+                                    alt=""
+                                    className="h-full w-full object-cover transition group-hover:scale-105"
+                                  />
+                                ) : (
+                                  <div className="flex h-full w-full items-center justify-center text-4xl">🎤</div>
+                                )}
+                              </div>
+                              <p className="mt-2 truncate text-base font-medium group-hover:underline">{artist.name}</p>
+                            </Link>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </>
+    )
+  }
+
   return (
     <>
-      {regions.length >= 2 && (
-        <div className="mt-6 flex flex-wrap gap-1.5">
-          <button
-            type="button"
-            onClick={() => setSelectedRegion(ALL_REGIONS)}
-            className={`rounded-full border px-3 py-1 text-xs ${
-              selectedRegion === ALL_REGIONS
-                ? 'border-white bg-white text-black'
-                : 'border-white/15 text-white/60 hover:border-white/30'
-            }`}
-          >
-            すべて
-          </button>
-          {regions.map((region) => (
-            <button
-              key={region}
-              type="button"
-              onClick={() => setSelectedRegion(region)}
-              className={`rounded-full border px-3 py-1 text-xs ${
-                selectedRegion === region
-                  ? 'border-white bg-white text-black'
-                  : 'border-white/15 text-white/60 hover:border-white/30'
-              }`}
-            >
-              {region}
-            </button>
-          ))}
-        </div>
-      )}
+      {regionTabs}
 
-      <div className="mt-4 flex flex-col gap-4 lg:flex-row lg:items-stretch">
+      <div className="mt-4">
         {showAllRegionsSummary ? (
-          <div className="flex-1 rounded-lg border border-white/10 bg-white/[0.02] p-4">
+          <div className="rounded-lg border border-white/10 bg-white/[0.02] p-4">
             <p className="text-sm font-medium text-white/85">
               {distinctAllDates.length} Days
               {distinctAllDates.length > 0 &&
@@ -161,7 +253,7 @@ export default function EventScheduleView({
             {editionDescription && <p className="mt-2 text-xs text-white/50">{editionDescription}</p>}
           </div>
         ) : filteredEditionDates.length > 0 ? (
-          <div className="flex-1 space-y-2">
+          <div className="space-y-2">
             {filteredEditionDates.map((ed, i) => (
               <div key={ed.id} className="rounded-lg border border-white/10 bg-white/[0.02] p-4">
                 <p className="text-sm font-medium text-white/85">
@@ -173,7 +265,7 @@ export default function EventScheduleView({
             {editionDescription && <p className="text-xs text-white/50">{editionDescription}</p>}
           </div>
         ) : (
-          <div className="flex-1 rounded-lg border border-white/10 bg-white/[0.02] p-4">
+          <div className="rounded-lg border border-white/10 bg-white/[0.02] p-4">
             <p className="text-sm text-white/70">
               {venueSummary}
               {editionStartDate &&
@@ -182,11 +274,6 @@ export default function EventScheduleView({
                 }`}
             </p>
             {editionDescription && <p className="mt-2 text-xs text-white/50">{editionDescription}</p>}
-          </div>
-        )}
-        {filteredVenueMarkers.length > 0 && (
-          <div className="lg:w-80 lg:shrink-0">
-            <MapClientWrapper markers={filteredVenueMarkers} heightClassName="h-[180px]" />
           </div>
         )}
       </div>
