@@ -56,3 +56,7 @@ next-env.d.ts
 # superpowers brainstorming visual companion scratch files
 .superpowers/
 .worktrees/
+
+# PCごとのGoogle Drive同期フォルダの実パス(scripts/syncConfig.ts参照)。
+# Mac/Windowsでパスが異なるためコミットしない
+/.sync-config.json
