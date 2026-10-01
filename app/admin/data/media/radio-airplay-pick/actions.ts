@@ -14,37 +14,46 @@ type AdminClient = ReturnType<typeof createAdminClient>
 /** コラボ/feat.クレジットの作品は、参加アーティストそれぞれのカタログに同じ
  * apple_music_album_idが重複して存在しうる(各自のディスコグラフィーに現れるため)。
  * artist_idも合わせて絞り込むことで、検索結果が正しく1件に定まるようにする。 */
+// 以下2関数はコラボ名義(同じapple_music_artist_idで複数のartist行が正当に
+// 存在しうる)のため.maybeSingle()が複数件ヒットでエラーを返すことがある。
+// dataだけ見てerrorを無視すると「未登録」と誤認し、二重登録に繋がりうる
+// (imase等のインシデントと同じアンチパターン)ため、エラー時はnull(未登録)
+// ではなくthrowして呼び出し元に伝える
 async function findRegisteredAlbum(supabase: AdminClient, itunesArtistId: number, collectionId: number) {
-  const { data: artist } = await supabase
+  const { data: artist, error: artistError } = await supabase
     .from('artist')
     .select('id')
     .eq('apple_music_artist_id', String(itunesArtistId))
     .maybeSingle()
+  if (artistError) throw new Error(`アーティスト検索に失敗しました: ${artistError.message}`)
   if (!artist) return null
 
-  const { data: album } = await supabase
+  const { data: album, error: albumError } = await supabase
     .from('album')
     .select('id')
     .eq('apple_music_album_id', String(collectionId))
     .eq('artist_id', artist.id)
     .maybeSingle()
+  if (albumError) throw new Error(`アルバム検索に失敗しました: ${albumError.message}`)
   return album
 }
 
 async function findRegisteredTrack(supabase: AdminClient, itunesArtistId: number, trackId: number) {
-  const { data: artist } = await supabase
+  const { data: artist, error: artistError } = await supabase
     .from('artist')
     .select('id')
     .eq('apple_music_artist_id', String(itunesArtistId))
     .maybeSingle()
+  if (artistError) throw new Error(`アーティスト検索に失敗しました: ${artistError.message}`)
   if (!artist) return null
 
-  const { data: track } = await supabase
+  const { data: track, error: trackError } = await supabase
     .from('track')
     .select('id')
     .eq('apple_music_track_id', String(trackId))
     .eq('artist_id', artist.id)
     .maybeSingle()
+  if (trackError) throw new Error(`トラック検索に失敗しました: ${trackError.message}`)
   return track
 }
 

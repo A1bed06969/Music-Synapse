@@ -24,14 +24,21 @@ export async function mergeItunesArtist(formData: FormData) {
 
   const supabase = createAdminClient()
 
-  // apple_music_artist_idにDB側のunique制約が無いため、他の行が既にこのIDを
-  // 使っていないかをアプリ側で確認する(二重紐付け防止)
-  const { data: conflictingArtist } = await supabase
+  // 同じapple_music_artist_id+同名の組にはDBのunique index(2026-10-01追加)が
+  // あるが、名前が違えば通ってしまうため引き続きアプリ側でも確認する
+  // (二重紐付け防止)。errorを見ずにdataだけ見ると「見つからなかった」と
+  // 誤認して重複紐付けに進んでしまう(imase等のインシデントと同じ
+  // アンチパターン)ため、エラー時は安全側に倒して中断する
+  const { data: conflictingArtist, error: conflictingArtistError } = await supabase
     .from('artist')
     .select('id, name')
     .eq('apple_music_artist_id', appleArtistId)
     .neq('id', artistId)
     .maybeSingle()
+
+  if (conflictingArtistError) {
+    redirectWith(artistId, 'error', `既存の紐付け確認に失敗しました(誤った重複を避けるため中断): ${conflictingArtistError.message}`)
+  }
 
   if (conflictingArtist) {
     redirectWith(artistId, 'error', `このApple Music IDは既に別のアーティスト「${conflictingArtist.name}」に紐付けられています。`)

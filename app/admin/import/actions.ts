@@ -87,12 +87,27 @@ export async function upsertArtistFromItunes(
 ): Promise<{ artistId: string | null; errorMessage: string | null }> {
   const effectiveName = resolveEffectiveArtistName(itunesArtist.artistName)
 
-  const { data: existingArtist } = await supabase
+  // .maybeSingle()は「0件または1件」を前提としており、既に何らかの理由で同じ
+  // apple_music_artist_idの行が2件以上存在すると(過去のimase重複インシデントの
+  // ように)PGRST116エラーを返す。呼び出し元がdataだけを見てerrorを無視すると、
+  // 「既存アーティストが見つからなかった」と誤認して新規作成に進んでしまい、
+  // 重複が重複を呼ぶ無限増殖につながる(2026-10-01、imaseが1件から一晩で5件に
+  // 増殖した事故の根本原因)。.limit(1)で常に高々1件に絞ったうえで、エラー時は
+  // 「見つからなかった」ではなく処理そのものを中断する(重複作成より安全)。
+  const { data: existingArtistRows, error: existingArtistError } = await supabase
     .from('artist')
     .select('id, official_site_url')
     .eq('apple_music_artist_id', String(itunesArtist.artistId))
-    .maybeSingle()
+    .limit(1)
 
+  if (existingArtistError) {
+    return {
+      artistId: null,
+      errorMessage: `既存アーティストの検索に失敗しました(誤った重複作成を避けるため処理を中断): ${existingArtistError.message}`,
+    }
+  }
+
+  const existingArtist = existingArtistRows?.[0] ?? null
   if (existingArtist) {
     await supabase
       .from('artist')
@@ -110,12 +125,19 @@ export async function upsertArtistFromItunes(
   // 既にapple_music_artist_id未設定で存在するなら(MusicBrainzのバンドメンバー
   // 自動登録経由の空スタブ等)、新規作成せずそちらにapple_music_artist_idを補完して使う。
   // 同名重複artist行の発生を防ぐ(utils/artistProfileImport.tsの同種の対策と対になる)
-  const { data: sameNameCandidates } = await supabase
+  const { data: sameNameCandidates, error: sameNameCandidatesError } = await supabase
     .from('artist')
     .select('id, official_site_url')
     .eq('name', effectiveName)
     .is('apple_music_artist_id', null)
     .limit(1)
+
+  if (sameNameCandidatesError) {
+    return {
+      artistId: null,
+      errorMessage: `空スタブアーティストの検索に失敗しました(誤った重複作成を避けるため処理を中断): ${sameNameCandidatesError.message}`,
+    }
+  }
 
   if (sameNameCandidates && sameNameCandidates.length > 0) {
     const sameNameArtist = sameNameCandidates[0]
@@ -141,13 +163,20 @@ export async function upsertArtistFromItunes(
   // ジャンル・出身国を材料に判定させ、確信が持てる場合のみ既存行を再利用する。
   // 確信が持てない場合は新規作成した上でartist_match_logに記録し、人力確認に
   // 委ねる(誤って別人を統合しないことを、重複行が残ることより優先する設計)。
-  const { data: sameNameRegistered } = await supabase
+  const { data: sameNameRegistered, error: sameNameRegisteredError } = await supabase
     .from('artist')
     .select('id, hometown_country')
     .eq('name', effectiveName)
     .not('apple_music_artist_id', 'is', null)
     .limit(1)
     .maybeSingle()
+
+  if (sameNameRegisteredError) {
+    return {
+      artistId: null,
+      errorMessage: `同名アーティストの検索に失敗しました(誤った重複作成を避けるため処理を中断): ${sameNameRegisteredError.message}`,
+    }
+  }
 
   let collisionLog: { existingArtistId: string; confidence: number; reasoning: string } | null = null
 
@@ -193,6 +222,24 @@ export async function upsertArtistFromItunes(
     })
     .select('id')
     .single()
+
+  if (insertError?.code === '23505') {
+    // artist_apple_music_id_name_unique_idx(migration
+    // 20261001000001_add_artist_apple_music_id_name_unique_index.sql)への抵触。
+    // ここまでの検索が(何らかのバグや競合で)既存行を見つけ損ねていても、
+    // DB制約のおかげで重複作成はブロックされている。フォールバックとして
+    // 既存行を検索し直し、失敗として扱わず素直にそれを返す(自己修復)
+    const { data: recovered } = await supabase
+      .from('artist')
+      .select('id')
+      .eq('apple_music_artist_id', String(itunesArtist.artistId))
+      .ilike('name', effectiveName)
+      .limit(1)
+      .maybeSingle()
+    if (recovered) {
+      return { artistId: recovered.id, errorMessage: null }
+    }
+  }
 
   if (insertError || !inserted) {
     return { artistId: null, errorMessage: insertError?.message ?? 'unknown error' }
@@ -423,12 +470,19 @@ export async function syncOneAlbum(
         syncingArtistRow?.apple_music_artist_id &&
         String(itunesAlbum.artistId) !== syncingArtistRow.apple_music_artist_id
       ) {
-        const { data: existingOwner } = await supabase
+        // .maybeSingle()はerrorを確認しないと「見つからなかった」と誤認し、下の
+        // 新規作成分岐に進んで重複を生んでしまう(imase/Foi/Deep Jandu各インシデントと
+        // 同じアンチパターン)。エラー時はこのアルバムの主アーティスト再割り当てだけを
+        // 諦める(trueOwnerArtistIdはnullのままartistIdにフォールバックする、
+        // これはapple_music_artist_id不一致を検出する前の従来の挙動と同じで安全)。
+        const { data: existingOwner, error: existingOwnerError } = await supabase
           .from('artist')
           .select('id')
           .eq('apple_music_artist_id', String(itunesAlbum.artistId))
           .maybeSingle()
-        if (existingOwner) {
+        if (existingOwnerError) {
+          console.error(`主アーティスト検索に失敗しました(${itunesAlbum.artistName}):`, existingOwnerError.message)
+        } else if (existingOwner) {
           trueOwnerArtistId = existingOwner.id
         } else {
           const nameParts = splitCollabArtistName(itunesAlbum.artistName)
@@ -441,13 +495,15 @@ export async function syncOneAlbum(
           // (2026-09-23、ユーザー報告「Deep Jandu」52件等の重複登録の原因として発覚)。
           // otherNamesの既存チェックと揃え、名前一致のみで再利用する
           // (apple_music_artist_id未設定なら補完する)。
-          const { data: existingByName } = await supabase
+          const { data: existingByName, error: existingByNameError } = await supabase
             .from('artist')
             .select('id, apple_music_artist_id')
             .eq('name', primaryName)
             .maybeSingle()
 
-          if (existingByName) {
+          if (existingByNameError) {
+            console.error(`同名アーティスト検索に失敗しました(${primaryName}):`, existingByNameError.message)
+          } else if (existingByName) {
             trueOwnerArtistId = existingByName.id
             if (!existingByName.apple_music_artist_id) {
               await supabase
@@ -461,7 +517,19 @@ export async function syncOneAlbum(
               .insert({ name: primaryName, apple_music_artist_id: String(itunesAlbum.artistId) })
               .select('id')
               .single()
-            if (insertOwnerError) {
+            if (insertOwnerError?.code === '23505') {
+              // artist_apple_music_id_name_unique_idxへの抵触。ここまでの検索が
+              // 見つけ損ねていても、DB制約のおかげで重複作成はブロックされている。
+              // 既存行を再検索して自己修復する
+              const { data: recoveredOwner } = await supabase
+                .from('artist')
+                .select('id')
+                .eq('apple_music_artist_id', String(itunesAlbum.artistId))
+                .ilike('name', primaryName)
+                .limit(1)
+                .maybeSingle()
+              trueOwnerArtistId = recoveredOwner?.id ?? null
+            } else if (insertOwnerError) {
               console.error(`主アーティストの自動作成に失敗しました(${primaryName}):`, insertOwnerError.message)
             } else {
               trueOwnerArtistId = insertedOwner?.id ?? null

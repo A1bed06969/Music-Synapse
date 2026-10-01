@@ -123,12 +123,26 @@ export async function registerAlbumFromSearch(collectionId: number): Promise<Reg
     return { success: false, message: '指定のアルバムがiTunesで見つかりませんでした。' }
   }
 
-  const { data: existingArtist } = await supabase
+  // .maybeSingle()は0/1件を前提としており、同じapple_music_artist_idの行が
+  // 既に2件以上あると(2026-10-01のimase重複増殖事故の原因)PGRST116エラーを返す。
+  // errorを見ずにdataだけ使うと「見つからなかった」と誤認してisNewArtist扱いに
+  // なり、app/admin/import/actions.tsのupsertArtistFromItunes側でも同種の
+  // チェックが空振りすると新規重複作成に繋がる。.limit(1)で常に高々1件に絞り、
+  // エラー時は処理を中断する(重複作成より安全)
+  const { data: existingArtistRows, error: existingArtistError } = await supabase
     .from('artist')
     .select('id')
     .eq('apple_music_artist_id', String(album.artistId))
-    .maybeSingle()
+    .limit(1)
 
+  if (existingArtistError) {
+    return {
+      success: false,
+      message: `既存アーティストの検索に失敗しました(誤った重複作成を避けるため中断): ${existingArtistError.message}`,
+    }
+  }
+
+  const existingArtist = existingArtistRows?.[0] ?? null
   const isNewArtist = !existingArtist
   let artistId = existingArtist?.id as string | undefined
   if (!artistId) {

@@ -33,24 +33,31 @@ export async function searchAppleMusicAlbumsForCuration(query: string): Promise<
 /** コラボ/feat.クレジットの作品は参加アーティストそれぞれのカタログに同じ
  * apple_music_album_idが重複して存在しうるため、artist_idも合わせて絞り込む
  * (HRPPの手動マッチングで見つかった同種の不具合と同じ対策)。 */
+// コラボ名義(同じapple_music_artist_idで複数のartist行が正当に存在しうる)の
+// ため.maybeSingle()が複数件ヒットでエラーを返すことがある。dataだけ見て
+// errorを無視すると「未登録」と誤認し、二重登録に繋がりうる(imase等の
+// インシデントと同じアンチパターン)ため、エラー時はnull(未登録)ではなく
+// throwして呼び出し元に伝える
 async function findRegisteredAlbum(
   supabase: ReturnType<typeof createAdminClient>,
   itunesArtistId: number,
   collectionId: number
 ) {
-  const { data: artist } = await supabase
+  const { data: artist, error: artistError } = await supabase
     .from('artist')
     .select('id')
     .eq('apple_music_artist_id', String(itunesArtistId))
     .maybeSingle()
+  if (artistError) throw new Error(`アーティスト検索に失敗しました: ${artistError.message}`)
   if (!artist) return null
 
-  const { data: album } = await supabase
+  const { data: album, error: albumError } = await supabase
     .from('album')
     .select('id')
     .eq('apple_music_album_id', String(collectionId))
     .eq('artist_id', artist.id)
     .maybeSingle()
+  if (albumError) throw new Error(`アルバム検索に失敗しました: ${albumError.message}`)
   return album
 }
 

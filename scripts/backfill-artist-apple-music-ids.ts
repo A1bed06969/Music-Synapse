@@ -86,12 +86,20 @@ async function processCandidate(candidate: Candidate): Promise<Outcome> {
     const candidateArtist = exactMatches[0]
     const appleId = String(candidateArtist.artistId)
 
-    const { data: owner } = await supabase
+    // errorを見ずにdataだけ見ると「見つからなかった」と誤認してこの後の
+    // update(重複紐付け)に進んでしまう(imase等のインシデントと同じ
+    // アンチパターン)ため、エラー時は安全側に倒してスキップする
+    const { data: owner, error: ownerError } = await supabase
       .from('artist')
       .select('id, name')
       .eq('apple_music_artist_id', appleId)
       .neq('id', id)
       .maybeSingle()
+
+    if (ownerError) {
+      log(`SKIP(検索失敗): "${name}"(${id}) -> 既存紐付けの確認に失敗しました: ${ownerError.message}`)
+      return 'conflict'
+    }
 
     if (owner) {
       log(`SKIP(重複): "${name}"(${id}) -> appleId ${appleId} は既に "${owner.name}" に紐付け済み`)

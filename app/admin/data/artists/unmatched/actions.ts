@@ -81,12 +81,17 @@ export async function linkStubArtistToItunes(
   }
 
   // 同じApple Music IDが既に別のアーティスト行に紐付いていないか確認
-  // (誤って同じ人物を2重登録する事故を防ぐ)
-  const { data: existingLinked } = await supabase
+  // (誤って同じ人物を2重登録する事故を防ぐ)。errorを見ずにdataだけ見ると
+  // 「見つからなかった」と誤認して重複紐付けに進んでしまう(imase等の
+  // インシデントと同じアンチパターン)ため、エラー時は安全側に倒して中断する
+  const { data: existingLinked, error: existingLinkedError } = await supabase
     .from('artist')
     .select('id, name')
     .eq('apple_music_artist_id', String(appleMusicArtistId))
     .maybeSingle()
+  if (existingLinkedError) {
+    return { success: false, message: `既存の紐付け確認に失敗しました(誤った重複を避けるため中断): ${existingLinkedError.message}` }
+  }
   if (existingLinked) {
     return { success: false, message: `このApple Musicアーティストは既に「${existingLinked.name}」として登録済みです。` }
   }
