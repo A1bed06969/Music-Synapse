@@ -29,8 +29,10 @@ export default async function AlbumCalendarPage({
   searchParams: Promise<{ month?: string }>
 }) {
   const { month: monthParam } = await searchParams
-  const currentMonth =
-    monthParam && /^\d{4}-\d{2}$/.test(monthParam) ? monthParam : new Date().toISOString().slice(0, 7)
+  // サーバーはUTCで動くため、単純にnew Date()の月をそのまま使うとJSTの0〜8時台に
+  // 前月と誤判定される(utils/homeCards.tsのtomorrowJSTと同じJST変換パターン)
+  const currentMonthJST = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 7)
+  const currentMonth = monthParam && /^\d{4}-\d{2}$/.test(monthParam) ? monthParam : currentMonthJST
   const { start, end } = monthRange(currentMonth)
 
   const supabase = await createClient()
