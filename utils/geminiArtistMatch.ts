@@ -11,9 +11,8 @@
 // を判定材料として渡す。articleContextが無い場合や、複数候補が実質見分けが
 // つかない場合は、確信度を低く返すよう明示的に指示する(同名多数=分からない、
 // と正直に言わせるのが安全側の設計)。
-import { GoogleGenAI, Type } from '@google/genai'
-
-const MODEL = 'gemini-3.1-flash-lite'
+import { Type } from '@google/genai'
+import { generateJudgementText } from './llmJudgeChain'
 
 export type MatchCandidate = {
   index: number
@@ -93,71 +92,27 @@ const RESPONSE_SCHEMA = {
   required: ['confidence', 'reasoning'],
 }
 
-// gemini-3.1-flash-liteは高負荷時に503(UNAVAILABLE)を頻繁に返す実態が確認できた
-// ため、リトライ回数を増やし指数バックオフにする(utils/geminiArticleContextExtract.tsと同じ対応)
-const MAX_ATTEMPTS = 5
-const RETRY_DELAY_MS = 3_000
-
-function isRetryableStatus(status: unknown): boolean {
-  return status === 503 || status === 429
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
-}
-
 export async function judgeArtistMatchWithGemini(
   targetName: string,
   rankingContext: string,
   articleContext: ArticleContext | null,
   candidates: MatchCandidate[]
 ): Promise<ArtistMatchJudgement> {
-  const apiKey = process.env.GEMINI_API_KEY
-  if (!apiKey) {
-    throw new Error('GEMINI_API_KEY が設定されていません。')
-  }
   if (candidates.length === 0) {
     return { candidateIndex: null, confidence: 0, reasoning: '候補が0件のため判定不可' }
   }
 
-  const ai = new GoogleGenAI({ apiKey })
   const prompt = buildPrompt(targetName, rankingContext, articleContext, candidates)
-
-  let lastErr: unknown
-  let response: Awaited<ReturnType<typeof ai.models.generateContent>> | undefined
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    try {
-      response = await ai.models.generateContent({
-        model: MODEL,
-        contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        config: {
-          responseMimeType: 'application/json',
-          responseSchema: RESPONSE_SCHEMA,
-        },
-      })
-      break
-    } catch (err) {
-      lastErr = err
-      const status = (err as { status?: unknown })?.status
-      if (attempt < MAX_ATTEMPTS && isRetryableStatus(status)) {
-        await sleep(RETRY_DELAY_MS * attempt)
-        continue
-      }
-      throw err
-    }
-  }
-  if (!response) throw lastErr
-
-  const text = response.text
+  const text = await generateJudgementText(prompt, RESPONSE_SCHEMA)
   if (!text) {
-    return { candidateIndex: null, confidence: 0, reasoning: 'Geminiから応答がありませんでした' }
+    return { candidateIndex: null, confidence: 0, reasoning: 'LLMから応答がありませんでした' }
   }
 
   let parsed: unknown
   try {
     parsed = JSON.parse(text)
   } catch {
-    return { candidateIndex: null, confidence: 0, reasoning: 'Geminiの応答をJSONとして解釈できませんでした' }
+    return { candidateIndex: null, confidence: 0, reasoning: 'LLMの応答をJSONとして解釈できませんでした' }
   }
 
   const p = parsed as { candidateIndex?: unknown; confidence?: unknown; reasoning?: unknown }
@@ -223,49 +178,17 @@ export async function judgeSameArtistWithGemini(
   existing: SameArtistProfile,
   incoming: SameArtistProfile
 ): Promise<SameArtistJudgement> {
-  const apiKey = process.env.GEMINI_API_KEY
-  if (!apiKey) {
-    throw new Error('GEMINI_API_KEY が設定されていません。')
-  }
-
-  const ai = new GoogleGenAI({ apiKey })
   const prompt = buildSameArtistPrompt(existing, incoming)
-
-  let lastErr: unknown
-  let response: Awaited<ReturnType<typeof ai.models.generateContent>> | undefined
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    try {
-      response = await ai.models.generateContent({
-        model: MODEL,
-        contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        config: {
-          responseMimeType: 'application/json',
-          responseSchema: SAME_ARTIST_SCHEMA,
-        },
-      })
-      break
-    } catch (err) {
-      lastErr = err
-      const status = (err as { status?: unknown })?.status
-      if (attempt < MAX_ATTEMPTS && isRetryableStatus(status)) {
-        await sleep(RETRY_DELAY_MS * attempt)
-        continue
-      }
-      throw err
-    }
-  }
-  if (!response) throw lastErr
-
-  const text = response.text
+  const text = await generateJudgementText(prompt, SAME_ARTIST_SCHEMA)
   if (!text) {
-    return { sameArtist: false, confidence: 0, reasoning: 'Geminiから応答がありませんでした' }
+    return { sameArtist: false, confidence: 0, reasoning: 'LLMから応答がありませんでした' }
   }
 
   let parsed: unknown
   try {
     parsed = JSON.parse(text)
   } catch {
-    return { sameArtist: false, confidence: 0, reasoning: 'Geminiの応答をJSONとして解釈できませんでした' }
+    return { sameArtist: false, confidence: 0, reasoning: 'LLMの応答をJSONとして解釈できませんでした' }
   }
 
   const p = parsed as { sameArtist?: unknown; confidence?: unknown; reasoning?: unknown }

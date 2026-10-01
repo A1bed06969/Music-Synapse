@@ -6,12 +6,11 @@
 // needs_review的な中間状態は設けず、確信度が閾値未満なら呼び出し側で
 // 「候補なし」として扱う(スクリプト側の閾値と合わせてutils/youtubeMvMatch.tsは
 // 関与しない、チャンネル特定だけの判定)。
-import { GoogleGenAI, Type } from '@google/genai'
+import { Type } from '@google/genai'
 import type { YoutubeChannelDetail } from './youtubeChannelSearch'
+import { generateJudgementText, AllProvidersExhaustedError } from './llmJudgeChain'
 
-const MODEL = 'gemini-3.1-flash-lite'
-
-/** Geminiの無料枠クォータ(分単位・日単位どちらも)を使い切った状態。呼び出し側は
+/** Gemini(flash-lite/flash)・Groqの全プロバイダが判定不能だった状態。呼び出し側は
  * これを「このアーティストの判定に失敗した」ではなく「そもそも試せていない」
  * として扱い、youtube_mv_backfill_logに書き込まずに処理を打ち切ること
  * (書いてしまうと次回実行時にこのアーティストが永久にスキップされてしまう。
@@ -61,72 +60,33 @@ const RESPONSE_SCHEMA = {
   required: ['confidence', 'reasoning'],
 }
 
-// gemini-3.1-flash-liteは高負荷時に503(UNAVAILABLE)を頻繁に返す実態が確認できた
-// ため、既存のgeminiRadioPickMatch.ts等と同じリトライ回数・指数バックオフにする
-const MAX_ATTEMPTS = 5
-const RETRY_DELAY_MS = 3_000
-
-function isRetryableStatus(status: unknown): boolean {
-  return status === 503 || status === 429
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
-}
-
 export async function judgeYoutubeChannelWithGemini(
   artistName: string,
   candidates: YoutubeChannelDetail[]
 ): Promise<YoutubeChannelJudgement> {
-  const apiKey = process.env.GEMINI_API_KEY
-  if (!apiKey) {
-    throw new Error('GEMINI_API_KEY が設定されていません。')
-  }
   if (candidates.length === 0) {
     return { channelIndex: null, confidence: 0, reasoning: '候補が0件のため判定不可' }
   }
 
-  const ai = new GoogleGenAI({ apiKey })
   const prompt = buildPrompt(artistName, candidates)
-
-  let lastErr: unknown
-  let response: Awaited<ReturnType<typeof ai.models.generateContent>> | undefined
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    try {
-      response = await ai.models.generateContent({
-        model: MODEL,
-        contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        config: {
-          responseMimeType: 'application/json',
-          responseSchema: RESPONSE_SCHEMA,
-        },
-      })
-      break
-    } catch (err) {
-      lastErr = err
-      const status = (err as { status?: unknown })?.status
-      if (attempt < MAX_ATTEMPTS && isRetryableStatus(status)) {
-        await sleep(RETRY_DELAY_MS * attempt)
-        continue
-      }
-      if (status === 429) {
-        throw new GeminiQuotaExceededError((err as Error).message)
-      }
-      throw err
+  let text: string
+  try {
+    text = await generateJudgementText(prompt, RESPONSE_SCHEMA)
+  } catch (err) {
+    if (err instanceof AllProvidersExhaustedError) {
+      throw new GeminiQuotaExceededError(err.message)
     }
+    throw err
   }
-  if (!response) throw lastErr
-
-  const text = response.text
   if (!text) {
-    return { channelIndex: null, confidence: 0, reasoning: 'Geminiから応答がありませんでした' }
+    return { channelIndex: null, confidence: 0, reasoning: 'LLMから応答がありませんでした' }
   }
 
   let parsed: unknown
   try {
     parsed = JSON.parse(text)
   } catch {
-    return { channelIndex: null, confidence: 0, reasoning: 'Geminiの応答をJSONとして解釈できませんでした' }
+    return { channelIndex: null, confidence: 0, reasoning: 'LLMの応答をJSONとして解釈できませんでした' }
   }
 
   const p = parsed as { channelIndex?: unknown; confidence?: unknown; reasoning?: unknown }
