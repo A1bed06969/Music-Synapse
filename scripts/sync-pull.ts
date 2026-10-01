@@ -50,12 +50,21 @@ function latestFile(dir: string, suffix: string): string {
   return files[0].name
 }
 
-const TRUNCATE_ALL_PUBLIC_TABLES = `
+// supabase db dumpはpublicスキーマだけでなくstorage.buckets/storage.objects等
+// (バケット定義・ファイルメタデータ)も含む。--data-onlyでは制約の都合上
+// storage.bucketsは既にmigrationで作成済みの行と衝突するため、storageスキーマ側も
+// 事前にTRUNCATEしておく必要がある。ただしstorage.migrationsはSupabase Storage
+// 自体の内部スキーマバージョン管理テーブルであり、アプリのデータではないため
+// 除外する(消すとStorage APIが壊れる)
+const TRUNCATE_ALL_TABLES = `
 DO $$
 DECLARE r RECORD;
 BEGIN
-  FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
-    EXECUTE 'TRUNCATE TABLE public.' || quote_ident(r.tablename) || ' CASCADE';
+  FOR r IN (
+    SELECT schemaname, tablename FROM pg_tables
+    WHERE schemaname IN ('public', 'storage') AND tablename != 'migrations'
+  ) LOOP
+    EXECUTE 'TRUNCATE TABLE ' || quote_ident(r.schemaname) || '.' || quote_ident(r.tablename) || ' CASCADE';
   END LOOP;
 END $$;
 `
@@ -95,7 +104,7 @@ function main() {
   const dumpSql = readFileSync(dumpPath, 'utf-8')
   const restoreScript = [
     'SET session_replication_role = replica;',
-    TRUNCATE_ALL_PUBLIC_TABLES,
+    TRUNCATE_ALL_TABLES,
     dumpSql,
     'SET session_replication_role = DEFAULT;',
   ].join('\n')
