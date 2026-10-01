@@ -10,7 +10,7 @@
     "test": "node --env-file-if-exists=.env.local --test \"__tests__/**/*.test.ts\"",
     "db:backup": "bash scripts/db-backup.sh",
     "db:restore": "bash scripts/db-restore.sh",
-    "sync:push": "tsx --env-file=.env.local scripts/sync-push.ts"
+    "sync:push": "npx tsx --env-file=.env.local scripts/sync-push.ts"
   },
   "dependencies": {
     "@google/genai": "^2.18.0",
