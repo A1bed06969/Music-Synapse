@@ -53,20 +53,20 @@ function latestFile(dir: string, suffix: string): string {
 // supabase db dumpはpublicスキーマだけでなくstorage.buckets/storage.objects等
 // (バケット定義・ファイルメタデータ)も含む。--data-onlyでは制約の都合上
 // storage.bucketsは既にmigrationで作成済みの行と衝突するため、storageスキーマ側も
-// 事前にTRUNCATEしておく必要がある。除外テーブル: storage.migrationsはSupabase
-// Storage自体の内部スキーマバージョン管理テーブルでアプリのデータではない
-// (消すとStorage APIが壊れる)。storage.buckets_vectorsはpostgresユーザーにも
-// TRUNCATE権限が無く(supabase_storage_admin所有、ローカル環境で実測確認済み)、
-// このプロジェクトでは使っていない機能(ベクター検索用バケット)のため触らない
-const STORAGE_SCHEMA_EXCLUDED_TABLES = new Set(['migrations', 'buckets_vectors'])
+// 事前にTRUNCATEしておく必要がある。storageスキーマには
+// supabase_storage_admin所有でpostgresにTRUNCATE権限が無いテーブルが混在する
+// (storage.migrations = Storage自体の内部スキーマバージョン管理、
+// storage.buckets_vectors/vector_indexes = 未使用のベクター検索機能。
+// ローカル環境で実測確認済み)。個別に列挙すると将来また増える度に壊れるため、
+// has_table_privilege()でTRUNCATE権限がある表だけを動的に選んでループする
 const TRUNCATE_ALL_TABLES = `
 DO $$
 DECLARE r RECORD;
 BEGIN
   FOR r IN (
     SELECT schemaname, tablename FROM pg_tables
-    WHERE schemaname = 'public'
-       OR (schemaname = 'storage' AND tablename NOT IN (${[...STORAGE_SCHEMA_EXCLUDED_TABLES].map((t) => `'${t}'`).join(', ')}))
+    WHERE schemaname IN ('public', 'storage')
+      AND has_table_privilege(quote_ident(schemaname) || '.' || quote_ident(tablename), 'TRUNCATE')
   ) LOOP
     EXECUTE 'TRUNCATE TABLE ' || quote_ident(r.schemaname) || '.' || quote_ident(r.tablename) || ' CASCADE';
   END LOOP;
