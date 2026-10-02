@@ -19,7 +19,8 @@
 //
 // 実行方法: npm run sync:pull
 import { execSync, spawnSync } from 'child_process'
-import { readdirSync, statSync, copyFileSync, readFileSync } from 'fs'
+import { readdirSync, statSync, copyFileSync, readFileSync, mkdtempSync, rmSync } from 'fs'
+import os from 'os'
 import path from 'path'
 import { loadSyncConfig, runSupabase, syncSubfolders } from './syncConfig'
 
@@ -124,6 +125,9 @@ function main() {
 
   // 4) Storage復元(ボリュームの中身を一旦空にしてから展開)
   step('4/5 Storageスナップショットを復元')
+  // WindowsのDrive(G:)はDocker Desktopからbind mountできないため、ローカルの一時フォルダ経由で渡す
+  const stageDir = mkdtempSync(path.join(os.tmpdir(), 'ms-sync-'))
+  copyFileSync(path.join(storageSnapshot, 'storage.tar.gz'), path.join(stageDir, 'storage.tar.gz'))
   const dockerResult = spawnSync(
     'docker',
     [
@@ -132,7 +136,7 @@ function main() {
       '-v',
       `${storageVolume}:/vol`,
       '-v',
-      `${storageSnapshot}:/backup`,
+      `${stageDir}:/backup`,
       'alpine',
       'sh',
       '-c',
@@ -140,6 +144,7 @@ function main() {
     ],
     { stdio: 'inherit' }
   )
+  rmSync(stageDir, { recursive: true, force: true })
   if (dockerResult.status !== 0) fail('Storageスナップショットの復元に失敗しました。')
   console.log('OK: Storageを復元しました。')
 

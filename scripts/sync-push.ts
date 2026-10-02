@@ -8,7 +8,8 @@
 //
 // 実行方法: npm run sync:push
 import { execSync, spawnSync } from 'child_process'
-import { readdirSync, statSync, unlinkSync, copyFileSync, readFileSync } from 'fs'
+import { readdirSync, statSync, unlinkSync, copyFileSync, readFileSync, mkdtempSync, rmSync } from 'fs'
+import os from 'os'
 import path from 'path'
 import { loadSyncConfig, runSupabase, syncSubfolders } from './syncConfig'
 
@@ -84,6 +85,8 @@ function main() {
   const projectId = readProjectId()
   const storageVolume = `supabase_storage_${projectId}`
   const storageTarPath = path.join(storageSnapshot, 'storage.tar.gz')
+  // WindowsのDrive(G:)はDocker Desktopからbind mountできないため、ローカルの一時フォルダに作ってからコピーする
+  const stageDir = mkdtempSync(path.join(os.tmpdir(), 'ms-sync-'))
   const dockerResult = spawnSync(
     'docker',
     [
@@ -92,7 +95,7 @@ function main() {
       '-v',
       `${storageVolume}:/vol`,
       '-v',
-      `${storageSnapshot}:/backup`,
+      `${stageDir}:/backup`,
       'alpine',
       'tar',
       'czf',
@@ -103,7 +106,12 @@ function main() {
     ],
     { stdio: 'inherit' }
   )
-  if (dockerResult.status !== 0) fail('Storageスナップショットの作成に失敗しました。')
+  if (dockerResult.status !== 0) {
+    rmSync(stageDir, { recursive: true, force: true })
+    fail('Storageスナップショットの作成に失敗しました。')
+  }
+  copyFileSync(path.join(stageDir, 'storage.tar.gz'), storageTarPath)
+  rmSync(stageDir, { recursive: true, force: true })
   console.log(`保存: ${storageTarPath}`)
 
   // 6) env
