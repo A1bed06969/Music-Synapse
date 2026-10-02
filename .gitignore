@@ -60,3 +60,4 @@ next-env.d.ts
 # PCごとのGoogle Drive同期フォルダの実パス(scripts/syncConfig.ts参照)。
 # Mac/Windowsでパスが異なるためコミットしない
 /.sync-config.json
+/.anglicize-report.json

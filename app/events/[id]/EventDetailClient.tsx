@@ -61,10 +61,8 @@ export default function EventDetailClient({
 }) {
   const [selectedView, setSelectedView] = useState<EventContentView>('artists')
 
-  const leftColumn = (
-    <div className="flex flex-col gap-8">
-      <EventIdentityPanel data={identity} />
-      {relatedNews.length > 0 && (
+  const newsSection =
+    relatedNews.length > 0 ? (
         <div>
           <h2 className="text-xs uppercase tracking-wide text-white/40">関連ニュース</h2>
           <div className="mt-3 space-y-2">
@@ -102,13 +100,17 @@ export default function EventDetailClient({
             ))}
           </div>
         </div>
-      )}
+    ) : null
+
+  const leftColumn = (
+    <div className="flex flex-col gap-8">
+      <EventIdentityPanel data={identity} />
+      {newsSection}
     </div>
   )
 
-  const centerColumn = (
-    <div>
-      {editionList.length > 1 && (
+  const editionChips =
+    editionList.length > 1 ? (
         <div className="flex flex-wrap gap-2">
           {editionList.map((ed) => (
             <Link
@@ -124,15 +126,51 @@ export default function EventDetailClient({
             </Link>
           ))}
         </div>
-      )}
+    ) : null
 
-      {!scheduleProps ? (
-        <p className="mt-4 text-sm text-white/40">まだ開催情報が登録されていません。</p>
-      ) : (
-        <div className={editionList.length > 1 ? 'mt-6' : undefined}>
-          <EventScheduleView view={selectedView} {...scheduleProps} />
-        </div>
-      )}
+  const scheduleContent = !scheduleProps ? (
+    <p className="mt-4 text-sm text-white/40">まだ開催情報が登録されていません。</p>
+  ) : (
+    <div className={editionList.length > 1 ? 'mt-6' : undefined}>
+      <EventScheduleView view={selectedView} {...scheduleProps} />
+    </div>
+  )
+
+  const centerColumn = (
+    <div>
+      {editionChips}
+      {scheduleContent}
+    </div>
+  )
+
+  // モバイルでは右カラム(縦積みだと最下部に埋もれる)ではなく、パワープレイ
+  // ページ(OnAirMobileTabs)と同じセグメントコントロールをタイトル/開催年の
+  // 直下に置く。
+  const mobileSwitcher = (
+    <div className="grid grid-cols-3 gap-1 rounded-lg border border-white/10 bg-white/[0.03] p-1">
+      {MENU_ITEMS.map((item) => (
+        <button
+          key={item.view}
+          type="button"
+          onClick={() => setSelectedView(item.view)}
+          disabled={!scheduleProps}
+          className={`rounded-md py-2 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-30 ${
+            selectedView === item.view ? 'bg-white text-black' : 'text-white/60 hover:text-white'
+          }`}
+        >
+          {item.label}
+        </button>
+      ))}
+    </div>
+  )
+
+  const mobileContent = (
+    <div className="flex flex-col gap-6">
+      <EventIdentityPanel data={identity} />
+      {editionChips}
+      {mobileSwitcher}
+      <div className="min-w-0">{scheduleContent}</div>
+      {newsSection}
     </div>
   )
 
@@ -163,6 +201,7 @@ export default function EventDetailClient({
         left={leftColumn}
         center={centerColumn}
         right={rightColumn}
+        mobileContent={mobileContent}
       />
     </>
   )
