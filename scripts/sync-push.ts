@@ -10,7 +10,7 @@
 import { execSync, spawnSync } from 'child_process'
 import { readdirSync, statSync, unlinkSync, copyFileSync, readFileSync } from 'fs'
 import path from 'path'
-import { loadSyncConfig, syncSubfolders } from './syncConfig'
+import { loadSyncConfig, runSupabase, syncSubfolders } from './syncConfig'
 
 const DB_SNAPSHOT_KEEP = 10
 const ENV_FILES = ['.env.local', '.env.production.local']
@@ -50,7 +50,7 @@ function main() {
   if (pushResult.status !== 0) fail('git pushに失敗しました。')
 
   // 3) ローカルSupabaseが起動しているか確認
-  const statusCheck = spawnSync('supabase', ['status'], { stdio: 'pipe' })
+  const statusCheck = runSupabase(['status'], { stdio: 'pipe' })
   if (statusCheck.status !== 0) {
     fail("ローカルSupabaseが起動していません。先に 'supabase start' を実行してください。")
   }
@@ -63,7 +63,7 @@ function main() {
     .replace('T', '-')
     .slice(0, 15) // YYYYMMDD-HHMMSS
   const dumpPath = path.join(dbSnapshots, `${timestamp}.sql`)
-  const dumpResult = spawnSync('supabase', ['db', 'dump', '--local', '--data-only', '-f', dumpPath], {
+  const dumpResult = runSupabase(['db', 'dump', '--local', '--data-only', '-f', dumpPath], {
     stdio: 'inherit',
   })
   if (dumpResult.status !== 0) fail('DBダンプに失敗しました。')

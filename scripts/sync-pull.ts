@@ -21,7 +21,7 @@
 import { execSync, spawnSync } from 'child_process'
 import { readdirSync, statSync, copyFileSync, readFileSync } from 'fs'
 import path from 'path'
-import { loadSyncConfig, syncSubfolders } from './syncConfig'
+import { loadSyncConfig, runSupabase, syncSubfolders } from './syncConfig'
 
 const ENV_FILES = ['.env.local', '.env.production.local']
 
@@ -95,7 +95,7 @@ function main() {
   if (pullResult.status !== 0) fail('git pullに失敗しました。')
 
   // ローカルSupabaseが起動しているか確認
-  const statusCheck = spawnSync('supabase', ['status'], { stdio: 'pipe' })
+  const statusCheck = runSupabase(['status'], { stdio: 'pipe' })
   if (statusCheck.status !== 0) {
     fail("ローカルSupabaseが起動していません。先に 'supabase start' を実行してください。")
   }

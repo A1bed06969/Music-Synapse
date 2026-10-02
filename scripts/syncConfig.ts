@@ -9,6 +9,7 @@
 //   { "driveSyncFolder": "/path/to/Drive/music-synapse-sync" }
 import { existsSync, readFileSync, mkdirSync } from 'fs'
 import path from 'path'
+import { spawnSync, type SpawnSyncOptions } from 'child_process'
 
 export type SyncConfig = {
   driveSyncFolder: string
@@ -44,4 +45,12 @@ export function syncSubfolders(config: SyncConfig) {
     mkdirSync(dir, { recursive: true })
   }
   return { dbSnapshots, storageSnapshot, env }
+}
+
+// Windowsにはsupabase CLIをグローバル導入していないため、npx経由(.cmdなのでshell必須)で呼ぶ
+export function runSupabase(args: string[], options: SpawnSyncOptions = {}) {
+  if (process.platform === 'win32') {
+    return spawnSync('npx', ['supabase', ...args], { ...options, shell: true })
+  }
+  return spawnSync('supabase', args, options)
 }
