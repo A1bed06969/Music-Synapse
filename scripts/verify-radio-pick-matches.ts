@@ -19,6 +19,7 @@
 //   npx tsx --env-file=.env.local scripts/verify-radio-pick-matches.ts [--limit=N]
 import { createAdminClient } from '@/utils/Supabase/admin'
 import { internalApiBaseUrl } from '@/utils/internalApiBaseUrl'
+import { fetchDevServer } from '@/utils/devServerFetch'
 
 // 2026-09-18のプロダクションSupabase障害・復旧断念(ローカル専用構成への全面移行)
 // 以降、本番Vercelデプロイは存在しないためローカル開発サーバーへ向ける
@@ -37,7 +38,7 @@ type VerifyResponse = {
 
 async function verifyOne(pickId: string): Promise<VerifyResponse> {
   const authHeader = 'Basic ' + Buffer.from(`${process.env.BASIC_AUTH_USER}:${process.env.BASIC_AUTH_PASSWORD}`).toString('base64')
-  const res = await fetch(`${BASE_URL}/api/admin/radio-pick-verify`, {
+  const res = await fetchDevServer(`${BASE_URL}/api/admin/radio-pick-verify`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: authHeader },
     body: JSON.stringify({ pickId }),
