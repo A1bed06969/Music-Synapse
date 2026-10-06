@@ -8,6 +8,8 @@ import {
   extractOgImage,
   stripHtmlToText,
   extractFestivalLineupWithGemini,
+  extractFestivalLineupFromImageWithGemini,
+  findLineupImageUrls,
   summarizeGeminiError,
   type FestivalLineupCandidate,
 } from '@/utils/geminiFestivalLineupExtract'
@@ -658,6 +660,8 @@ export type FestivalExtractResult =
       editionYear: number
       startDate: string | null
       endDate: string | null
+      /** 本文テキストで0件だったため、ポスター画像から読み取った場合のその画像URL */
+      lineupImageUrl?: string
     }
   | { success: false; message: string }
 
@@ -705,10 +709,28 @@ export async function extractFestivalLineupCandidates(
     return { success: false, message: `AI抽出に失敗しました: ${summarizeGeminiError(err)}` }
   }
 
+  // 本文に出演者が無い(ポスター画像だけで告知している)サイトは、画像から読み取る
+  let lineupImageUrl: string | undefined
+  if (candidates.length === 0) {
+    for (const url of findLineupImageUrls(html, targetUrl)) {
+      try {
+        const fromImage = await extractFestivalLineupFromImageWithGemini(url)
+        if (fromImage.length > 0) {
+          candidates = fromImage
+          lineupImageUrl = url
+          break
+        }
+      } catch (err) {
+        return { success: false, message: `ポスター画像からのAI抽出に失敗しました: ${summarizeGeminiError(err)}` }
+      }
+    }
+  }
+
   const result: FestivalExtractResult = {
     success: true,
     imageUrl,
     candidates,
+    ...(lineupImageUrl ? { lineupImageUrl } : {}),
     festivalName: event.name,
     editionYear: edition.year,
     startDate: edition.start_date,

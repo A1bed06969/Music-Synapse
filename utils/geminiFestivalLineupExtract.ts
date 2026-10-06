@@ -68,7 +68,9 @@ export function stripHtmlToText(html: string, maxLength = 15000): string {
     .replace(/<[^>]+>/g, ' ')
     .replace(/&nbsp;/g, ' ')
     .replace(/&amp;/g, '&')
+    .replace(/\r/g, '')
     .replace(/[ \t]+/g, ' ')
+    .replace(/\n /g, '\n')
     .replace(/\n{2,}/g, '\n')
     .trim()
   return text.slice(0, maxLength)
@@ -131,13 +133,13 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-export async function extractFestivalLineupWithGemini(pageText: string): Promise<FestivalLineupCandidate[]> {
+type GeminiPart = { text: string } | { inlineData: { mimeType: string; data: string } }
+
+async function generateLineupWithGemini(parts: GeminiPart[]): Promise<FestivalLineupCandidate[]> {
   const apiKey = process.env.GEMINI_API_KEY
   if (!apiKey) {
     throw new Error('GEMINI_API_KEY が設定されていません。')
   }
-  if (!pageText.trim()) return []
-
   const ai = new GoogleGenAI({ apiKey })
 
   let lastErr: unknown
@@ -146,7 +148,7 @@ export async function extractFestivalLineupWithGemini(pageText: string): Promise
     try {
       response = await ai.models.generateContent({
         model: MODEL,
-        contents: [{ role: 'user', parts: [{ text: `${PROMPT}\n\n---\n${pageText}` }] }],
+        contents: [{ role: 'user', parts }],
         config: {
           responseMimeType: 'application/json',
           responseSchema: RESPONSE_SCHEMA,
@@ -184,4 +186,59 @@ export async function extractFestivalLineupWithGemini(pageText: string): Promise
       day_or_time_label:
         typeof e.day_or_time_label === 'string' && e.day_or_time_label.trim() ? e.day_or_time_label.trim() : undefined,
     }))
+}
+
+export async function extractFestivalLineupWithGemini(pageText: string): Promise<FestivalLineupCandidate[]> {
+  if (!pageText.trim()) return []
+  return generateLineupWithGemini([{ text: `${PROMPT}\n\n---\n${pageText}` }])
+}
+
+const IMAGE_PROMPT = `この画像は音楽フェスティバルのラインナップ告知ポスター(出演者一覧)です。
+出演アーティストの名前を全て抽出してください。
+
+以下のルールに従ってください:
+- ポスターに出演者として書かれている名前のみを抽出する(フェス名、スポンサー名、日付、会場名は含めない)
+- 全て大文字で書かれていても、一般的に知られている正式な表記がわかる場合はその表記にする(例: "THE XX" → "The xx")。わからない場合は書かれている通りにする
+- 曜日・開催日・週末などの区分が書かれていれば、その表記をday_or_time_labelに入れる(例: "Friday"、"DAY1"、"W1")
+- ステージ名が明記されていればstageに入れる(不明なら省略)
+- 同じアーティストが複数の日に出てくる場合は1回だけ含め、day_or_time_labelに全ての日を並べる
+- 出演者が読み取れない場合は空の配列を返す`
+
+const MAX_IMAGE_BYTES = 15 * 1024 * 1024
+
+/** ラインナップをポスター画像でしか掲載していないサイト向けに、画像からGeminiで出演者を読み取る */
+export async function extractFestivalLineupFromImageWithGemini(imageUrl: string): Promise<FestivalLineupCandidate[]> {
+  const res = await fetch(imageUrl, { headers: { 'User-Agent': USER_AGENT } })
+  if (!res.ok) throw new Error(`画像の取得に失敗しました (${res.status})`)
+  const mimeType = (res.headers.get('content-type') ?? '').split(';')[0].trim()
+  if (!mimeType.startsWith('image/')) return []
+  const bytes = Buffer.from(await res.arrayBuffer())
+  if (bytes.length > MAX_IMAGE_BYTES) return []
+  return generateLineupWithGemini([{ text: IMAGE_PROMPT }, { inlineData: { mimeType, data: bytes.toString('base64') } }])
+}
+
+/** ページ内から「ラインナップのポスター画像」らしき画像URLを探す。URL・alt・classに
+ * lineup/poster等の語を含むimgを優先し、最後にog:imageを候補に加える */
+export function findLineupImageUrls(html: string, pageUrl: string, max = 3): string[] {
+  const hint = /line-?up|admat|poster|by-?day|bill/i
+  const urls: string[] = []
+  const push = (raw: string | undefined) => {
+    if (!raw) return
+    try {
+      const url = new URL(raw.trim(), pageUrl).toString()
+      if (!urls.includes(url)) urls.push(url)
+    } catch {
+      // 不正なURLは無視
+    }
+  }
+  for (const tag of html.match(/<img\b[^>]*>/gi) ?? []) {
+    if (!hint.test(tag)) continue
+    const srcset = tag.match(/\bsrcset=["']([^"']+)["']/i)?.[1]
+    // srcsetがあれば最大解像度(最後の候補)を使う
+    const largest = srcset?.split(',').map((s) => s.trim().split(/\s+/)[0]).filter(Boolean).pop()
+    push(largest ?? tag.match(/\b(?:data-src|src)=["']([^"']+)["']/i)?.[1])
+  }
+  const og = extractOgImage(html)
+  if (og) push(og)
+  return urls.slice(0, max)
 }

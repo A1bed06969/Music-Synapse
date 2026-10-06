@@ -135,10 +135,20 @@ export default function FestivalLineupExtractor({
             </div>
           )}
 
+          {result.lineupImageUrl && result.candidates.length > 0 && (
+            <p className="text-xs text-amber-300/80">
+              ページ本文に出演者が無かったため、
+              <a href={result.lineupImageUrl} target="_blank" rel="noreferrer" className="underline">
+                ラインナップのポスター画像
+              </a>
+              からAIで読み取りました。表記ゆれ・読み間違いがないか確認してから登録してください。
+            </p>
+          )}
+
           {result.candidates.length === 0 ? (
             <div className="space-y-2">
               <p className="text-xs text-white/30">
-                出演者候補が見つかりませんでした(JS描画のサイトでは取得できないことがあります)。
+                出演者候補が見つかりませんでした(本文・ポスター画像のどちらからも読み取れませんでした)。
               </p>
               {pilotAdded ? (
                 <p className="text-xs text-green-400">
