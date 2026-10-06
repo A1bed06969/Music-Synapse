@@ -266,8 +266,8 @@ export type ItunesArtistSearchResult = {
  * 指定IDのアルバム単体を取得する(検索結果からの単一アルバム/トラック登録で、
  * フィールドが揃った正規のアルバムオブジェクトを得るために使う)
  */
-export async function fetchAlbumById(collectionId: number): Promise<ItunesAlbum | null> {
-  const url = `${ITUNES_LOOKUP_BASE}?id=${collectionId}&entity=album&country=JP`
+export async function fetchAlbumById(collectionId: number, country = 'JP'): Promise<ItunesAlbum | null> {
+  const url = `${ITUNES_LOOKUP_BASE}?id=${collectionId}&entity=album&country=${country}`
   const data = await fetchItunes(url, 'album lookup')
   return data.results.find((r: any) => r.wrapperType === 'collection') ?? null
 }

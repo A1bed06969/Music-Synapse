@@ -61,3 +61,4 @@ next-env.d.ts
 # Mac/Windowsでパスが異なるためコミットしない
 /.sync-config.json
 /.anglicize-report.json
+/.tsutaya-meiban-pending.json

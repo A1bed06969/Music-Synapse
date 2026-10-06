@@ -9,13 +9,14 @@
 import { createAdminClient } from '@/utils/Supabase/admin';
 import { findAppleMusicAlbumMatch } from '@/utils/discGuideImport';
 import { registerAlbumFromSearch } from '@/app/admin/import/search/actions';
+import { resolveCurationAlbum } from '@/utils/curationAlbumResolve';
 import { classifyAlbumType } from '@/utils/albumType';
 import { NextRequest, NextResponse } from 'next/server';
 
 export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
-  const { rankingId, periodDate, artistName, title, year, rank } = await req.json();
+  const { rankingId, periodDate, artistName, title, year, rank, strict } = await req.json();
 
   if (!rankingId || !periodDate || !artistName || !title) {
     return NextResponse.json({ success: false, message: '必須項目が不足しています。' }, { status: 400 });
@@ -25,14 +26,28 @@ export async function POST(req: NextRequest) {
   let albumId: string | undefined;
   let matchedItunes = false;
 
-  const matched = await findAppleMusicAlbumMatch(artistName, title);
+  // strict: 表記ゆれ(邦題/カタカナ)をLLMで解決し、見つからなければ名前だけのアーティスト/
+  // アルバムを作らず保留として返す(名前一致の新規作成が既存の英語名アーティストと重複するため)
+  let matched: { collectionId: number; country: 'JP' | 'US' } | null = null;
+  if (strict) {
+    const resolved = await resolveCurationAlbum(artistName, title);
+    if (!resolved.found) {
+      return NextResponse.json({ success: false, pending: true, message: resolved.reason });
+    }
+    await adoptNameOnlyStub(supabase, artistName, resolved.appleArtistId);
+    matched = { collectionId: resolved.collectionId, country: resolved.country };
+  } else {
+    const exact = await findAppleMusicAlbumMatch(artistName, title);
+    if (exact) matched = { collectionId: exact.collectionId, country: 'JP' };
+  }
   if (matched) {
-    const result = await registerAlbumFromSearch(matched.collectionId);
+    const result = await registerAlbumFromSearch(matched.collectionId, matched.country);
     if (result.success) {
       const { data: registeredAlbum } = await supabase
         .from('album')
         .select('id')
         .eq('apple_music_album_id', String(matched.collectionId))
+        .limit(1)
         .maybeSingle();
       if (registeredAlbum) {
         albumId = registeredAlbum.id;
@@ -41,6 +56,10 @@ export async function POST(req: NextRequest) {
     } else {
       console.error(`iTunes経由の登録に失敗("${title}"): ${result.message}`);
     }
+  }
+
+  if (!albumId && strict) {
+    return NextResponse.json({ success: false, pending: true, message: 'Apple Musicのアルバム登録に失敗' });
   }
 
   if (!albumId) {
@@ -104,4 +123,28 @@ export async function POST(req: NextRequest) {
   }
 
   return NextResponse.json({ success: true, albumId, matchedItunes });
+}
+
+// リストと同じ名前で、Apple Music ID・MusicBrainz IDを持たない既存行(以前の名前だけ登録)が
+// あれば、それに今回特定したApple Music IDを付与して流用させる(新規作成による重複を防ぐ)
+async function adoptNameOnlyStub(
+  supabase: ReturnType<typeof createAdminClient>,
+  artistName: string,
+  appleArtistId: number
+) {
+  const { data: withId } = await supabase
+    .from('artist')
+    .select('id')
+    .eq('apple_music_artist_id', String(appleArtistId))
+    .limit(1);
+  if (withId && withId.length > 0) return;
+  const { data: stubs } = await supabase
+    .from('artist')
+    .select('id')
+    .ilike('name', artistName)
+    .is('apple_music_artist_id', null)
+    .is('musicbrainz_id', null);
+  if (stubs && stubs.length === 1) {
+    await supabase.from('artist').update({ apple_music_artist_id: String(appleArtistId) }).eq('id', stubs[0].id);
+  }
 }

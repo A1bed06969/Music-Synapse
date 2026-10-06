@@ -18,11 +18,13 @@
  * 実行方法:
  *   npx tsx --env-file=.env.local scripts/import-tsutaya-meiban.ts <tsutaya-meiban.jsonのパス>
  */
-import { readFileSync } from 'fs'
+import { readFileSync, writeFileSync } from 'fs'
+import { fetchDevServer } from '@/utils/devServerFetch'
 
 const RANKING_ID = 'MS_RNK_97lr6602'
 const PERIOD_DATE = '2020-01-01'
 const BASE_URL = 'http://localhost:3000'
+const PENDING_PATH = '.tsutaya-meiban-pending.json'
 
 type Row = { artist_name: string; title: string }
 
@@ -45,11 +47,12 @@ async function main() {
   let fallback = 0
   let alreadyLinked = 0
   let failed = 0
+  const pending: { artist_name: string; title: string; reason: string }[] = []
 
   for (const row of rows) {
     done++
     try {
-      const res = await fetch(`${BASE_URL}/api/admin/ranking/register-album`, {
+      const res = await fetchDevServer(`${BASE_URL}/api/admin/ranking/register-album`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: authHeader() },
         body: JSON.stringify({
@@ -58,10 +61,16 @@ async function main() {
           artistName: row.artist_name,
           title: row.title,
           rank: null,
+          strict: true,
         }),
       })
       const json = await res.json()
 
+      if (!json.success && json.pending) {
+        pending.push({ ...row, reason: json.message })
+        console.log(`[${done}/${rows.length}] ${row.artist_name} / ${row.title} -> 保留: ${json.message}`)
+        continue
+      }
       if (!json.success) {
         failed++
         console.log(`[${done}/${rows.length}] ${row.artist_name} / ${row.title} -> 失敗: ${json.message}`)
@@ -83,9 +92,11 @@ async function main() {
     }
   }
 
+  writeFileSync(PENDING_PATH, JSON.stringify(pending, null, 1))
   console.log(
-    `\n完了: ${done}件処理、iTunes一致${matched}件、最小限登録${fallback}件、既に登録済み${alreadyLinked}件、失敗${failed}件。`
+    `\n完了: ${done}件処理、iTunes一致${matched}件、最小限登録${fallback}件、既に登録済み${alreadyLinked}件、保留${pending.length}件、失敗${failed}件。`
   )
+  console.log(`保留一覧: ${PENDING_PATH}`)
 }
 
 main().catch((err) => {

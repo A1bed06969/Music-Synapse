@@ -115,10 +115,10 @@ export async function registerArtistFromSearch(appleArtistId: number): Promise<R
 
 /** アルバムを検索結果から登録する(収録トラックも含む)。アーティストが未登録なら
  * 先に本体だけ作成してから、そのアルバム1件だけをsyncする */
-export async function registerAlbumFromSearch(collectionId: number): Promise<RegisterActionResult> {
+export async function registerAlbumFromSearch(collectionId: number, country = 'JP'): Promise<RegisterActionResult> {
   const supabase = createAdminClient()
 
-  const album = await fetchAlbumById(collectionId)
+  const album = await fetchAlbumById(collectionId, country)
   if (!album) {
     return { success: false, message: '指定のアルバムがiTunesで見つかりませんでした。' }
   }
@@ -166,7 +166,7 @@ export async function registerAlbumFromSearch(collectionId: number): Promise<Reg
     console.error(`アーティスト画像の補完に失敗しました(${album.artistName}):`, err)
   }
 
-  const { trackCount } = await registerSingleAlbum(supabase, artistId, album.artistName, album)
+  const { trackCount } = await registerSingleAlbum(supabase, artistId, album.artistName, album, true, country)
 
   // レスポンスをブロックしないよう、レスポンス後にバックグラウンドでディスパッチする
   // (理由はutils/musicbrainzImportDispatch.tsのコメント参照)。版統合(デラックス版・
