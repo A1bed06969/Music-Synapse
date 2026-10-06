@@ -27,7 +27,14 @@
 import { GoogleGenAI, type Schema } from '@google/genai'
 
 const GEMINI_MODELS = ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite']
-const GROQ_MODEL = 'llama-3.3-70b-versatile'
+// Groqはモデルごとに別々の無料枠(1日のトークン/リクエスト上限)を持つため、上から順に使い、
+// 1日の上限に達したモデルは飛ばして次へ進む
+const GROQ_MODELS = ['openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'qwen/qwen3.8-27b']
+// 1日の上限に達したモデルは、この時間が経つまで試さない(長時間動くスクリプトで毎回429を待たないため)
+const GROQ_EXHAUSTED_SKIP_MS = 60 * 60_000
+const groqExhaustedAt = new Map<string, number>()
+
+class GroqDailyLimitError extends Error {}
 const MAX_ATTEMPTS = 5
 const RETRY_DELAY_MS = 3_000
 
@@ -70,7 +77,7 @@ async function generateWithGeminiModel(apiKey: string, model: string, prompt: st
   return null
 }
 
-async function generateWithGroq(apiKey: string, prompt: string): Promise<string> {
+async function generateWithGroq(apiKey: string, model: string, prompt: string): Promise<string> {
   const groqPrompt = `${prompt}\n\n必ず有効なJSONオブジェクトのみで回答してください。説明文やコードブロックのマークダウンは付けないこと。`
   let lastErr: unknown
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
@@ -79,10 +86,12 @@ async function generateWithGroq(apiKey: string, prompt: string): Promise<string>
         method: 'POST',
         headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: GROQ_MODEL,
+          model,
           messages: [{ role: 'user', content: groqPrompt }],
           response_format: { type: 'json_object' },
           temperature: 0,
+          // gpt-oss系は推論トークンも1日の上限に数えられるため、推論を浅くして消費を抑える
+          ...(model.startsWith('openai/gpt-oss') ? { reasoning_effort: 'low' } : {}),
         }),
       })
       if (res.ok) {
@@ -91,13 +100,18 @@ async function generateWithGroq(apiKey: string, prompt: string): Promise<string>
         if (typeof text === 'string' && text.trim()) return text
         throw new Error('Groqから空の応答が返されました')
       }
+      const body = await res.text().catch(() => '')
+      if (res.status === 429 && /per day/i.test(body)) {
+        throw new GroqDailyLimitError(`Groq ${model}の1日の上限に達しました`)
+      }
       if ((res.status === 429 || res.status === 503) && attempt < MAX_ATTEMPTS) {
-        await sleep(RETRY_DELAY_MS * attempt)
+        const retryAfter = Number(res.headers.get('retry-after'))
+        await sleep(Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : RETRY_DELAY_MS * attempt)
         continue
       }
-      const body = await res.text().catch(() => '')
       throw new Error(`Groq API error ${res.status}: ${body.slice(0, 200)}`)
     } catch (err) {
+      if (err instanceof GroqDailyLimitError) throw err
       lastErr = err
       if (attempt >= MAX_ATTEMPTS) throw err
     }
@@ -123,11 +137,18 @@ export async function generateJudgementText(prompt: string, geminiSchema: Schema
       `Gemini無料枠(${GEMINI_MODELS.join('/')})を使い切り、GROQ_API_KEYも未設定のため判定できませんでした。`
     )
   }
-  try {
-    return await generateWithGroq(groqApiKey, prompt)
-  } catch (err) {
-    throw new AllProvidersExhaustedError(
-      `Gemini無料枠を使い切り、Groqフォールバックも失敗しました: ${(err as Error).message}`
-    )
+  const errors: string[] = []
+  for (const model of GROQ_MODELS) {
+    const exhaustedAt = groqExhaustedAt.get(model)
+    if (exhaustedAt && Date.now() - exhaustedAt < GROQ_EXHAUSTED_SKIP_MS) continue
+    try {
+      return await generateWithGroq(groqApiKey, model, prompt)
+    } catch (err) {
+      if (err instanceof GroqDailyLimitError) groqExhaustedAt.set(model, Date.now())
+      errors.push(`${model}: ${(err as Error).message}`)
+    }
   }
+  throw new AllProvidersExhaustedError(
+    `Gemini無料枠を使い切り、Groqフォールバックも失敗しました: ${errors.join(' / ') || '全Groqモデルが1日の上限に到達済み'}`
+  )
 }
