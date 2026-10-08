@@ -24,6 +24,20 @@ export default async function AdminDataPage({
     <div className="mx-auto max-w-[1600px] px-6 py-12">
       <h1 className="text-2xl font-bold">管理画面</h1>
       <p className="mt-2 text-sm text-white/50">できることの一覧です。使いたい機能のカードをクリックしてください。</p>
+      <div className="mt-4 flex flex-wrap gap-2">
+        <Link
+          href="/admin/data/queue"
+          className="rounded-md bg-amber-400 px-3 py-1.5 text-sm font-medium text-black hover:bg-amber-300"
+        >
+          作業キュー(確認待ちをまとめて処理)
+        </Link>
+        <Link
+          href="/admin/data/media/onair-grid"
+          className="rounded-md border border-white/15 px-3 py-1.5 text-sm hover:bg-white/5"
+        >
+          パワープレイを表で編集
+        </Link>
+      </div>
 
       {success && (
         <div className="mt-6 rounded-md border border-green-500/30 bg-green-500/5 px-4 py-3 text-sm">{success}</div>
