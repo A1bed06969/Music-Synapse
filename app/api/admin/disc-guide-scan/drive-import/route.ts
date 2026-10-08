@@ -21,14 +21,18 @@ import { matchAlbumsWithCandidates } from '@/utils/discGuideImport'
 import { extractAlbumsWithGemini } from '@/utils/geminiDiscGuideExtract'
 import { uploadDiscGuideScanImage } from '@/utils/discGuideScanStorage'
 
-export const maxDuration = 60
+// 本番(Vercel)の60秒上限に合わせていたが、ローカル運用ではGemini/iTunesが他の一括処理と
+// 枠を取り合うと1枚90秒前後かかるため、余裕を持たせる(2026-10-08)
+export const maxDuration = 600
 // 1バッチあたりの処理時間予算。gemini-3.1-flash-liteは1枚あたり実測5〜6秒程度
 // なので、この予算でおおよそ5〜6枚/バッチになる(1枚が長引いても下記の
 // 個別タイムアウトで打ち切られるため、予算を超えて居座ることはない)。
-const BATCH_TIME_BUDGET_MS = 35_000
+// 呼び出し側(Node fetch)の応答待ちは既定で5分。新しい1枚を始めるのは60秒まで、1枚は最長200秒で
+// 打ち切るので、1回の応答は最長260秒に収まる
+const BATCH_TIME_BUDGET_MS = 60_000
 // 1枚の処理(ダウンロード+Gemini抽出+リトライ+DB書き込み)がどれだけ時間が
 // かかっても、必ずこの時間内で切り上げて次の判定に進む。
-const PROCESS_TIME_BUDGET_MS = 30_000
+const PROCESS_TIME_BUDGET_MS = 200_000
 
 async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   let timer: ReturnType<typeof setTimeout>
