@@ -339,6 +339,12 @@ export default async function EditEventPage({
                   </div>
                   <div className="flex items-center gap-3">
                     <Link
+                      href={`/admin/data/events/edition/${ed.id}/grid`}
+                      className="text-xs text-amber-300 hover:text-amber-200"
+                    >
+                      出演者を表で編集 →
+                    </Link>
+                    <Link
                       href={`/admin/data/events/edition/${ed.id}/edit`}
                       className="text-xs text-white/40 hover:text-white/70"
                     >

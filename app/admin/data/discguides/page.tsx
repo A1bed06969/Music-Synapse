@@ -57,9 +57,15 @@ export default async function DiscGuidesAdminPage({
       {discGuideOptions.length > 0 && (
         <ul className="mt-4 flex flex-wrap gap-2 text-sm text-white/60">
           {discGuideOptions.map((d) => (
-            <li key={d.id} className="rounded-full border border-white/15 px-2.5 py-0.5 text-xs">
-              {d.title}
-              {d.published_year ? `(${d.published_year})` : ''}
+            <li key={d.id}>
+              <Link
+                href={`/admin/data/discguides/${d.id}/grid`}
+                className="block rounded-full border border-white/15 px-2.5 py-0.5 text-xs hover:border-amber-400/60 hover:text-white"
+                title="掲載作品を表で編集"
+              >
+                {d.title}
+                {d.published_year ? `(${d.published_year})` : ''} ✎
+              </Link>
             </li>
           ))}
         </ul>

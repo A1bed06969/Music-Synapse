@@ -62,8 +62,14 @@ export default async function AwardsAdminPage({
       {awardOptions.length > 0 && (
         <ul className="mt-4 flex flex-wrap gap-2 text-sm text-white/60">
           {awardOptions.map((a) => (
-            <li key={a.id} className="rounded-full border border-white/15 px-2.5 py-0.5 text-xs">
-              {a.name}
+            <li key={a.id}>
+              <Link
+                href={`/admin/data/awards/${a.id}/grid`}
+                className="block rounded-full border border-white/15 px-2.5 py-0.5 text-xs hover:border-amber-400/60 hover:text-white"
+                title="受賞・ノミネートを表で編集"
+              >
+                {a.name} ✎
+              </Link>
             </li>
           ))}
         </ul>

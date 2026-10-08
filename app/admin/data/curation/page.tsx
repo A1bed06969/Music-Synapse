@@ -94,6 +94,9 @@ export default async function CurationPage({
                       要マッチング{stubCount}件
                     </Link>
                   )}
+                  <Link href={`/admin/data/curation/${r.id}/grid`} className="text-xs text-amber-300 hover:text-amber-200">
+                    表で編集 →
+                  </Link>
                   <Link href={`/media/features/${r.id}`} className="text-xs text-white/30 hover:text-white/60">
                     一覧を見る →
                   </Link>
