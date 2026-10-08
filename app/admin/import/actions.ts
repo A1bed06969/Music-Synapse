@@ -817,7 +817,7 @@ export async function refreshArtistCatalog(
 
   for (const itunesAlbum of itunesAlbums) {
     if (knownAlbumIds.has(String(itunesAlbum.collectionId))) continue // 既存アルバムは触らない
-    newTrackCount += await syncOneAlbum(supabase, artistId, artistName, itunesAlbum, null, false, country)
+    newTrackCount += await syncOneAlbum(supabase, artistId, artistName, itunesAlbum, null, true, country)
     newAlbumCount++
   }
 
