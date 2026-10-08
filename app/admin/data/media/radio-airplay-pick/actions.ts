@@ -443,7 +443,15 @@ export async function registerPickIdToRotation(
     }
   }
 
-  const { data: existingMedia } = await supabase.from('media').select('id').eq('name', pick.station_name).maybeSingle()
+  // .maybeSingle()は2件以上あるとエラーでdata=nullになり「無い」扱いで新規作成→増殖する
+  // (2026-10-07にエフエム北海道の番組が243件に増殖)。常に最古の1件を使う
+  const { data: existingMedia } = await supabase
+    .from('media')
+    .select('id')
+    .eq('name', pick.station_name)
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle()
   let mediaId = existingMedia?.id as string | undefined
   if (!mediaId) {
     const { data: createdMedia, error } = await supabase
@@ -458,13 +466,18 @@ export async function registerPickIdToRotation(
   }
 
   const programName = pick.campaign_name || pick.station_name
-  const { data: existingProgram } = await supabase
-    .from('media_program')
-    .select('id')
-    .eq('media_id', mediaId!)
-    .eq('program_name', programName)
-    .maybeSingle()
-  let programId = existingProgram?.id as string | undefined
+  const findProgram = async () => {
+    const { data } = await supabase
+      .from('media_program')
+      .select('id')
+      .eq('media_id', mediaId!)
+      .eq('program_name', programName)
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle()
+    return data?.id as string | undefined
+  }
+  let programId = await findProgram()
   const periodType = getStationPeriodType(pick.station_name)
   if (!programId) {
     const { data: createdProgram, error } = await supabase
@@ -472,10 +485,15 @@ export async function registerPickIdToRotation(
       .insert({ media_id: mediaId, program_name: programName, period_type: periodType })
       .select('id')
       .single()
-    if (error || !createdProgram) {
+    if (createdProgram) {
+      programId = createdProgram.id
+    } else if (error?.code === '23505') {
+      // 同時実行の別リクエストが先に作成した(一意制約)。それを使う
+      programId = await findProgram()
+    }
+    if (!programId) {
       return { success: false, message: `番組の登録に失敗しました: ${error?.message}` }
     }
-    programId = createdProgram.id
   }
 
   const { data: rotation, error: rotationError } = await supabase
