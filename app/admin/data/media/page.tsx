@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { createClient } from '@/utils/Supabase/server'
 import { PREFECTURE_COORDS } from '@/utils/prefectures'
+import { groupProgramsByRegion } from './programGroups'
 import { formatRotationPeriod } from '@/utils/format'
 import { inputClass, buttonClass } from '../adminUi'
 import SearchableSelect from '../SearchableSelect'
@@ -34,7 +35,10 @@ export default async function MediaAdminPage({
 
   const [{ data: mediaList }, { data: mediaPrograms }, { data: rotations }] = await Promise.all([
     supabase.from('media').select('id, name, area, prefecture, media_type').order('name'),
-    supabase.from('media_program').select('id, program_name, period_type, media:media_id(name)').order('program_name'),
+    supabase
+      .from('media_program')
+      .select('id, program_name, period_type, media:media_id(name, prefecture, area)')
+      .order('program_name'),
     supabase
       .from('radio_rotation')
       .select(
@@ -44,7 +48,7 @@ export default async function MediaAdminPage({
   ])
 
   const mediaOptions = mediaList ?? []
-  const mediaProgramOptions = mediaPrograms ?? []
+  const programGroups = groupProgramsByRegion(mediaPrograms ?? [])
 
   return (
     <div className="mx-auto max-w-[1600px] px-6 py-12">
@@ -55,6 +59,9 @@ export default async function MediaAdminPage({
       <div className="mt-4 flex items-baseline justify-between">
         <h1 className="text-2xl font-bold">メディア&オンエア</h1>
         <div className="flex gap-3">
+          <Link href="/admin/data/media/onair-grid" className="text-xs text-amber-300 hover:text-amber-200">
+            表で編集 →
+          </Link>
           <Link href="/admin/data/media/radio-power-play-collect" className="text-xs text-white/40 hover:text-white/70">
             ラジオ局PP収集 →
           </Link>
@@ -183,14 +190,15 @@ export default async function MediaAdminPage({
             <option value="" disabled>
               番組を選択
             </option>
-            {mediaProgramOptions.map((p) => {
-              const media = Array.isArray(p.media) ? p.media[0] : p.media
-              return (
-                <option key={p.id} value={p.id}>
-                  {media?.name} — {p.program_name}
-                </option>
-              )
-            })}
+            {programGroups.map((group) => (
+              <optgroup key={group.region} label={group.region}>
+                {group.programs.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.label}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
           </select>
           <select name="period_type" required className={`${inputClass} max-w-[120px]`} defaultValue="">
             <option value="" disabled>
@@ -218,8 +226,9 @@ export default async function MediaAdminPage({
           <SearchableSelect
             searchAction={searchTracks}
             name="track_id"
-            placeholder="トラックを検索(任意。同じ曲の別版も追加可)"
+            placeholder="トラックを検索(任意。「曲名 アーティスト名」も可。同じ曲の別版も追加可)"
             multiple
+            contextFieldNames={['album_id', 'artist_id']}
           />
           <SearchableSelect searchAction={searchAlbums} name="album_id" placeholder="アルバムを検索(任意)" />
           <SearchableSelect searchAction={searchArtists} name="artist_id" placeholder="アーティストを検索(任意)" />
