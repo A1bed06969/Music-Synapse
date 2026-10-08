@@ -125,8 +125,10 @@ async function fetchAlreadyProcessedArtistIds(supabase: AdminClient): Promise<Se
 
 async function fetchArtistNames(supabase: AdminClient, artistIds: string[]): Promise<Map<string, string>> {
   const names = new Map<string, string>()
-  for (let i = 0; i < artistIds.length; i += 500) {
-    const { data } = await supabase.from('artist').select('id, name').in('id', artistIds.slice(i, i + 500))
+  // .in()のIDはURLに並ぶため、500件だとローカルAPIで「URI too long」になり全件取りこぼす(2026-10-08)
+  for (let i = 0; i < artistIds.length; i += 200) {
+    const { data, error } = await supabase.from('artist').select('id, name').in('id', artistIds.slice(i, i + 200))
+    if (error) throw new Error(`アーティスト名の取得に失敗しました: ${error.message}`)
     for (const row of (data ?? []) as ArtistRow[]) names.set(row.id, row.name)
   }
   return names
