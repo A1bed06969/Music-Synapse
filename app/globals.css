@@ -197,3 +197,12 @@ body {
 .animate-junkie-dig-hint-in {
   animation: junkie-dig-hint-in 0.3s ease-out both;
 }
+
+/* <select>の背景を透明にしていると、Windows版Chrome/Edgeはドロップダウンの
+ * リストを白背景で描画し、継承した白文字の選択肢が見えなくなる(color-scheme:
+ * darkだけでは防げない)。選択肢の配色を明示する。 */
+select option,
+select optgroup {
+  background-color: var(--popover);
+  color: var(--popover-foreground);
+}
