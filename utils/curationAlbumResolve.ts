@@ -45,7 +45,9 @@ async function artistCandidates(artistName: string) {
 export async function resolveCurationAlbum(artistName: string, title: string): Promise<CurationAlbumResolution> {
   const exact = await findAppleMusicAlbumMatch(artistName, title)
   if (exact) {
-    return { found: true, collectionId: exact.collectionId, country: 'JP', appleArtistId: exact.artistId, via: 'exact', confidence: 1 }
+    // 完全一致はJPで見つからなければUSでも探すため、応答のストア国(country: "JPN"/"USA")で判別する
+    const country = (exact as { country?: string }).country === 'USA' ? 'US' : 'JP'
+    return { found: true, collectionId: exact.collectionId, country, appleArtistId: exact.artistId, via: 'exact', confidence: 1 }
   }
 
   const artists = await artistCandidates(artistName)
