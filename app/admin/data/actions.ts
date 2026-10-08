@@ -17,26 +17,81 @@ export type PickerItem = { id: string; label: string }
 // 制約上、全件を先読みしてクライアント側で絞り込む方式だと一部が欠落する
 // (実例: マカロニえんぴつ「はしりがき」がヒットしなかった不具合)。
 // 入力のたびにサーバー側でその場検索する方式に変更し、この問題を解消する。
-export async function searchTracks(query: string): Promise<PickerItem[]> {
+/** 同じフォームで選択済みの他欄の値(SearchableSelectのcontextFieldNamesで渡される)。 */
+export type SearchContext = Record<string, string[]>
+
+type TrackRow = {
+  id: string
+  title: string
+  artist: { name: string } | { name: string }[] | null
+  album: { title: string } | { title: string }[] | null
+}
+
+function toTrackItem(t: TrackRow): PickerItem {
+  const artist = Array.isArray(t.artist) ? t.artist[0] : t.artist
+  const album = Array.isArray(t.album) ? t.album[0] : t.album
+  // 同名曲がシングル/EP版とアルバム収録版で別トラック行として存在することがあり
+  // (例:「はしりがき」)、アーティスト名だけでは候補を区別できない。
+  // どちらの版かを見分けられるよう収録アルバム名も表示する。
+  return {
+    id: t.id,
+    label: `${t.title}${artist?.name ? ` — ${artist.name}` : ''}${album?.title ? `(${album.title})` : ''}`,
+  }
+}
+
+const TRACK_SELECT = 'id, title, artist:artist_id(name), album:album_id(title)'
+
+/** トラック検索。アルバム/アーティスト欄で選択済みならその中に絞り込む。
+ * 「夢 ITAZURA STORE」のように曲名とアーティスト名を1つの欄に並べた入力にも対応する
+ * (「夢」だけだと同名曲が多く上限件数に埋もれるため)。 */
+export async function searchTracks(query: string, context?: SearchContext): Promise<PickerItem[]> {
   const trimmed = query.trim()
   if (!trimmed) return []
   const supabase = await createClient()
-  const { data } = await supabase
-    .from('track')
-    .select('id, title, artist:artist_id(name), album:album_id(title)')
-    .ilike('title', `%${trimmed}%`)
-    .limit(20)
-  return (data ?? []).map((t) => {
-    const artist = Array.isArray(t.artist) ? t.artist[0] : t.artist
-    const album = Array.isArray(t.album) ? t.album[0] : t.album
-    // 同名曲がシングル/EP版とアルバム収録版で別トラック行として存在することがあり
-    // (例:「はしりがき」)、アーティスト名だけでは候補を区別できない。
-    // どちらの版かを見分けられるよう収録アルバム名も表示する。
-    return {
-      id: t.id,
-      label: `${t.title}${artist?.name ? ` — ${artist.name}` : ''}${album?.title ? `(${album.title})` : ''}`,
+  const albumIds = context?.album_id?.filter(Boolean) ?? []
+  const artistIds = context?.artist_id?.filter(Boolean) ?? []
+
+  const found = new Map<string, TrackRow>()
+  const collect = (rows: TrackRow[] | null) => {
+    for (const r of rows ?? []) if (!found.has(r.id)) found.set(r.id, r)
+  }
+
+  const titleQuery = (title: string, artistFilter?: string[]) => {
+    let q = supabase.from('track').select(TRACK_SELECT).ilike('title', `%${title}%`)
+    if (albumIds.length) q = q.in('album_id', albumIds)
+    const artists = artistFilter ?? (artistIds.length ? artistIds : undefined)
+    if (artists) q = q.in('artist_id', artists)
+    return q.limit(50)
+  }
+
+  const { data } = await titleQuery(trimmed)
+  collect(data as TrackRow[] | null)
+
+  // 「曲名 アーティスト名」「アーティスト名 曲名」の両方の区切り方を試す
+  const tokens = trimmed.split(/[\s\u3000]+/).filter(Boolean)
+  if (tokens.length > 1 && found.size < 20) {
+    for (let k = 1; k < tokens.length; k++) {
+      const head = tokens.slice(0, k).join(' ')
+      const tail = tokens.slice(k).join(' ')
+      for (const [title, artistName] of [
+        [head, tail],
+        [tail, head],
+      ]) {
+        const { data: artists } = await supabase.from('artist').select('id').ilike('name', `%${artistName}%`).limit(30)
+        const ids = (artists ?? []).map((a) => a.id as string)
+        const scoped = artistIds.length ? ids.filter((id) => artistIds.includes(id)) : ids
+        if (scoped.length === 0) continue
+        const { data: rows } = await titleQuery(title, scoped)
+        collect(rows as TrackRow[] | null)
+      }
     }
-  })
+  }
+
+  // 曲名が入力に近い(短い)ものを先に出す。「夢」で「夢」が「夢の続き」より上に来るように
+  return [...found.values()]
+    .sort((a, b) => a.title.length - b.title.length)
+    .slice(0, 20)
+    .map(toTrackItem)
 }
 
 export async function searchAlbums(query: string): Promise<PickerItem[]> {

@@ -11,8 +11,10 @@ export default function SearchableSelect({
   multiple = false,
   defaultSelected = [],
   onSelect,
+  contextFieldNames,
+  inlineResults = false,
 }: {
-  searchAction: (query: string) => Promise<Item[]>
+  searchAction: (query: string, context?: Record<string, string[]>) => Promise<Item[]>
   name: string
   placeholder: string
   /** trueの場合、同じ曲がシングル/EP版とアルバム収録版など複数のtrack行に
@@ -24,6 +26,12 @@ export default function SearchableSelect({
    * コールバック。選択時はitem、解除時(clearSelection/removeItem)はnullで呼ばれる。
    * 省略可能・既存の呼び出し元の挙動は変えない。 */
   onSelect?: (item: Item | null) => void
+  /** 同じフォーム内の他の欄(例: album_id, artist_id)で選択済みの値を検索時に
+   * searchActionへ渡し、候補を絞り込めるようにする。 */
+  contextFieldNames?: string[]
+  /** 候補一覧を浮かせずに入力欄の下へそのまま並べる。表のセル内など、親が
+   * overflowで切り取られて浮かせた一覧が見えなくなる場所で使う */
+  inlineResults?: boolean
 }) {
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<Item[]>([])
@@ -32,6 +40,9 @@ export default function SearchableSelect({
   const [open, setOpen] = useState(false)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const requestIdRef = useRef(0)
+  const rootRef = useRef<HTMLDivElement>(null)
+  // 配列リテラルで渡されるため、依存配列に入れると毎レンダーで検索し直してしまう。文字列化して比較する
+  const contextKey = contextFieldNames?.join(',') ?? ''
 
   // Server ActionをuseEffect/イベントハンドラから直接呼ぶ場合、Next.jsの規約上
   // startTransitionで包む必要がある(<form action>やformActionでは自動的に
@@ -45,7 +56,13 @@ export default function SearchableSelect({
     debounceRef.current = setTimeout(() => {
       const requestId = ++requestIdRef.current
       startTransition(async () => {
-        const items = await searchAction(query)
+        const form = rootRef.current?.closest('form')
+        const names = contextKey ? contextKey.split(',') : []
+        const context =
+          form && names.length
+            ? Object.fromEntries(names.map((n) => [n, new FormData(form).getAll(n).map(String)]))
+            : undefined
+        const items = await searchAction(query, context)
         if (requestId !== requestIdRef.current) return // 古いリクエストの結果は無視
         setResults(items)
       })
@@ -53,7 +70,7 @@ export default function SearchableSelect({
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current)
     }
-  }, [query, searchAction])
+  }, [query, searchAction, contextKey])
 
   function selectItem(item: Item) {
     if (multiple) {
@@ -95,7 +112,7 @@ export default function SearchableSelect({
   const showInput = multiple || selected.length === 0
 
   return (
-    <div className="relative w-full max-w-xs">
+    <div ref={rootRef} className="relative w-full max-w-xs">
       {selected.map((item) => (
         <input key={item.id} type="hidden" name={name} value={item.id} />
       ))}
@@ -160,7 +177,9 @@ export default function SearchableSelect({
       )}
 
       {open && query && (
-        <div className="absolute z-10 mt-1 max-h-64 w-full overflow-y-auto rounded-md border border-white/15 bg-black shadow-lg">
+        <div
+          className={`${inlineResults ? 'relative' : 'absolute z-10'} mt-1 max-h-64 w-full overflow-y-auto rounded-md border border-white/15 bg-black shadow-lg`}
+        >
           {isPending ? (
             <p className="px-3 py-2 text-sm text-white/40">検索中...</p>
           ) : visibleResults.length === 0 ? (
