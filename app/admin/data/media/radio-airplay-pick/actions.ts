@@ -28,17 +28,34 @@ async function findRegisteredAlbum(supabase: AdminClient, itunesArtistId: number
     .eq('apple_music_artist_id', String(itunesArtistId))
   if (artistError) throw new Error(`アーティスト検索に失敗しました: ${artistError.message}`)
   const artistIds = (artists ?? []).map((a) => a.id as string)
-  if (artistIds.length === 0) return null
 
-  const { data: album, error: albumError } = await supabase
+  if (artistIds.length > 0) {
+    const { data: album, error: albumError } = await supabase
+      .from('album')
+      .select('id')
+      .eq('apple_music_album_id', String(collectionId))
+      .in('artist_id', artistIds)
+      .limit(1)
+      .maybeSingle()
+    if (albumError) throw new Error(`アルバム検索に失敗しました: ${albumError.message}`)
+    if (album) return album
+  }
+  return findAlbumByAppleIdAnyArtist(supabase, collectionId)
+}
+
+// コラボ作品は参加アーティストの誰か1人のディスコグラフィー経由で登録されていることがあり
+// (例: 「Balming Tiger & Yaeji」名義の作品がYaejiの下にある)、名義のApple Music IDで絞ると
+// 登録済みでも見つからない。同じApple MusicのアルバムIDなら同じ作品なので、最も古い行を使う
+async function findAlbumByAppleIdAnyArtist(supabase: AdminClient, collectionId: number) {
+  const { data, error } = await supabase
     .from('album')
     .select('id')
     .eq('apple_music_album_id', String(collectionId))
-    .in('artist_id', artistIds)
+    .order('created_at', { ascending: true })
     .limit(1)
     .maybeSingle()
-  if (albumError) throw new Error(`アルバム検索に失敗しました: ${albumError.message}`)
-  return album
+  if (error) throw new Error(`アルバム検索に失敗しました: ${error.message}`)
+  return data
 }
 
 async function findRegisteredTrack(supabase: AdminClient, itunesArtistId: number, trackId: number) {
@@ -50,17 +67,29 @@ async function findRegisteredTrack(supabase: AdminClient, itunesArtistId: number
     .eq('apple_music_artist_id', String(itunesArtistId))
   if (artistError) throw new Error(`アーティスト検索に失敗しました: ${artistError.message}`)
   const artistIds = (artists ?? []).map((a) => a.id as string)
-  if (artistIds.length === 0) return null
 
-  const { data: track, error: trackError } = await supabase
+  if (artistIds.length > 0) {
+    const { data: track, error: trackError } = await supabase
+      .from('track')
+      .select('id')
+      .eq('apple_music_track_id', String(trackId))
+      .in('artist_id', artistIds)
+      .limit(1)
+      .maybeSingle()
+    if (trackError) throw new Error(`トラック検索に失敗しました: ${trackError.message}`)
+    if (track) return track
+  }
+  // 名義で見つからない場合(コラボ作品が別の参加者の下に登録済み等)は、Apple Musicの
+  // 曲IDで探す。曲IDが同じなら同じ録音なので、最も古い行を使う
+  const { data, error } = await supabase
     .from('track')
     .select('id')
     .eq('apple_music_track_id', String(trackId))
-    .in('artist_id', artistIds)
+    .order('created_at', { ascending: true })
     .limit(1)
     .maybeSingle()
-  if (trackError) throw new Error(`トラック検索に失敗しました: ${trackError.message}`)
-  return track
+  if (error) throw new Error(`トラック検索に失敗しました: ${error.message}`)
+  return data
 }
 
 /** HRPPの手動検索用。自動マッチング(scripts/backfill-radio-pick-itunes-candidates.ts)
