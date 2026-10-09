@@ -4,6 +4,7 @@ import { createAdminClient } from '@/utils/Supabase/admin'
 import { safeRevalidatePath } from '@/utils/safeRevalidate'
 import {
   getTableConfig,
+  resolveColumns,
   targetLabel,
   TARGET_COLUMNS,
   type CellValue,
@@ -24,7 +25,7 @@ function toDbValue(col: ColumnDef, value: CellValue): CellValue {
 /** 共通の表で編集した変更(更新・追加・削除)をまとめて保存する。問題のある行だけをエラーで返す */
 export async function saveGrid(
   tableKey: string,
-  scopeId: string,
+  scopeId: string | null,
   payload: { updates: GridRow[]; inserts: GridRow[]; deletes: string[] },
   revalidate: string[]
 ): Promise<GridSaveResult> {
@@ -34,10 +35,23 @@ export async function saveGrid(
   const errors: { key: string; message: string }[] = []
   let done = 0
 
+  // 画面側で隠していても、許可していない操作はサーバー側で必ず拒否する
+  if (config.allowInsert === false && payload.inserts.length > 0) {
+    return { success: false, message: 'この表では行を追加できません。', errors: [] }
+  }
+  if (config.allowDelete === false && payload.deletes.length > 0) {
+    return { success: false, message: 'この表では行を削除できません。', errors: [] }
+  }
+  if (config.scopeColumn && !scopeId) {
+    return { success: false, message: '対象が指定されていません。', errors: [] }
+  }
+  const scoped = <Q extends { eq: (column: string, value: string) => Q }>(q: Q): Q =>
+    config.scopeColumn && scopeId ? q.eq(config.scopeColumn, scopeId) : q
+
   const toDbRow = (row: GridRow) => {
     const db: Record<string, CellValue> = {}
     for (const col of config.columns) {
-      if (col.type === 'target') continue
+      if (col.type === 'target' || col.type === 'link') continue
       db[col.key] = toDbValue(col, row.values[col.key] ?? null)
     }
     for (const kind of targetCol?.kinds ?? []) {
@@ -67,7 +81,7 @@ export async function saveGrid(
 
   for (const row of payload.updates) {
     if (invalid.has(row.key) || !row.id) continue
-    const { error } = await supabase.from(config.table).update(toDbRow(row)).eq('id', row.id).eq(config.scopeColumn, scopeId)
+    const { error } = await scoped(supabase.from(config.table).update(toDbRow(row)).eq('id', row.id))
     if (error) errors.push({ key: row.key, message: error.message })
     else done++
   }
@@ -76,13 +90,13 @@ export async function saveGrid(
   if (inserts.length > 0) {
     const { error } = await supabase
       .from(config.table)
-      .insert(inserts.map((r) => ({ ...toDbRow(r), [config.scopeColumn]: scopeId })))
+      .insert(inserts.map((r) => (config.scopeColumn ? { ...toDbRow(r), [config.scopeColumn]: scopeId } : toDbRow(r))))
     if (error) for (const r of inserts) errors.push({ key: r.key, message: error.message })
     else done += inserts.length
   }
 
   if (payload.deletes.length > 0) {
-    const { error } = await supabase.from(config.table).delete().in('id', payload.deletes).eq(config.scopeColumn, scopeId)
+    const { error } = await scoped(supabase.from(config.table).delete().in('id', payload.deletes))
     if (error) errors.push({ key: 'delete', message: `削除に失敗しました: ${error.message}` })
     else done += payload.deletes.length
   }
@@ -103,7 +117,9 @@ function norm(s: string): string {
  * 「タイトル」「アーティスト」の2列に分かれる(アーティストだけを選ぶ行はタイトルを空欄にする) */
 export async function pasteColumnLabels(tableKey: string): Promise<string[]> {
   const config = getTableConfig(tableKey)
-  return config.columns.flatMap((c) => (c.type === 'target' ? ['タイトル', 'アーティスト'] : [c.label]))
+  return config.columns.flatMap((c) =>
+    c.type === 'link' ? [] : c.type === 'target' ? ['タイトル', 'アーティスト'] : [c.label]
+  )
 }
 
 async function resolveTarget(kinds: GridTarget['kind'][], title: string, artistName: string): Promise<GridTarget | null> {
@@ -134,13 +150,16 @@ async function resolveTarget(kinds: GridTarget['kind'][], title: string, artistN
 /** Excel等から貼り付けた行を新規行に変換する。選択肢の列は表示名でも値でも受け付ける */
 export async function resolveGridPaste(tableKey: string, lines: string[][]): Promise<GridRow[]> {
   const config = getTableConfig(tableKey)
+  if (config.allowInsert === false) return []
+  const columns = await resolveColumns(config)
   const rows: GridRow[] = []
   for (const [i, cols] of lines.entries()) {
     const cells = [...cols.map((c) => c.trim())]
     const values: Record<string, CellValue> = {}
     let target: GridTarget | null = null
     let unresolved: string | undefined
-    for (const col of config.columns) {
+    for (const col of columns) {
+      if (col.type === 'link') continue
       if (col.type === 'target') {
         const title = cells.shift() ?? ''
         const artistName = cells.shift() ?? ''
@@ -150,7 +169,7 @@ export async function resolveGridPaste(tableKey: string, lines: string[][]): Pro
       }
       const raw = cells.shift() ?? ''
       if (col.type === 'select') {
-        values[col.key] = col.options.find((o) => o.label === raw || o.value === raw)?.value ?? ''
+        values[col.key] = (col.options ?? []).find((o) => o.label === raw || o.value === raw)?.value ?? ''
       } else if (col.type === 'checkbox') {
         values[col.key] = /^(1|true|yes|y|○|◯|はい|true)$/i.test(raw)
       } else if (col.type === 'date') {

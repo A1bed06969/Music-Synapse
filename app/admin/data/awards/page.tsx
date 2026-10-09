@@ -38,6 +38,9 @@ export default async function AwardsAdminPage({
 
       <div className="mt-4 flex items-baseline justify-between">
         <h1 className="text-2xl font-bold">アワード</h1>
+        <Link href="/admin/data/awards/grid" className="text-xs text-amber-300 hover:text-amber-200">
+          アワードを表で編集 →
+        </Link>
         <Link href="/chronology/awards" className="text-xs text-white/40 hover:text-white/70">
           公開ページを見る →
         </Link>

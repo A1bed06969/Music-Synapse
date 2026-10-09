@@ -36,6 +36,9 @@ export default async function DiscGuidesAdminPage({
       </Link>
 
       <h1 className="mt-4 text-2xl font-bold">ディスクガイド</h1>
+      <Link href="/admin/data/discguides/grid" className="mt-1 inline-block text-xs text-amber-300 hover:text-amber-200">
+        本を表で編集 →
+      </Link>
 
       {success && (
         <div className="mt-6 rounded-md border border-green-500/30 bg-green-500/5 px-4 py-3 text-sm">{success}</div>

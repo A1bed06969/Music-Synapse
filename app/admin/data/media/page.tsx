@@ -60,7 +60,13 @@ export default async function MediaAdminPage({
         <h1 className="text-2xl font-bold">メディア&オンエア</h1>
         <div className="flex gap-3">
           <Link href="/admin/data/media/onair-grid" className="text-xs text-amber-300 hover:text-amber-200">
-            表で編集 →
+            オンエアを表で編集 →
+          </Link>
+          <Link href="/admin/data/media/stations-grid" className="text-xs text-amber-300 hover:text-amber-200">
+            局を表で編集 →
+          </Link>
+          <Link href="/admin/data/media/programs-grid" className="text-xs text-amber-300 hover:text-amber-200">
+            番組を表で編集 →
           </Link>
           <Link href="/admin/data/media/radio-power-play-collect" className="text-xs text-white/40 hover:text-white/70">
             ラジオ局PP収集 →

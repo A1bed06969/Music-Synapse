@@ -50,6 +50,9 @@ export default async function VenuesPage({
       </Link>
 
       <h1 className="mt-4 text-2xl font-bold">会場の座標登録</h1>
+      <Link href="/admin/data/venues/grid" className="mt-1 inline-block text-xs text-amber-300 hover:text-amber-200">
+        表で編集(Excelから貼り付けも可) →
+      </Link>
 
       {success && (
         <div className="mt-4 rounded-md border border-green-500/30 bg-green-500/5 px-4 py-3 text-sm">{success}</div>

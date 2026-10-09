@@ -89,6 +89,14 @@ export default async function EventsAdminPage({
       </div>
 
       <h1 className="mt-4 text-2xl font-bold">イベント</h1>
+      <div className="mt-1 flex gap-4">
+        <Link href="/admin/data/events/grid" className="text-xs text-amber-300 hover:text-amber-200">
+          フェス・イベントを表で編集 →
+        </Link>
+        <Link href="/admin/data/events/music-event/grid" className="text-xs text-amber-300 hover:text-amber-200">
+          単独公演を表で編集 →
+        </Link>
+      </div>
 
       {success && (
         <div className="mt-6 rounded-md border border-green-500/30 bg-green-500/5 px-4 py-3 text-sm">{success}</div>

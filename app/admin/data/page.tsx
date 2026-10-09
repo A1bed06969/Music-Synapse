@@ -31,12 +31,41 @@ export default async function AdminDataPage({
         >
           作業キュー(確認待ちをまとめて処理)
         </Link>
-        <Link
-          href="/admin/data/media/onair-grid"
-          className="rounded-md border border-white/15 px-3 py-1.5 text-sm hover:bg-white/5"
-        >
-          パワープレイを表で編集
-        </Link>
+      </div>
+      <div className="mt-4 rounded-md border border-white/10 px-4 py-3">
+        <p className="text-xs text-white/40">表で編集(セルを直接書き換え・Excelから貼り付け)</p>
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {[
+            ['パワープレイ', '/admin/data/media/onair-grid'],
+            ['キュレーション・ランキング', '/admin/data/curation/grid'],
+            ['ディスクガイド', '/admin/data/discguides/grid'],
+            ['フェス・イベント', '/admin/data/events/grid'],
+            ['アワード', '/admin/data/awards/grid'],
+            ['ラジオ局', '/admin/data/media/stations-grid'],
+            ['番組', '/admin/data/media/programs-grid'],
+            ['アーティスト', '/admin/data/artists/grid'],
+            ['アルバム', '/admin/data/albums/grid'],
+            ['トラック', '/admin/data/tracks/grid'],
+            ['ジャンル', '/admin/data/genres/grid'],
+            ['レーベル', '/admin/data/labels/grid'],
+            ['ライブハウス', '/admin/data/livehouses/grid'],
+            ['レコードショップ', '/admin/data/shops/grid'],
+            ['会場の座標', '/admin/data/venues/grid'],
+            ['タイアップ作品', '/admin/data/sync/grid'],
+            ['単独公演', '/admin/data/events/music-event/grid'],
+          ].map(([label, href]) => (
+            <Link
+              key={href}
+              href={href}
+              className="rounded-full border border-white/15 px-2.5 py-1 text-xs text-white/70 hover:border-amber-400/60 hover:text-white"
+            >
+              {label}
+            </Link>
+          ))}
+        </div>
+        <p className="mt-2 text-[11px] text-white/35">
+          選出作品・掲載作品・開催回・出演者・日程・受賞作品・起用曲は、親の表(企画・本・フェス・アワード・作品)の各行にある「〜を表で編集」から開きます。
+        </p>
       </div>
 
       {success && (

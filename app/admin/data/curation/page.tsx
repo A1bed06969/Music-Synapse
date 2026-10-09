@@ -43,6 +43,9 @@ export default async function CurationPage({
 
       <div className="mt-4 flex items-baseline justify-between">
         <h1 className="text-2xl font-bold">キュレーションコンテンツ</h1>
+        <Link href="/admin/data/curation/grid" className="text-xs text-amber-300 hover:text-amber-200">
+          企画を表で編集 →
+        </Link>
         <Link href="/media/features" className="text-xs text-white/40 hover:text-white/70">
           公開ページを見る →
         </Link>

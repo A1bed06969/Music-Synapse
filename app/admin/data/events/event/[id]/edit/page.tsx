@@ -345,6 +345,12 @@ export default async function EditEventPage({
                       出演者を表で編集 →
                     </Link>
                     <Link
+                      href={`/admin/data/events/edition/${ed.id}/dates-grid`}
+                      className="text-xs text-amber-300 hover:text-amber-200"
+                    >
+                      日程を表で編集 →
+                    </Link>
+                    <Link
                       href={`/admin/data/events/edition/${ed.id}/edit`}
                       className="text-xs text-white/40 hover:text-white/70"
                     >

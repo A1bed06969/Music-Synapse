@@ -1,13 +1,22 @@
 'use client'
 
 import { useMemo, useState, useTransition } from 'react'
+import Link from 'next/link'
 import SearchableSelect from '../SearchableSelect'
 import { searchAlbums, searchArtists, searchTracks } from '../actions'
 import { resolveGridPaste, saveGrid } from './actions'
 import type { CellValue, ColumnDef, GridRow, GridTarget, TargetKind } from './tables'
 
-const KIND_LABEL: Record<TargetKind, string> = { track: '曲', album: 'アルバム', artist: 'アーティスト' }
-const SEARCH = { track: searchTracks, album: searchAlbums, artist: searchArtists }
+const KIND_LABEL: Record<TargetKind, string> = {
+  track: '曲',
+  album: 'アルバム',
+  artist: 'アーティスト',
+}
+const SEARCH = {
+  track: searchTracks,
+  album: searchAlbums,
+  artist: searchArtists,
+}
 
 const cellInput =
   'w-full bg-transparent px-2 py-1.5 text-sm text-white outline-none focus:bg-amber-500/10 focus:ring-1 focus:ring-amber-400/60'
@@ -25,22 +34,29 @@ export default function DataGrid({
   revalidate,
   newRowDefaults = {},
   confirmDeleteMessage,
+  allowInsert = true,
+  allowDelete = true,
 }: {
   tableKey: string
-  scopeId: string
+  scopeId: string | null
   columns: ColumnDef[]
   initialRows: GridRow[]
   pasteLabels: string[]
   revalidate: string[]
   newRowDefaults?: Record<string, CellValue>
   confirmDeleteMessage?: string
+  allowInsert?: boolean
+  allowDelete?: boolean
 }) {
   const baseline = useMemo(() => new Map(initialRows.map((r) => [r.key, snapshot(r)])), [initialRows])
   const targetCol = columns.find((c) => c.type === 'target') as Extract<ColumnDef, { type: 'target' }> | undefined
   const [rows, setRows] = useState<GridRow[]>(initialRows)
   const [deleted, setDeleted] = useState<Set<string>>(new Set())
   const [filter, setFilter] = useState('')
-  const [editing, setEditing] = useState<{ key: string; kind: TargetKind } | null>(null)
+  const [editing, setEditing] = useState<{
+    key: string
+    kind: TargetKind
+  } | null>(null)
   const [errors, setErrors] = useState<Map<string, string>>(new Map())
   const [message, setMessage] = useState<string | null>(null)
   const [pasteText, setPasteText] = useState('')
@@ -71,7 +87,9 @@ export default function DataGrid({
 
   function addRow() {
     const values: Record<string, CellValue> = {}
-    for (const c of columns) if (c.type !== 'target') values[c.key] = newRowDefaults[c.key] ?? (c.type === 'checkbox' ? false : '')
+    for (const c of columns)
+      if (c.type !== 'target' && c.type !== 'link')
+        values[c.key] = newRowDefaults[c.key] ?? (c.type === 'checkbox' ? false : '')
     setRows((prev) => [...prev, { key: `new-${Date.now()}`, values, target: null }])
   }
 
@@ -87,14 +105,17 @@ export default function DataGrid({
       const withDefaults = resolved.map((r) => ({
         ...r,
         values: Object.fromEntries(
-          Object.entries(r.values).map(([k, v]) => [k, v === '' && newRowDefaults[k] !== undefined ? newRowDefaults[k] : v])
+          Object.entries(r.values).map(([k, v]) => [
+            k,
+            v === '' && newRowDefaults[k] !== undefined ? newRowDefaults[k] : v,
+          ]),
         ),
       }))
       setRows((prev) => [...prev, ...withDefaults])
       setPasteText('')
       const unresolved = withDefaults.filter((r) => targetCol && !r.target).length
       setMessage(
-        `${withDefaults.length}行を追加しました。${unresolved ? `うち${unresolved}行は照合できませんでした(黄色)。選び直してから保存してください。` : ''}`
+        `${withDefaults.length}行を追加しました。${unresolved ? `うち${unresolved}行は照合できませんでした(黄色)。選び直してから保存してください。` : ''}`,
       )
     })
   }
@@ -108,7 +129,10 @@ export default function DataGrid({
     }
     if (
       payload.deletes.length > 0 &&
-      !window.confirm(confirmDeleteMessage?.replace('{n}', String(payload.deletes.length)) ?? `${payload.deletes.length}行を削除します。元に戻せません。よろしいですか?`)
+      !window.confirm(
+        confirmDeleteMessage?.replace('{n}', String(payload.deletes.length)) ??
+          `${payload.deletes.length}行を削除します。元に戻せません。よろしいですか?`,
+      )
     ) {
       return
     }
@@ -125,7 +149,7 @@ export default function DataGrid({
   const q = filter.trim().toLowerCase()
   const visible = q
     ? rows.filter((r) =>
-        `${Object.values(r.values).join(' ')} ${r.target?.label ?? ''} ${r.unresolved ?? ''}`.toLowerCase().includes(q)
+        `${Object.values(r.values).join(' ')} ${r.target?.label ?? ''} ${r.unresolved ?? ''}`.toLowerCase().includes(q),
       )
     : rows
 
@@ -167,7 +191,7 @@ export default function DataGrid({
         <table className="w-full min-w-[900px] border-collapse text-sm">
           <thead>
             <tr className="bg-white/[0.03] text-left text-[11px] tracking-wide text-white/40">
-              <th className="w-8 px-2 py-2"></th>
+              {allowDelete && <th className="w-8 px-2 py-2"></th>}
               {columns.map((c) => (
                 <th key={c.key} className={`px-2 py-2 ${'width' in c && c.width ? c.width : ''}`}>
                   {c.label}
@@ -183,22 +207,26 @@ export default function DataGrid({
               const dirty = (key: string) =>
                 !isDeleted &&
                 (!was ||
-                  (key === 'target' ? was[1] !== (r.target?.kind ?? null) || was[2] !== (r.target?.id ?? null) : was[0][key] !== r.values[key]))
+                  (key === 'target'
+                    ? was[1] !== (r.target?.kind ?? null) || was[2] !== (r.target?.id ?? null)
+                    : was[0][key] !== r.values[key]))
               const cell = (key: string) =>
                 `border-b border-white/5 border-r border-r-white/[0.04] p-0 align-top ${dirty(key) ? 'bg-amber-500/[0.07]' : ''}`
               const error = errors.get(r.key)
               return (
                 <tr key={r.key} className={isDeleted ? 'opacity-40 line-through' : ''}>
-                  <td className="border-b border-white/5 px-2 pt-1.5 text-center align-top">
-                    <button
-                      type="button"
-                      onClick={() => toggleDelete(r)}
-                      title={isDeleted ? '削除を取り消す' : 'この行を削除'}
-                      className="text-white/30 hover:text-red-400"
-                    >
-                      {isDeleted ? '↺' : '×'}
-                    </button>
-                  </td>
+                  {allowDelete && (
+                    <td className="border-b border-white/5 px-2 pt-1.5 text-center align-top">
+                      <button
+                        type="button"
+                        onClick={() => toggleDelete(r)}
+                        title={isDeleted ? '削除を取り消す' : 'この行を削除'}
+                        className="text-white/30 hover:text-red-400"
+                      >
+                        {isDeleted ? '↺' : '×'}
+                      </button>
+                    </td>
+                  )}
                   {columns.map((c) => {
                     if (c.type === 'target') {
                       return (
@@ -229,11 +257,19 @@ export default function DataGrid({
                                 key={editing.kind}
                                 searchAction={SEARCH[editing.kind]}
                                 name={`target-${r.key}`}
-                                placeholder={editing.kind === 'track' ? '曲名(「曲名 アーティスト名」も可)' : `${KIND_LABEL[editing.kind]}を検索`}
+                                placeholder={
+                                  editing.kind === 'track'
+                                    ? '曲名(「曲名 アーティスト名」も可)'
+                                    : `${KIND_LABEL[editing.kind]}を検索`
+                                }
                                 inlineResults
                                 onSelect={(item) => {
                                   if (!item) return
-                                  setTarget(r.key, { kind: editing.kind, id: item.id, label: item.label })
+                                  setTarget(r.key, {
+                                    kind: editing.kind,
+                                    id: item.id,
+                                    label: item.label,
+                                  })
                                   setEditing(null)
                                 }}
                               />
@@ -241,7 +277,12 @@ export default function DataGrid({
                           ) : (
                             <button
                               type="button"
-                              onClick={() => setEditing({ key: r.key, kind: r.target?.kind ?? c.kinds[0] })}
+                              onClick={() =>
+                                setEditing({
+                                  key: r.key,
+                                  kind: r.target?.kind ?? c.kinds[0],
+                                })
+                              }
                               className="flex w-full items-center gap-2 px-2 py-1.5 text-left hover:bg-white/5"
                             >
                               {r.target ? (
@@ -264,13 +305,33 @@ export default function DataGrid({
                         </td>
                       )
                     }
+                    if (c.type === 'link') {
+                      return (
+                        <td key={c.key} className="border-b border-white/5 px-2 py-1.5 align-top whitespace-nowrap">
+                          {r.id ? (
+                            <Link
+                              href={c.href.replace('{id}', r.id)}
+                              className="text-xs text-amber-300 hover:text-amber-200"
+                            >
+                              {c.text}
+                            </Link>
+                          ) : (
+                            <span className="text-[11px] text-white/30">保存後に開けます</span>
+                          )}
+                        </td>
+                      )
+                    }
                     const v = r.values[c.key]
                     return (
                       <td key={c.key} className={cell(c.key)}>
                         {c.type === 'select' ? (
-                          <select value={String(v ?? '')} onChange={(e) => setValue(r.key, c.key, e.target.value)} className={cellInput}>
+                          <select
+                            value={String(v ?? '')}
+                            onChange={(e) => setValue(r.key, c.key, e.target.value)}
+                            className={cellInput}
+                          >
                             <option value="">—</option>
-                            {c.options.map((o) => (
+                            {(c.options ?? []).map((o) => (
                               <option key={o.value} value={o.value}>
                                 {o.label}
                               </option>
@@ -303,33 +364,39 @@ export default function DataGrid({
         </table>
       </div>
 
-      <div className="flex flex-wrap items-start gap-3 border-t border-white/10 px-4 py-3">
-        <button type="button" onClick={addRow} className="rounded-md border border-white/15 px-3 py-1.5 text-xs hover:bg-white/5">
-          + 行を追加
-        </button>
-        <div className="min-w-0 flex-1">
-          <textarea
-            value={pasteText}
-            onChange={(e) => setPasteText(e.target.value)}
-            rows={3}
-            placeholder={`Excelから貼り付け(列: ${pasteLabels.join(' / ')})`}
-            className="w-full rounded-md border border-dashed border-white/15 bg-black/40 px-3 py-2 font-mono text-xs text-white placeholder:text-white/25"
-          />
-          <div className="mt-1 flex items-center gap-3">
-            <button
-              type="button"
-              onClick={handlePaste}
-              disabled={!pasteText.trim() || isPending}
-              className="rounded-md border border-white/15 px-3 py-1.5 text-xs hover:bg-white/5 disabled:opacity-30"
-            >
-              貼り付けた行を追加
-            </button>
-            <span className="text-[11px] text-white/35">
-              タイトルとアーティスト名で照合します。アーティストだけを選ぶ行はタイトルを空欄にしてください。
-            </span>
+      {allowInsert && (
+        <div className="flex flex-wrap items-start gap-3 border-t border-white/10 px-4 py-3">
+          <button
+            type="button"
+            onClick={addRow}
+            className="rounded-md border border-white/15 px-3 py-1.5 text-xs hover:bg-white/5"
+          >
+            + 行を追加
+          </button>
+          <div className="min-w-0 flex-1">
+            <textarea
+              value={pasteText}
+              onChange={(e) => setPasteText(e.target.value)}
+              rows={3}
+              placeholder={`Excelから貼り付け(列: ${pasteLabels.join(' / ')})`}
+              className="w-full rounded-md border border-dashed border-white/15 bg-black/40 px-3 py-2 font-mono text-xs text-white placeholder:text-white/25"
+            />
+            <div className="mt-1 flex items-center gap-3">
+              <button
+                type="button"
+                onClick={handlePaste}
+                disabled={!pasteText.trim() || isPending}
+                className="rounded-md border border-white/15 px-3 py-1.5 text-xs hover:bg-white/5 disabled:opacity-30"
+              >
+                貼り付けた行を追加
+              </button>
+              <span className="text-[11px] text-white/35">
+                タイトルとアーティスト名で照合します。アーティストだけを選ぶ行はタイトルを空欄にしてください。
+              </span>
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }

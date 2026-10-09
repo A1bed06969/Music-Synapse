@@ -39,6 +39,9 @@ export default async function SyncAdminPage({
 
       <div className="mt-4 flex items-baseline justify-between">
         <h1 className="text-2xl font-bold">タイアップ・シンクロアーカイブ</h1>
+        <Link href="/admin/data/sync/grid" className="text-xs text-amber-300 hover:text-amber-200">
+          作品を表で編集 →
+        </Link>
         <Link href="/media/sync" className="text-xs text-white/40 hover:text-white/70">
           公開ページを見る →
         </Link>
@@ -99,6 +102,9 @@ export default async function SyncAdminPage({
                   {w.title}
                   {w.year ? `(${w.year})` : ''}
                 </span>
+                <Link href={`/admin/data/sync/work/${w.id}/grid`} className="shrink-0 text-xs text-amber-300 hover:text-amber-200">
+                  起用曲を表で編集 →
+                </Link>
                 <Link href={`/admin/data/sync/work/${w.id}/edit`} className="shrink-0 text-xs text-white/40 hover:text-white/70">
                   編集 →
                 </Link>

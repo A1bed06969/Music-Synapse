@@ -44,6 +44,9 @@ export default async function GenresPage({
       </Link>
 
       <h1 className="mt-4 text-2xl font-bold">ジャンル</h1>
+      <Link href="/admin/data/genres/grid" className="mt-1 inline-block text-xs text-amber-300 hover:text-amber-200">
+        表で編集 →
+      </Link>
 
       <WikipediaGenreSearch genreOptions={genreOptions} />
 
