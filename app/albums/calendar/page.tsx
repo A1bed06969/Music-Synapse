@@ -36,28 +36,51 @@ export default async function AlbumCalendarPage({
   const { start, end } = monthRange(currentMonth)
 
   const supabase = await createClient()
-  const { data: albumRows } = await supabase
-    .from('album')
-    .select('id, title, jacket_url, release_date, artist:artist_id(id, name)')
-    .gte('release_date', start)
-    .lt('release_date', end)
-    .is('primary_album_id', null)
-    .order('release_date', { ascending: true })
+  // PostgRESTは1回最大1000行のため、ページングして月内の全件を取る(1000件で打ち切られ、
+  // 月の後半が「新譜なし」に見えていた。2026-10-09)
+  type AlbumRow = {
+    id: string
+    title: string
+    jacket_url: string | null
+    release_date: string | null
+    artist: { id: string; name: string } | { id: string; name: string }[] | null
+  }
+  const albumRows: AlbumRow[] = []
+  for (let from = 0; ; from += 1000) {
+    const { data } = await supabase
+      .from('album')
+      .select('id, title, jacket_url, release_date, artist:artist_id(id, name)')
+      .gte('release_date', start)
+      .lt('release_date', end)
+      .is('primary_album_id', null)
+      .order('release_date', { ascending: true })
+      .order('id', { ascending: true })
+      .range(from, from + 999)
+    const page = (data ?? []) as AlbumRow[]
+    albumRows.push(...page)
+    if (page.length < 1000) break
+  }
 
   const artistIds = Array.from(
     new Set(
-      (albumRows ?? [])
+      albumRows
         .map((a) => (Array.isArray(a.artist) ? a.artist[0] : a.artist)?.id)
         .filter((id): id is string => !!id)
     )
   )
 
-  const { data: genreRows } = artistIds.length
-    ? await supabase.from('artist_genre').select('artist_id, genre:genre_id(name)').in('artist_id', artistIds)
-    : { data: [] }
+  // .in()のIDはURLに並ぶため、数百件ずつに分けて問い合わせる(まとめるとURI too longで全件取りこぼす)
+  const genreRows: { artist_id: string; genre: { name: string } | { name: string }[] | null }[] = []
+  for (let i = 0; i < artistIds.length; i += 200) {
+    const { data } = await supabase
+      .from('artist_genre')
+      .select('artist_id, genre:genre_id(name)')
+      .in('artist_id', artistIds.slice(i, i + 200))
+    genreRows.push(...((data ?? []) as typeof genreRows))
+  }
 
   const genresByArtist = new Map<string, string[]>()
-  for (const row of genreRows ?? []) {
+  for (const row of genreRows) {
     const genre = Array.isArray(row.genre) ? row.genre[0] : row.genre
     if (!genre?.name) continue
     const list = genresByArtist.get(row.artist_id) ?? []
@@ -65,7 +88,7 @@ export default async function AlbumCalendarPage({
     genresByArtist.set(row.artist_id, list)
   }
 
-  const albums: CalendarAlbum[] = (albumRows ?? [])
+  const albums: CalendarAlbum[] = albumRows
     .filter((a) => !!a.release_date)
     .map((a) => {
       const artist = Array.isArray(a.artist) ? a.artist[0] : a.artist

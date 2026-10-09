@@ -1,6 +1,7 @@
 'use client'
 
 import { formatDate } from '@/utils/format'
+import { artworkAt } from '@/utils/artworkSize'
 
 export type AlbumListItem = {
   id: string
@@ -67,7 +68,7 @@ export default function AlbumListPanel({
                   <div className="h-14 w-14 shrink-0 overflow-hidden rounded bg-white/5">
                     {album.jacketUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={album.jacketUrl} alt="" className="h-full w-full object-cover" />
+                      <img src={artworkAt(album.jacketUrl, 160)!} alt="" className="h-full w-full object-cover" />
                     ) : (
                       <div className="flex h-full w-full items-center justify-center text-[9px] text-white/20">
                         No Art

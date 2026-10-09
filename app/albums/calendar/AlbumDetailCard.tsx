@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { formatDate } from '@/utils/format'
 import type { RecentReleaseAlbum } from './RecentReleasesCarousel'
+import { artworkAt } from '@/utils/artworkSize'
 
 /** アルバム1件の詳細(アーティスト・収録曲・紹介文)。RecentReleasesCarouselの
  * フォーカス連動パネルと、右カラムでクリックされたアルバムの詳細表示の両方で
@@ -19,7 +20,7 @@ export default function AlbumDetailCard({
         <div className="mb-4 aspect-square w-full max-w-[220px] overflow-hidden rounded-lg bg-white/5 shadow-xl shadow-black/60 ring-1 ring-white/10">
           {album.jacketUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={album.jacketUrl} alt={album.title} className="h-full w-full object-contain" />
+            <img src={artworkAt(album.jacketUrl, 600)!} alt={album.title} className="h-full w-full object-contain" />
           ) : (
             <div className="flex h-full w-full items-center justify-center text-[10px] text-white/20">No Art</div>
           )}

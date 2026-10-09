@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { startTransition, useEffect, useRef, useState } from 'react'
 import AlbumDetailCard from './AlbumDetailCard'
+import { artworkAt } from '@/utils/artworkSize'
 
 export type RecentReleaseTrack = { id: string; trackNo: number | null; title: string }
 
@@ -125,7 +126,7 @@ export default function RecentReleasesCarousel({ albums }: { albums: RecentRelea
                     >
                       {a.jacketUrl ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={a.jacketUrl} alt={a.title} className="h-full w-full object-contain" />
+                        <img src={artworkAt(a.jacketUrl, 400)!} alt={a.title} className="h-full w-full object-contain" />
                       ) : (
                         <div className="flex h-full w-full items-center justify-center text-[10px] text-white/20">
                           No Art

@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useMemo } from 'react'
+import { artworkAt } from '@/utils/artworkSize'
 
 export type CalendarAlbum = {
   id: string
@@ -100,7 +101,7 @@ export default function CalendarView({
             >
               {first?.jacketUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={first.jacketUrl} alt="" className="absolute inset-0 h-full w-full object-cover opacity-50" />
+                <img src={artworkAt(first.jacketUrl, 200)!} alt="" className="absolute inset-0 h-full w-full object-cover opacity-50" />
               ) : (
                 <div className="absolute inset-0 bg-white/[0.03]" />
               )}
