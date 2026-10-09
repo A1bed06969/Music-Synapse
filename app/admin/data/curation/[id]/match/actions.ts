@@ -43,19 +43,22 @@ async function findRegisteredAlbum(
   itunesArtistId: number,
   collectionId: number
 ) {
-  const { data: artist, error: artistError } = await supabase
+  // 同じApple Music IDを持つartist行はコラボ名義等で正当に複数ありうるため、全員を対象に探す
+  // (1件に絞ろうとすると複数ヒットでエラーになり登録が止まっていた。2026-10-09)
+  const { data: artists, error: artistError } = await supabase
     .from('artist')
     .select('id')
     .eq('apple_music_artist_id', String(itunesArtistId))
-    .maybeSingle()
   if (artistError) throw new Error(`アーティスト検索に失敗しました: ${artistError.message}`)
-  if (!artist) return null
+  const artistIds = (artists ?? []).map((a) => a.id as string)
+  if (artistIds.length === 0) return null
 
   const { data: album, error: albumError } = await supabase
     .from('album')
     .select('id')
     .eq('apple_music_album_id', String(collectionId))
-    .eq('artist_id', artist.id)
+    .in('artist_id', artistIds)
+    .limit(1)
     .maybeSingle()
   if (albumError) throw new Error(`アルバム検索に失敗しました: ${albumError.message}`)
   return album
