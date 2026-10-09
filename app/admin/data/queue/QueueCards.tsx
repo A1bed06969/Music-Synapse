@@ -3,7 +3,16 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { approveFeatured, approvePick, rejectFeatured, rejectPick, type QueueActionResult } from './actions'
+import {
+  approveArtistMatch,
+  approveFactCheck,
+  approveFeatured,
+  approvePick,
+  rejectArtistMatch,
+  rejectFeatured,
+  rejectPick,
+  type QueueActionResult,
+} from './actions'
 
 export type QueueCard = {
   id: string
@@ -13,12 +22,25 @@ export type QueueCard = {
   imageUrl?: string
   confidence: number | null
   reason?: string
-  detailHref?: string
+  /** 判断に使う関連ページ(局サイト、専用画面など) */
+  links?: { label: string; href: string; external?: boolean }[]
 }
 
-const ACTIONS: Record<'pick' | 'featured', { approve: (id: string) => Promise<QueueActionResult>; reject: (id: string) => Promise<QueueActionResult>; approveLabel: string; rejectLabel: string }> = {
+export type InlineSource = 'pick' | 'featured' | 'factcheck' | 'artist-match'
+
+type SourceActions = {
+  approve: (id: string) => Promise<QueueActionResult>
+  approveLabel: string
+  /** 却下がその場でできないキュー(修正が必要なもの)は省略し、カードのリンクから専用画面へ */
+  reject?: (id: string) => Promise<QueueActionResult>
+  rejectLabel?: string
+}
+
+const ACTIONS: Record<InlineSource, SourceActions> = {
   pick: { approve: approvePick, reject: rejectPick, approveLabel: '採用して本登録', rejectLabel: '却下(候補を外す)' },
   featured: { approve: approveFeatured, reject: rejectFeatured, approveLabel: '採用', rejectLabel: '却下' },
+  factcheck: { approve: approveFactCheck, approveLabel: '正しい' },
+  'artist-match': { approve: approveArtistMatch, reject: rejectArtistMatch, approveLabel: '採用して紐付け', rejectLabel: '採用しない' },
 }
 
 export default function QueueCards({
@@ -26,7 +48,7 @@ export default function QueueCards({
   cards,
   remaining,
 }: {
-  source: 'pick' | 'featured'
+  source: InlineSource
   cards: QueueCard[]
   remaining: number
 }) {
@@ -39,9 +61,11 @@ export default function QueueCards({
 
   function run(card: QueueCard, kind: 'ok' | 'ng') {
     if (busy || done.has(card.id)) return
+    const action = kind === 'ok' ? actions.approve : actions.reject
+    if (!action) return
     setBusy(card.id)
     startTransition(async () => {
-      const result = await (kind === 'ok' ? actions.approve : actions.reject)(card.id)
+      const result = await action(card.id)
       setBusy(null)
       if (result.success) {
         setDone((prev) => new Map(prev).set(card.id, kind))
@@ -67,8 +91,13 @@ export default function QueueCards({
   return (
     <div className="space-y-2.5">
       <p className="text-xs text-white/40">
-        カードを選んで <kbd className="rounded border border-white/20 px-1">A</kbd> で採用、
-        <kbd className="rounded border border-white/20 px-1">R</kbd> で却下。表示中 {left} / 全 {remaining.toLocaleString()}件
+        カードを選んで <kbd className="rounded border border-white/20 px-1">A</kbd> で{actions.approveLabel}
+        {actions.reject && (
+          <>
+            、<kbd className="rounded border border-white/20 px-1">R</kbd> で{actions.rejectLabel}
+          </>
+        )}
+        。表示中 {left} / 全 {remaining.toLocaleString()}件
       </p>
       {cards.map((card) => {
         const state = done.get(card.id)
@@ -121,18 +150,36 @@ export default function QueueCards({
                   >
                     {busy === card.id && isPending ? '処理中…' : actions.approveLabel}
                   </button>
-                  <button
-                    type="button"
-                    disabled={busy !== null}
-                    onClick={() => run(card, 'ng')}
-                    className="rounded-md border border-red-400/40 px-2.5 py-1 text-xs text-red-300 hover:bg-red-400/10 disabled:opacity-40"
-                  >
-                    {actions.rejectLabel}
-                  </button>
-                  {card.detailHref && (
-                    <Link href={card.detailHref} className="rounded-md border border-white/15 px-2.5 py-1 text-xs text-white/60 hover:bg-white/5">
-                      詳しく見る
-                    </Link>
+                  {actions.reject && (
+                    <button
+                      type="button"
+                      disabled={busy !== null}
+                      onClick={() => run(card, 'ng')}
+                      className="rounded-md border border-red-400/40 px-2.5 py-1 text-xs text-red-300 hover:bg-red-400/10 disabled:opacity-40"
+                    >
+                      {actions.rejectLabel}
+                    </button>
+                  )}
+                  {card.links?.map((l) =>
+                    l.external ? (
+                      <a
+                        key={l.href}
+                        href={l.href}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="rounded-md border border-white/15 px-2.5 py-1 text-xs text-white/60 hover:bg-white/5"
+                      >
+                        {l.label} ↗
+                      </a>
+                    ) : (
+                      <Link
+                        key={l.href}
+                        href={l.href}
+                        className="rounded-md border border-white/15 px-2.5 py-1 text-xs text-white/60 hover:bg-white/5"
+                      >
+                        {l.label}
+                      </Link>
+                    )
                   )}
                 </>
               )}

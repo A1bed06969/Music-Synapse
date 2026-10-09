@@ -3,7 +3,9 @@
 import { createAdminClient } from '@/utils/Supabase/admin'
 import { safeRevalidatePath } from '@/utils/safeRevalidate'
 import { registerPickIdToRotation } from '../media/radio-airplay-pick/actions'
+import { markFactCheckCorrect } from '../media/radio-fact-check/actions'
 import { confirmFeaturedArtist, rejectFeaturedArtist } from '../artists/featured-review/actions'
+import { confirmGeminiMatchLog } from '../artists/unmatched/geminiMatchActions'
 
 export type QueueActionResult = { success: boolean; message: string }
 
@@ -42,4 +44,30 @@ export async function rejectFeatured(reviewId: string): Promise<QueueActionResul
   const result = await rejectFeaturedArtist(reviewId)
   safeRevalidatePath('/admin/data/queue')
   return result.success ? { success: true, message: '却下しました。' } : result
+}
+
+/** 自動抽出したパワープレイが局サイトの表記と合っていたことを記録する(ファクトチェック画面の「TRUE」と同じ) */
+export async function approveFactCheck(pickId: string): Promise<QueueActionResult> {
+  await markFactCheckCorrect(pickId)
+  safeRevalidatePath('/admin/data/queue')
+  return { success: true, message: '正しいと記録しました。' }
+}
+
+/** AIが選んだApple Musicのアーティストを採用して紐付ける(未マッチ画面の「確定」と同じ) */
+export async function approveArtistMatch(logId: string): Promise<QueueActionResult> {
+  const result = await confirmGeminiMatchLog(logId)
+  safeRevalidatePath('/admin/data/queue')
+  return result.success ? { success: true, message: `「${result.registeredName}」として紐付けました。` } : result
+}
+
+/** AIの照合結果を採用しない。紐付けはまだ行われていないので、判定を取消済みにして一覧から外すだけ */
+export async function rejectArtistMatch(logId: string): Promise<QueueActionResult> {
+  const { error } = await createAdminClient()
+    .from('artist_match_log')
+    .update({ reverted: true, reverted_at: new Date().toISOString() })
+    .eq('id', logId)
+    .eq('auto_applied', false)
+  safeRevalidatePath('/admin/data/queue')
+  safeRevalidatePath('/admin/data/artists/unmatched')
+  return error ? { success: false, message: error.message } : { success: true, message: '採用しませんでした。' }
 }
