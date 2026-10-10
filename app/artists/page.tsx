@@ -1,6 +1,7 @@
 import { unstable_cache } from 'next/cache'
 import { createClient } from '@/utils/Supabase/server'
 import ArtistBrowseClient, { type BrowseTab } from './ArtistBrowseClient'
+import { fetchFallbackJackets } from '@/utils/artistFallbackJacket'
 
 // 1ページあたりの表示件数。以前はartist 17,349件・credit_person 19,365件・
 // artist_credit 123,177行を全件取得してブラウザ側で絞り込んでいたため、
@@ -13,6 +14,7 @@ type ArtistRow = {
   name_kana: string | null
   name_en: string | null
   image_url: string | null
+  fallback_jacket_url?: string | null
 }
 
 type CreditPersonRow = {
@@ -79,6 +81,12 @@ export default async function ArtistsPage({
     const { data, count } = await request.order('sort_key').range(offset, offset + PAGE_SIZE - 1)
     totalCount = count ?? 0
     const rows = (data ?? []) as ArtistRow[]
+    // 画像が無い人は、表示のときだけ参加曲・最新作のジャケットで代用する(DBには保存しない)
+    const jackets = await fetchFallbackJackets(
+      supabase,
+      rows.filter((r) => !r.image_url).map((r) => r.id)
+    )
+    for (const r of rows) r.fallback_jacket_url = r.image_url ? null : (jackets.get(r.id) ?? null)
 
     if (tab === 'artist') {
       artists = rows

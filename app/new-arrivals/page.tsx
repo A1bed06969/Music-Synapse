@@ -2,6 +2,8 @@ import Link from 'next/link'
 import { createClient } from '@/utils/Supabase/server'
 import { fetchNewArrivalsDetail } from '@/utils/newArrivals'
 import BackLink from '@/app/components/navigation/BackLink'
+import { fetchFallbackJackets } from '@/utils/artistFallbackJacket'
+import { artworkAt } from '@/utils/artworkSize'
 
 function formatBoundary(iso: string): string {
   const jst = new Date(new Date(iso).getTime() + 9 * 60 * 60 * 1000)
@@ -29,6 +31,11 @@ export default async function NewArrivalsPage({
   const supabase = await createClient()
   const { boundary, counts, artists, albums, tracks, events, curationEntries, mvs } =
     await fetchNewArrivalsDetail(supabase)
+  // 画像が無い新着アーティストは、表示のときだけ参加作品のジャケットで代用する
+  const fallbackJackets = await fetchFallbackJackets(
+    supabase,
+    artists.filter((a) => !a.imageUrl).map((a) => a.id)
+  )
 
   const total = counts.artist + counts.album + counts.track + counts.event + counts.curation + counts.mv
 
@@ -92,12 +99,16 @@ export default async function NewArrivalsPage({
             <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4 lg:grid-cols-6">
               {artists.map((a) => (
                 <Link key={a.id} href={`/artists/${a.id}`} className="group block">
-                  <div className="aspect-square overflow-hidden rounded-full bg-white/5">
-                    {a.imageUrl ? (
+                  <div
+                    className={`aspect-square overflow-hidden bg-white/5 ${a.imageUrl || !fallbackJackets.get(a.id) ? 'rounded-full' : 'rounded-lg'}`}
+                  >
+                    {a.imageUrl || fallbackJackets.get(a.id) ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
-                        src={a.imageUrl}
+                        src={a.imageUrl ?? artworkAt(fallbackJackets.get(a.id), 300)!}
                         alt={a.name}
+                        title={a.imageUrl ? undefined : '参加作品のジャケット'}
+                        loading="lazy"
                         className="h-full w-full object-cover transition group-hover:scale-105"
                       />
                     ) : (

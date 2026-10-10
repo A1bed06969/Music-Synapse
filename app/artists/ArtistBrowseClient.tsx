@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useEffect, useRef, useState, useTransition } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { CREDIT_ROLE_LABEL } from '@/utils/format'
+import { artworkAt } from '@/utils/artworkSize'
 
 type Artist = {
   id: string
@@ -11,6 +12,8 @@ type Artist = {
   name_kana: string | null
   name_en: string | null
   image_url: string | null
+  /** 画像が無い人の代わりに表示するジャケット(本人の写真ではないので四角く表示する) */
+  fallback_jacket_url?: string | null
 }
 
 type Member = Artist & { bandNames: string[] }
@@ -210,12 +213,15 @@ function ArtistGrid({ items, emptyMessage }: { items: Artist[]; emptyMessage: st
     <div className="mt-6 grid grid-cols-3 gap-4 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8">
       {items.map((artist) => (
         <Link key={artist.id} href={`/artists/${artist.id}`} className="group block">
-          <div className="aspect-square overflow-hidden rounded-full bg-white/5">
-            {artist.image_url ? (
+          <div
+            className={`aspect-square overflow-hidden bg-white/5 ${artist.image_url || !artist.fallback_jacket_url ? 'rounded-full' : 'rounded-lg'}`}
+          >
+            {artist.image_url || artist.fallback_jacket_url ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
-                src={artist.image_url}
+                src={artist.image_url ?? artworkAt(artist.fallback_jacket_url, 300)!}
                 alt={artist.name}
+                title={artist.image_url ? undefined : '参加作品のジャケット'}
                 loading="lazy"
                 className="h-full w-full object-cover transition group-hover:scale-105"
               />
@@ -236,12 +242,15 @@ function MemberGrid({ items, emptyMessage }: { items: Member[]; emptyMessage: st
     <div className="mt-6 grid grid-cols-3 gap-4 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8">
       {items.map((member) => (
         <Link key={member.id} href={`/artists/${member.id}`} className="group block">
-          <div className="aspect-square overflow-hidden rounded-full bg-white/5">
-            {member.image_url ? (
+          <div
+            className={`aspect-square overflow-hidden bg-white/5 ${member.image_url || !member.fallback_jacket_url ? 'rounded-full' : 'rounded-lg'}`}
+          >
+            {member.image_url || member.fallback_jacket_url ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
-                src={member.image_url}
+                src={member.image_url ?? artworkAt(member.fallback_jacket_url, 300)!}
                 alt={member.name}
+                title={member.image_url ? undefined : '参加作品のジャケット'}
                 loading="lazy"
                 className="h-full w-full object-cover transition group-hover:scale-105"
               />

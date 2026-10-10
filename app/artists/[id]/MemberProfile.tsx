@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import BackLink from '@/app/components/navigation/BackLink'
 import SiteFooter from '@/app/components/SiteFooter'
+import { artworkAt } from '@/utils/artworkSize'
 
 type Band = { id: string; name: string; description: string | null }
 type Production = { id: number; artistId: string; artistName: string; description: string | null }
@@ -10,6 +11,7 @@ export default function MemberProfile({
   nameKana,
   nameEn,
   imageUrl,
+  fallbackJacketUrl,
   bio,
   bands,
   productions,
@@ -18,6 +20,8 @@ export default function MemberProfile({
   nameKana: string | null
   nameEn: string | null
   imageUrl: string | null
+  /** 画像が無い時に代わりに表示する参加作品のジャケット(本人の写真ではないので四角く表示する) */
+  fallbackJacketUrl?: string | null
   bio: string | null
   bands: Band[]
   productions: Production[]
@@ -31,6 +35,12 @@ export default function MemberProfile({
         {imageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={imageUrl} alt={name} className="h-28 w-28 rounded-full object-cover" />
+        ) : fallbackJacketUrl ? (
+          <figure className="shrink-0">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={artworkAt(fallbackJacketUrl, 300)!} alt="" className="h-28 w-28 rounded-lg object-cover" />
+            <figcaption className="mt-1 w-28 text-center text-[10px] text-white/35">参加作品のジャケット</figcaption>
+          </figure>
         ) : (
           <div className="flex h-28 w-28 shrink-0 items-center justify-center rounded-full bg-white/5 text-3xl">
             🎤

@@ -11,6 +11,7 @@ import StickyMiniHeader from '@/app/components/detail/StickyMiniHeader'
 import BackLink from '@/app/components/navigation/BackLink'
 import SiteFooter from '@/app/components/SiteFooter'
 import MemberProfile from './MemberProfile'
+import { fetchFallbackJackets } from '@/utils/artistFallbackJacket'
 
 // SiteHeaderの実測高さ(border込み)。デスクトップのLEFT/RIGHTカラムをこの下に
 // 固定するための基準値としてだけ使う(サイトヘッダーの高さが変わったら要更新)。
@@ -62,6 +63,9 @@ export default async function ArtistDetailLayout({
     notFound()
   }
 
+  // 画像が無い人は、表示のときだけ最新作・参加作品のジャケットで代用する(DBには保存しない)
+  const fallbackJacketUrl = artist.image_url ? null : ((await fetchFallbackJackets(supabase, [id])).get(id) ?? null)
+
   if (artist.browse_kind === 'member') {
     const { data: membershipRows } = await supabase
       .from('artist_relation')
@@ -95,6 +99,7 @@ export default async function ArtistDetailLayout({
         nameKana={artist.name_kana}
         nameEn={artist.name_en}
         imageUrl={artist.image_url}
+        fallbackJacketUrl={fallbackJacketUrl}
         bio={artist.bio}
         bands={belongsToBands}
         productions={productions}
@@ -119,6 +124,7 @@ export default async function ArtistDetailLayout({
     nameKana: artist.name_kana,
     nameEn: artist.name_en,
     imageUrl: artist.image_url,
+    fallbackJacketUrl,
     bio: artist.bio,
     formedYear: artist.formed_year,
     disbandedYear: artist.disbanded_year,

@@ -1,4 +1,5 @@
 import ArtistLinkIcons from '@/app/components/ArtistLinkIcons'
+import { artworkAt } from '@/utils/artworkSize'
 
 export type ArtistIdentityData = {
   id: string
@@ -6,6 +7,8 @@ export type ArtistIdentityData = {
   nameKana: string | null
   nameEn: string | null
   imageUrl: string | null
+  /** 画像が無い時に代わりに表示する参加作品のジャケット */
+  fallbackJacketUrl?: string | null
   bio: string | null
   formedYear: number | null
   disbandedYear: number | null
@@ -47,10 +50,16 @@ export default function ArtistIdentityPanel({ data }: { data: ArtistIdentityData
             // クロップせず実寸のまま表示する。
             // eslint-disable-next-line @next/next/no-img-element
             <img src={data.imageUrl} alt={data.name} className="h-auto w-full" />
+          ) : data.fallbackJacketUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={artworkAt(data.fallbackJacketUrl, 600)!} alt="" className="h-auto w-full" />
           ) : (
             <div className="aspect-square w-full" />
           )}
         </div>
+        {!data.imageUrl && data.fallbackJacketUrl && (
+          <p className="mt-1 text-center text-[10px] text-white/35">アーティスト写真が無いため、作品のジャケットを表示しています</p>
+        )}
 
         <div className="mt-3">
           <h1 className="text-2xl font-bold leading-tight">{data.name}</h1>
