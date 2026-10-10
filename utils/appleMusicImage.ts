@@ -1,5 +1,5 @@
 import { searchArtist } from '@/utils/itunes'
-import { fetchOgImage } from '@/utils/ogImage'
+import { fetchOgImage, isApplePlaceholderImage } from '@/utils/ogImage'
 
 // URL末尾のサイズ指定(例: /1200x630cw.png)を600x600bb.pngに置換する。
 // パターンに合わない場合は元のURLをそのまま返す。
@@ -15,7 +15,8 @@ function toSquareUrl(url: string): string {
 export async function fetchAppleMusicArtistImage(appleMusicArtistId: string, country = 'jp'): Promise<string | null> {
   const url = `https://music.apple.com/${country.toLowerCase()}/artist/${appleMusicArtistId}`
   const imageUrl = await fetchOgImage(url)
-  return imageUrl ? toSquareUrl(imageUrl) : null
+  if (!imageUrl || isApplePlaceholderImage(imageUrl)) return null
+  return toSquareUrl(imageUrl)
 }
 
 /**

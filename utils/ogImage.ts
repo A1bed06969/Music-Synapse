@@ -73,3 +73,9 @@ export async function fetchOgDescription(url: string): Promise<string | null> {
   const html = await fetchHtml(url)
   return html ? extractOgDescription(html) : null
 }
+
+/** Apple Musicは写真もジャケットも無いアーティストのページに、汎用の音符ロゴを出す。
+ * これを本人の画像として保存しないよう、取得側で「画像なし」とみなすために使う */
+export function isApplePlaceholderImage(url: string): boolean {
+  return /music\.apple\.com\/assets\//.test(url)
+}
