@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, useTransition } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { CREDIT_ROLE_LABEL } from '@/utils/format'
 import { artworkAt } from '@/utils/artworkSize'
+import { KANA_ROWS, LATIN_INITIALS, OTHER_ROWS } from '@/utils/artistInitialFilter'
 
 type Artist = {
   id: string
@@ -43,6 +44,7 @@ export default function ArtistBrowseClient({
   page,
   role,
   instrument,
+  initial,
   pageSize,
   totalCount,
   artists,
@@ -55,6 +57,8 @@ export default function ArtistBrowseClient({
   page: number
   role: string
   instrument: string
+  /** 頭文字フィルター(A〜Z、あ〜わの行、0-9等)。未指定はnull */
+  initial: string | null
   pageSize: number
   totalCount: number
   artists: Artist[]
@@ -91,6 +95,7 @@ export default function ArtistBrowseClient({
       page: page > 0 ? String(page) : null,
       role: role !== 'all' ? role : null,
       instrument: instrument !== 'all' ? instrument : null,
+      initial,
       ...changes,
     }
     for (const [key, value] of Object.entries(base)) {
@@ -138,6 +143,32 @@ export default function ArtistBrowseClient({
         className="mt-4 w-full max-w-md rounded-md border border-white/15 bg-white/5 px-4 py-2.5 text-sm text-white placeholder:text-white/30 focus:border-white/30 focus:outline-none"
         autoFocus
       />
+
+      {tab !== 'credit' && (
+        <div className="mt-4 space-y-1.5" aria-label="頭文字で絞り込み">
+          {[
+            [{ key: null, label: 'すべて' }, ...LATIN_INITIALS.map((c) => ({ key: c, label: c }))],
+            [...KANA_ROWS.map((r) => ({ key: r.key, label: r.label })), ...OTHER_ROWS],
+          ].map((row, i) => (
+            <div key={i} className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1">
+              {row.map((item) => (
+                <button
+                  key={item.key ?? 'all'}
+                  type="button"
+                  onClick={() => navigate({ initial: item.key, page: null })}
+                  className={`shrink-0 rounded-md border px-2.5 py-1 text-xs tabular-nums transition ${
+                    initial === item.key
+                      ? 'border-white bg-white font-medium text-black'
+                      : 'border-white/10 bg-white/5 text-white/60 hover:border-white/30 hover:text-white'
+                  }`}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
 
       {tab === 'credit' && (
         <div className="mt-4 flex flex-wrap items-center gap-1.5">

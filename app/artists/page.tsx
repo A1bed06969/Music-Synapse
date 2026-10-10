@@ -2,6 +2,7 @@ import { unstable_cache } from 'next/cache'
 import { createClient } from '@/utils/Supabase/server'
 import ArtistBrowseClient, { type BrowseTab } from './ArtistBrowseClient'
 import { fetchFallbackJackets } from '@/utils/artistFallbackJacket'
+import { applyInitialFilter, isValidInitial } from '@/utils/artistInitialFilter'
 
 // 1ページあたりの表示件数。以前はartist 17,349件・credit_person 19,365件・
 // artist_credit 123,177行を全件取得してブラウザ側で絞り込んでいたため、
@@ -48,7 +49,7 @@ function parseTab(value: string | undefined): BrowseTab {
 export default async function ArtistsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tab?: string; q?: string; page?: string; role?: string; instrument?: string }>
+  searchParams: Promise<{ tab?: string; q?: string; page?: string; role?: string; instrument?: string; initial?: string }>
 }) {
   const params = await searchParams
   const tab = parseTab(params.tab)
@@ -56,6 +57,7 @@ export default async function ArtistsPage({
   const page = Math.max(0, Number(params.page ?? 0) || 0)
   const role = params.role ?? 'all'
   const instrument = params.instrument ?? 'all'
+  const initial = isValidInitial(params.initial) ? params.initial : null
   const offset = page * PAGE_SIZE
 
   const supabase = await createClient()
@@ -78,6 +80,7 @@ export default async function ArtistsPage({
         request = request.or(`name.ilike.%${escaped}%,name_kana.ilike.%${escaped}%,name_en.ilike.%${escaped}%`)
       }
     }
+    request = applyInitialFilter(request, initial)
     const { data, count } = await request.order('sort_key').range(offset, offset + PAGE_SIZE - 1)
     totalCount = count ?? 0
     const rows = (data ?? []) as ArtistRow[]
@@ -134,6 +137,7 @@ export default async function ArtistsPage({
       page={page}
       role={role}
       instrument={instrument}
+      initial={initial}
       pageSize={PAGE_SIZE}
       totalCount={totalCount}
       artists={artists}
