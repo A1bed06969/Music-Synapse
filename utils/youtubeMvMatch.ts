@@ -112,6 +112,41 @@ function hasPositiveMvKeyword(videoTitle: string): boolean {
   return POSITIVE_KEYWORDS.some((kw) => lower.includes(kw))
 }
 
+// 曲名側の別バージョン判定。公式MVは基本的に元の録音のものなので、リミックス・ライブ・
+// アコースティック・12インチ版などの曲には付けない(括弧を外して照合していたため、
+// Ace of Base「All That She Wants」のMVが50の別バージョンに付いていた。2026-10-09)。
+// 同じ録音を指す表記(リマスター、モノ/ステレオ、シングル/アルバム版、feat.等)は対象外にする
+const SAME_RECORDING_PHRASES = [
+  /\d{4}\s*(digital\s*)?remaster(ed)?(\s*version)?/g,
+  /remaster(ed)?(\s*\d{4})?(\s*version)?/g,
+  /リマスター(版)?/g,
+  /(mono|stereo)(\s*version)?/g,
+  /(single|album|original|radio)\s*(version|edit|ver\.?)/g,
+  /bonus\s*track/g,
+  /explicit|clean/g,
+]
+const VARIANT_KEYWORDS = [
+  'remix', 'rmx', 'mix', 'dub', 'edit', 'version', 'ver.', 'acoustic', 'live', 'instrumental', 'inst',
+  'demo', 'extended', '12"', "12''", '7"', "7''", 'bootleg', 'karaoke', 'off vocal', 'a cappella', 'acapella',
+  'unplugged', 'session', 'rehearsal', 'alternate', 'take', 'medley', 'reprise',
+  'リミックス', 'ライブ', 'ライヴ', 'アコースティック', 'バージョン', 'カラオケ', 'インスト', '弾き語り', 'アレンジ',
+]
+
+/** 曲名が元の録音とは別のバージョン(リミックス・ライブ等)かどうか。括弧書きと「 - 」以降の
+ * 補足部分だけを見る(曲名そのものに「Live」等が含まれる曲を誤って除外しないため)。 */
+export function isVariantTrackTitle(trackTitle: string): boolean {
+  const brackets = [...trackTitle.matchAll(/[(（\[【]([^)）\]】]*)[)）\]】]/g)].map((m) => m[1])
+  const dash = trackTitle.match(/\s[-–—]\s(.+)$/)?.[1]
+  // 括弧ごとに判定する(まとめてからfeat.以降を消すと、後ろの括弧の「Extended Mix」まで消えてしまう)
+  return [...brackets, dash ?? ''].some((segment) => {
+    let q = segment.toLowerCase().normalize('NFKC')
+    // feat.表記や「From "映画名"」は同じ録音を指すので判定から外す
+    if (/^\s*(feat\.?|ft\.|featuring|with|from)\s/.test(q)) return false
+    for (const re of SAME_RECORDING_PHRASES) q = q.replace(re, ' ')
+    return VARIANT_KEYWORDS.some((kw) => q.includes(kw))
+  })
+}
+
 export type MvCandidateVideo = { videoId: string; title: string }
 
 /** トラックタイトルと、確定済みチャンネルの動画タイトル一覧を照合し、
@@ -119,6 +154,7 @@ export type MvCandidateVideo = { videoId: string; title: string }
  * タイトルで一致してしまい、かつどちらが公式MVか決め手が無い場合はnullを
  * 返す(誤反映を避けるため、取りこぼしを許容する)。 */
 export function findBestMvMatch(trackTitle: string, videos: MvCandidateVideo[]): MvCandidateVideo | null {
+  if (isVariantTrackTitle(trackTitle)) return null
   const normalizedTrack = normalizeText(stripTrailingBrackets(trackTitle))
   if (!normalizedTrack) return null
 
