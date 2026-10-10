@@ -28,8 +28,17 @@ export default function TabbedMapView({
 }) {
   const [activeTab, setActiveTab] = useState<MapCategory>('artist')
   const [focusId, setFocusId] = useState<string | null>(null)
+  // アーティストタブで地図を大陸・国まで掘り下げている時は、一覧もその範囲のアーティストだけにする
+  const [artistScope, setArtistScope] = useState<Set<string> | null>(null)
 
   const filteredMarkers = useMemo(() => markers.filter((m) => m.category === activeTab), [markers, activeTab])
+  const listMarkers = useMemo(
+    () =>
+      activeTab === 'artist' && artistScope
+        ? filteredMarkers.filter((m) => artistScope.has(m.id.replace(/^artist-/, '')))
+        : filteredMarkers,
+    [filteredMarkers, activeTab, artistScope]
+  )
 
   function selectTab(tab: MapCategory) {
     setActiveTab(tab)
@@ -68,6 +77,7 @@ export default function TabbedMapView({
               // ここで相互変換してArtistOriginMapに橋渡しする
               selectedArtistId={focusId ? focusId.replace(/^artist-/, '') : null}
               onSelectArtist={(id) => setFocusId(id ? `artist-${id}` : null)}
+              onScopeChange={setArtistScope}
             />
           ) : (
             <LeafletMap
@@ -80,11 +90,11 @@ export default function TabbedMapView({
         </div>
         <div className="lg:w-72 lg:shrink-0">
           <div className="max-h-[600px] overflow-y-auto rounded-lg border border-white/10">
-            {filteredMarkers.length === 0 ? (
+            {listMarkers.length === 0 ? (
               <p className="p-4 text-sm text-white/40">該当するデータがありません。</p>
             ) : (
               <ul className="divide-y divide-white/5">
-                {filteredMarkers.map((marker) => (
+                {listMarkers.map((marker) => (
                   <li key={marker.id}>
                     <button
                       type="button"

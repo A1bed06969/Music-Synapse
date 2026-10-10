@@ -22,6 +22,57 @@ type ArtistOriginQueryRow = {
   origin_country_code: string | null
   origin_region_code: string | null
   origin_muni_code: string | null
+  apple_music_artist_id: string | null
+}
+
+const COLLAB_NAME = /\s&\s|,\s|\sx\s|\s×\s|feat\./i
+
+/** コラボ名義(例:「JJJ, BLASÉ & Bonbero」)の行を見つける。1人の出身地ではないので地図に載せない。
+ * 「Simon & Garfunkel」のような正式なバンド名と区別するため、名前に区切り記号があり、さらに
+ * (a) 同じApple Music IDを名前の違う別の行(本人)と共有している、または
+ * (b) 区切った名前のうち2つ以上が既存のアーティスト名と一致する(「JJJ, BLASÉ & Bonbero」の
+ * JJJとBLASÉ)ものだけをコラボ名義とみなす。コラボ名義にもMusicBrainz IDが(誤照合で)付いている
+ * ことが多いため、MusicBrainz登録の有無では区別しない */
+async function findCollabCreditIds(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  rows: ArtistOriginQueryRow[]
+): Promise<Set<string>> {
+  const suspects = rows.filter((r) => COLLAB_NAME.test(r.name))
+  const collabIds = new Set<string>()
+
+  const appleIds = [...new Set(suspects.map((r) => r.apple_music_artist_id).filter((v): v is string => Boolean(v)))]
+  const namesByAppleId = new Map<string, Set<string>>()
+  for (let i = 0; i < appleIds.length; i += 200) {
+    const { data } = await supabase
+      .from('artist')
+      .select('name, apple_music_artist_id')
+      .in('apple_music_artist_id', appleIds.slice(i, i + 200))
+    for (const a of data ?? []) {
+      const set = namesByAppleId.get(a.apple_music_artist_id as string) ?? new Set<string>()
+      set.add(a.name as string)
+      namesByAppleId.set(a.apple_music_artist_id as string, set)
+    }
+  }
+  for (const r of suspects) {
+    const names = r.apple_music_artist_id ? namesByAppleId.get(r.apple_music_artist_id) : undefined
+    if (names && [...names].some((n) => n !== r.name)) collabIds.add(r.id)
+  }
+
+  const partsById = new Map(
+    suspects
+      .filter((r) => !collabIds.has(r.id))
+      .map((r) => [r.id, r.name.split(/\s&\s|,\s|\sx\s|\s×\s|\s?feat\.\s?/i).map((p) => p.trim()).filter(Boolean)])
+  )
+  const allParts = [...new Set([...partsById.values()].flat())]
+  const existing = new Set<string>()
+  for (let i = 0; i < allParts.length; i += 100) {
+    const { data } = await supabase.from('artist').select('name').in('name', allParts.slice(i, i + 100))
+    for (const a of data ?? []) existing.add(a.name as string)
+  }
+  for (const [id, parts] of partsById) {
+    if (parts.filter((p) => existing.has(p)).length >= 2) collabIds.add(id)
+  }
+  return collabIds
 }
 
 /** PostgRESTの1リクエストあたり行数上限(既定1000件)を超えるため、単純な
@@ -38,7 +89,7 @@ async function fetchAllArtistOriginRows(
     const { data } = await supabase
       .from('artist')
       .select(
-        'id, name, image_url, origin_latitude, origin_longitude, origin_prefecture, hometown_city, hometown_country, origin_country_code, origin_region_code, origin_muni_code'
+        'id, name, image_url, origin_latitude, origin_longitude, origin_prefecture, hometown_city, hometown_country, origin_country_code, origin_region_code, origin_muni_code, apple_music_artist_id'
       )
       .not('origin_latitude', 'is', null)
       .not('origin_longitude', 'is', null)
@@ -63,7 +114,8 @@ export default async function MapPage() {
     supabase,
     (artistsWithMembers ?? []).map((a) => a.id)
   )
-  const artists = (artistsWithMembers ?? []).filter((a) => !memberIds.has(a.id))
+  const collabIds = await findCollabCreditIds(supabase, artistsWithMembers ?? [])
+  const artists = (artistsWithMembers ?? []).filter((a) => !memberIds.has(a.id) && !collabIds.has(a.id))
 
   const artistIds = artists.map((a) => a.id)
 

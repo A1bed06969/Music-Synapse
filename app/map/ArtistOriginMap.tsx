@@ -66,6 +66,7 @@ export default function ArtistOriginMap({
   boundaryCodeSet,
   selectedArtistId,
   onSelectArtist,
+  onScopeChange,
 }: {
   artists: ArtistOriginRow[]
   countryFeatures: NaturalEarthCountryFeature[]
@@ -73,6 +74,8 @@ export default function ArtistOriginMap({
   /** 一覧パネルでアーティストが選ばれたら、そのアーティストの粒度まで直接ドリルダウンする */
   selectedArtistId: string | null
   onSelectArtist: (id: string | null) => void
+  /** 今表示している大陸・国に含まれるアーティストのID(世界全体を表示中はnull)。一覧の絞り込みに使う */
+  onScopeChange?: (artistIds: Set<string> | null) => void
 }) {
   const [drill, setDrill] = useState<DrillState>({ level: 'world' })
   const [regionFeatures, setRegionFeatures] = useState<BoundaryFeature[]>([])
@@ -107,6 +110,22 @@ export default function ArtistOriginMap({
   }, [selectedArtistId, artists, countryToContinent])
 
   const activeCountryCode = drill.level === 'country' ? drill.countryCode : null
+
+  // 一覧パネルを、地図で今見ている大陸・国のアーティストだけに絞るための範囲
+  const scopeArtistIds = useMemo(() => {
+    if (drill.level === 'world') return null
+    if (drill.level === 'continent') {
+      return new Set(
+        artists
+          .filter((a) => a.countryCode && countryToContinent.get(a.countryCode.toLowerCase()) === drill.continent)
+          .map((a) => a.id)
+      )
+    }
+    return new Set(artists.filter((a) => a.countryCode?.toLowerCase() === drill.countryCode).map((a) => a.id))
+  }, [drill, artists, countryToContinent])
+  useEffect(() => {
+    onScopeChange?.(scopeArtistIds)
+  }, [scopeArtistIds, onScopeChange])
 
   // Country状態に入ったら、その国のアーティスト達が使っているregion/muniコードに
   // 対応するポリゴンだけをオンデマンドで取得する(geo_boundary全件は絶対に取らない)。
