@@ -66,7 +66,10 @@ export default function CalendarView({
         >
           ← 前月
         </Link>
-        <h2 className="text-lg font-bold">{monthLabel}</h2>
+        <div className="text-center">
+          <h2 className="text-lg font-bold">{monthLabel}</h2>
+          <p className="text-xs text-white/50 tabular-nums">{albums.length.toLocaleString()}枚</p>
+        </div>
         <Link
           href={nextMonthHref}
           className="rounded-md border border-white/15 px-3 py-1.5 text-sm transition hover:bg-white/5"
