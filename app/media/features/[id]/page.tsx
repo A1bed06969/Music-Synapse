@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/utils/Supabase/server'
+import { artworkAt } from '@/utils/artworkSize'
 import { formatDate } from '@/utils/format'
 import CurationVisual from '../CurationVisual'
 import HubShell from '@/app/components/hub/HubShell'
@@ -76,9 +77,11 @@ function TileGrid({ tiles }: { tiles: ReturnType<typeof toTile>[] }) {
               {tile.imageUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
-                  src={tile.imageUrl}
+                  src={artworkAt(tile.imageUrl, 400) ?? tile.imageUrl}
                   alt={tile.label}
-                  className={`h-full w-full transition group-hover:scale-105 ${tile.isArtistOnly ? 'object-cover' : 'object-cover'}`}
+                  loading="lazy"
+                  decoding="async"
+                  className="h-full w-full object-cover transition group-hover:scale-105"
                 />
               ) : (
                 <div className="flex h-full w-full items-center justify-center text-2xl">{tile.isArtistOnly ? '🎤' : '💿'}</div>

@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { artworkAt } from '@/utils/artworkSize'
 import { type RankingPreview, type RankingPreviewEntry } from './actions'
 
 function yearOf(entry: RankingPreviewEntry): string {
@@ -42,7 +43,7 @@ function TileGrid({ entries }: { entries: RankingPreviewEntry[] }) {
             <div className={`aspect-square overflow-hidden bg-white/5 ${entry.isArtistOnly ? 'rounded-full' : 'rounded-md'}`}>
               {entry.imageUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={entry.imageUrl} alt={entry.label} className="h-full w-full object-cover" />
+                <img src={artworkAt(entry.imageUrl, 400) ?? entry.imageUrl} alt={entry.label} loading="lazy" decoding="async" className="h-full w-full object-cover" />
               ) : (
                 <div className="flex h-full w-full items-center justify-center text-lg">
                   {entry.isArtistOnly ? '🎤' : '💿'}
@@ -88,7 +89,7 @@ function RankedRow({ entry }: { entry: RankingPreviewEntry }) {
       >
         {entry.imageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={entry.imageUrl} alt="" className="h-full w-full object-cover" />
+          <img src={artworkAt(entry.imageUrl, 200) ?? entry.imageUrl} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
         ) : (
           <div className="flex h-full w-full items-center justify-center text-white/20">💿</div>
         )}

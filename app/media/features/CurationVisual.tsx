@@ -2,6 +2,8 @@
  * 画像が無い、または一覧カード用のアイコン(/curation/ 以下の正方形画像)しか無い
  * 企画は、選出された作品のジャケットを均等に間引いて並べたコラージュにする
  * (アイコンを横長枠にそのまま拡大するとぼやけて切れるため)。 */
+import { artworkAt } from '@/utils/artworkSize'
+
 const COLLAGE_CELLS = 24
 
 export function isIconImage(url: string | null): boolean {
@@ -37,7 +39,7 @@ export default function CurationVisual({
         <div className="grid h-full w-full grid-cols-8 grid-rows-3">
           {picked.map((src) => (
             // eslint-disable-next-line @next/next/no-img-element
-            <img key={src} src={src} alt="" className="h-full w-full object-cover" />
+            <img key={src} src={artworkAt(src, 200) ?? src} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
           ))}
         </div>
       )}
