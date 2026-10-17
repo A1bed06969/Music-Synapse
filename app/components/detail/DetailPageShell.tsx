@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import SiteFooter from '@/app/components/SiteFooter'
+import ScrollToTop from './ScrollToTop'
 
 // SiteHeaderの実測高さ(border込み)。app/artists/[id]/layout.tsxの
 // --artist-shell-h と同じ値・同じ理由(デスクトップのLEFT/RIGHTカラムを
@@ -19,22 +20,27 @@ export default function DetailPageShell({
   center,
   right,
   mobileContent,
+  leftBackgroundUrl,
 }: {
   topBar?: ReactNode
   left: ReactNode
   center: ReactNode
-  right: ReactNode
+  /** 省略すると右カラムを作らず、中央が右端まで広がる(各連載ページで右に置くものが無いとき) */
+  right?: ReactNode
   // モバイル(lg:未満)でLEFT→CENTER→RIGHTの単純な縦積みではなく独自の構成
   // (タブ切り替え等)にしたいページ向け。指定時はここだけがtopBarの下に
   // 描画され、left/center/rightのモバイル縦積みは行わない
   // (2026-09-23、パワープレイ&ヘビロテページのモバイルタブ化で追加)。
   mobileContent?: ReactNode
+  /** 左カラムの上部にぼかして敷く画像(ジャケット・写真) */
+  leftBackgroundUrl?: string | null
 }) {
   return (
     <div
       className="lg:flex lg:flex-row lg:overflow-hidden"
       style={{ ['--detail-shell-h' as string]: `calc(100vh - ${HEADER_HEIGHT_PX}px)` }}
     >
+      <ScrollToTop />
       {/* Mobile(lg:未満): 通常のページスクロール。mobileContent未指定時は
           LEFT→CENTER→RIGHTの縦積み、指定時はそちらを優先する */}
       <div className="px-6 lg:hidden">
@@ -50,7 +56,8 @@ export default function DetailPageShell({
               {left}
             </div>
             <div className="mt-8 min-w-0">{center}</div>
-            <div className="mt-8 min-w-0 pb-8">{right}</div>
+            {right ? <div className="mt-8 min-w-0">{right}</div> : null}
+            <div className="pb-8" />
           </>
         )}
       </div>
@@ -64,18 +71,29 @@ export default function DetailPageShell({
           — シェルの外や4本目のカラムに置くとその分だけページ全体が
           windowスクロール可能になってしまう。 */}
       <div className="hidden lg:block lg:h-[var(--detail-shell-h)] lg:w-[32%] lg:min-w-[320px] lg:shrink-0 lg:overflow-y-auto lg:border-r lg:border-white/5">
-        <div className="px-8 pt-3">
-          {topBar}
-          {left}
+        <div className="relative">
+          {leftBackgroundUrl && (
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-x-0 top-0 h-[560px] bg-cover bg-center opacity-30 blur-[70px] saturate-150 [mask-image:linear-gradient(#000_30%,transparent)]"
+              style={{ backgroundImage: `url("${leftBackgroundUrl}")` }}
+            />
+          )}
+          <div className="relative px-8 pt-3">
+            {topBar}
+            {left}
+          </div>
         </div>
       </div>
       <div className="hidden lg:block lg:h-[var(--detail-shell-h)] lg:min-w-0 lg:flex-1 lg:overflow-y-auto">
         <div className="px-8 pt-4 pb-8">{center}</div>
         <SiteFooter />
       </div>
-      <div className="hidden lg:block lg:h-[var(--detail-shell-h)] lg:w-[26%] lg:min-w-[260px] lg:shrink-0 lg:overflow-y-auto lg:border-l lg:border-white/5">
-        <div className="px-8 pt-4">{right}</div>
-      </div>
+      {right ? (
+        <div className="hidden lg:block lg:h-[var(--detail-shell-h)] lg:w-[26%] lg:min-w-[260px] lg:shrink-0 lg:overflow-y-auto lg:border-l lg:border-white/5">
+          <div className="px-8 pt-4 pb-8">{right}</div>
+        </div>
+      ) : null}
     </div>
   )
 }

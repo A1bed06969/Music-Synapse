@@ -1,4 +1,5 @@
 import { type RankingPreview } from './actions'
+import CurationVisual from './CurationVisual'
 
 /** キュレーションコンテンツ1件のメインビジュアル・タイトル・説明文(左カラム)。
  * エントリ一覧(中央カラム)とは別コンポーネントに分けている
@@ -8,12 +9,7 @@ import { type RankingPreview } from './actions'
 export default function RankingPreviewHeader({ preview }: { preview: RankingPreview }) {
   return (
     <div>
-      {preview.imageUrl && (
-        <div className="aspect-[21/9] w-full overflow-hidden rounded-lg bg-white/5">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={preview.imageUrl} alt={preview.name} className="h-full w-full object-cover" />
-        </div>
-      )}
+      <CurationVisual imageUrl={preview.imageUrl} name={preview.name} jackets={preview.entries.map((e) => e.imageUrl)} />
 
       <p className="mt-4 text-xs text-white/40">{preview.mediaName ?? 'メディア企画'}</p>
       <h2 className="mt-1 text-lg font-bold">{preview.name}</h2>

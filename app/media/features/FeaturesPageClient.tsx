@@ -1,8 +1,9 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import DetailPageShell from '@/app/components/detail/DetailPageShell'
-import BackLink from '@/app/components/navigation/BackLink'
+import HubShell, { HubIdentity } from '@/app/components/hub/HubShell'
+import SectionHeading from '@/app/components/detail/SectionHeading'
+import { hubContent } from '@/app/components/hub/hubContents'
 import RankingPreviewPanel from './RankingPreviewPanel'
 import RankingPreviewHeader from './RankingPreviewHeader'
 import { getRankingPreview, type RankingPreview } from './actions'
@@ -40,12 +41,8 @@ export default function FeaturesPageClient({
     })
   }
 
-  const titleBlock = (
-    <div className="mt-4">
-      <h1 className="text-2xl font-bold">キュレーションコンテンツ</h1>
-      <p className="mt-2 text-sm text-white/50">音楽誌・メディア独自の企画コンテンツをアーカイブしています。</p>
-    </div>
-  )
+  const c = hubContent('curation')
+  const stats = [{ label: '企画', value: cards.length }]
 
   const selectorBlock =
     cards.length === 0 ? (
@@ -59,8 +56,9 @@ export default function FeaturesPageClient({
               key={card.id}
               type="button"
               onClick={() => handleSelect(card.id)}
+              style={isActive ? { borderColor: c.color, backgroundColor: `${c.color}1f` } : undefined}
               className={`flex min-w-0 gap-3 rounded-lg border p-3 text-left transition hover:bg-white/[0.06] ${
-                isActive ? 'border-white/30 bg-white/[0.06]' : 'border-white/10 bg-white/[0.03]'
+                isActive ? 'bg-white/[0.06]' : 'border-white/10 bg-white/[0.03]'
               }`}
             >
               <div className="h-16 w-16 shrink-0 overflow-hidden rounded-md bg-white/5">
@@ -110,24 +108,27 @@ export default function FeaturesPageClient({
     )
 
   return (
-    <DetailPageShell
-      topBar={<BackLink fallbackHref="/media" fallbackLabel="メディア&パワープレイに戻る" />}
-      left={
-        <>
-          {titleBlock}
-          <div className="mt-8">{headerBlock}</div>
-        </>
+    <HubShell
+      hubKey="curation"
+      stats={stats}
+      leftExtra={headerBlock}
+      rightExtra={
+        <div>
+          <p className="mb-3 text-[11px] tracking-[0.2em] text-white/40">FEATURES</p>
+          {selectorBlock}
+        </div>
       }
-      center={entriesBlock}
-      right={selectorBlock}
       mobileContent={
         <>
-          {titleBlock}
-          <div className="mt-6">{selectorBlock}</div>
-          <div className="mt-8">{headerBlock}</div>
+          <HubIdentity hubKey="curation" stats={stats} />
+          <div className="mt-2">{headerBlock}</div>
+          <div className="mt-8">{selectorBlock}</div>
           <div className="mt-8">{entriesBlock}</div>
         </>
       }
-    />
+    >
+      <SectionHeading number={c.number} label="PICKED ARTISTS & WORKS" color={c.color} />
+      {entriesBlock}
+    </HubShell>
   )
 }
