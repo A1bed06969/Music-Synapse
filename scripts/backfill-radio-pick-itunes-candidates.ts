@@ -6,7 +6,8 @@
  * 参考情報として保持するのみ。
  *
  * 実行方法:
- *   npx tsx --env-file=.env.local scripts/backfill-radio-pick-itunes-candidates.ts
+ *   npx tsx --env-file=.env.local scripts/backfill-radio-pick-itunes-candidates.ts [--region=TV]
+ *   --region を付けると、その region の行だけを対象にする(TV局のパワープレイなど)
  */
 import { createAdminClient } from '@/utils/Supabase/admin'
 import { fetchAllRows } from '@/utils/fetchAllRows'
@@ -21,14 +22,17 @@ const RATE_LIMIT_COOLDOWN_MS = 60_000
 async function main() {
   const supabase = createAdminClient()
 
-  type Row = { id: string; artist_name: string | null; track_title: string | null; candidate_track_id: number | null }
+  const region = (process.argv.find((a) => a.startsWith('--region=')) ?? '').replace('--region=', '')
+  type Row = { id: string; region: string; artist_name: string | null; track_title: string | null; candidate_track_id: number | null }
   const allRows = await fetchAllRows<Row>(
     supabase,
     'radio_airplay_pick',
-    'id, artist_name, track_title, candidate_track_id',
+    'id, region, artist_name, track_title, candidate_track_id',
     'id'
   )
-  const rows = allRows.filter((r) => r.candidate_track_id === null && r.artist_name && r.track_title)
+  const rows = allRows.filter(
+    (r) => r.candidate_track_id === null && r.artist_name && r.track_title && (!region || r.region === region)
+  )
 
   if (rows.length === 0) {
     console.log('対象のレコードはありません。')

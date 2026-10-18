@@ -86,6 +86,14 @@ async function fetchAllMonthRows(
   return rows
 }
 
+/** 表記ゆれ(大文字小文字・空白・記号)をならして、どちらかがもう一方を含むなら同じアーティストとみなす */
+function sameArtist(a: string | null, b: string | null): boolean {
+  const norm = (v: string | null) => (v ?? '').normalize('NFKC').toLowerCase().replace(/[\s.・'’"&,\-]/g, '')
+  const x = norm(a)
+  const y = norm(b)
+  return x.length > 0 && y.length > 0 && (x.includes(y) || y.includes(x))
+}
+
 export default async function OnAirPage({
   searchParams,
 }: {
@@ -237,7 +245,7 @@ export default async function OnAirPage({
   ]
   const { data: tvPicks } = await supabase
     .from('radio_airplay_pick')
-    .select('station_name, campaign_name, artist_name, track_title, is_domestic, candidate_artwork_url, picked_date')
+    .select('station_name, campaign_name, artist_name, track_title, is_domestic, candidate_artist_name, candidate_artwork_url, picked_date')
     .eq('region', 'TV')
     .gte('picked_date', monthStart)
     .lt('picked_date', monthEnd)
@@ -252,7 +260,8 @@ export default async function OnAirPage({
         targetLabel: [p.track_title, p.artist_name].filter(Boolean).join(' — '),
         targetHref: null,
         musicType: (p.is_domestic === false ? 'OVERSEAS' : 'DOMESTIC') as 'DOMESTIC' | 'OVERSEAS',
-        artworkUrl: p.candidate_artwork_url,
+        // iTunesの候補は検索上位1件なので、アーティスト名が似ているときだけジャケットを出す(別人の曲の誤表示を防ぐ)
+        artworkUrl: sameArtist(p.artist_name, p.candidate_artist_name) ? artworkAt(p.candidate_artwork_url, 200) : null,
       })),
   }))
 
