@@ -2,11 +2,12 @@ import Link from 'next/link'
 import { createClient } from '@/utils/Supabase/server'
 import { formatRotationPeriod } from '@/utils/format'
 import { fetchAllRows } from '@/utils/fetchAllRows'
-import PrefectureMap, { type PrefectureEntry, type PrefectureMapData } from '@/app/components/PrefectureMap'
-import DetailPageShell from '@/app/components/detail/DetailPageShell'
-import PageTitleHeading from '@/app/components/detail/PageTitleHeading'
-import BackLink from '@/app/components/navigation/BackLink'
+import PrefectureMap, { type PrefectureEntry, type PrefectureMapData, type TvStationData } from '@/app/components/PrefectureMap'
+import HubShell, { HubIdentity } from '@/app/components/hub/HubShell'
+import SectionHeading from '@/app/components/detail/SectionHeading'
+import { hubContent } from '@/app/components/hub/hubContents'
 import OnAirMobileTabs from './OnAirMobileTabs'
+import { artworkAt } from '@/utils/artworkSize'
 
 const MUSIC_TYPE_LABEL: Record<string, string> = {
   DOMESTIC: '邦楽',
@@ -227,14 +228,35 @@ export default async function OnAirPage({
     entries: agg.entries.slice().sort((a, b) => a.stationName.localeCompare(b.stationName, 'ja')),
   }))
 
-  const titleBlock = (
-    <PageTitleHeading
-      index="03"
-      titleLines={['Monthly', 'Next Break']}
-      accent="#f0975a"
-      description="全国ラジオ局の週間・月間プッシュ楽曲データ。"
-    />
-  )
+  // TV(全国放送)は都道府県に載せられないので、地図の太平洋側に局ごとのバッジとして出す。
+  // 曲の照合がまだのものも出せるよう、文字の候補置き場(radio_airplay_pick)からその月ぶんを読む
+  const TV_STATIONS = [
+    { stationName: 'スペースシャワーTV', shortName: 'スペシャ' },
+    { stationName: 'MTV', shortName: 'MTV' },
+    { stationName: 'MUSIC ON! TV', shortName: 'M-ON! TV' },
+  ]
+  const { data: tvPicks } = await supabase
+    .from('radio_airplay_pick')
+    .select('station_name, campaign_name, artist_name, track_title, is_domestic, candidate_artwork_url, picked_date')
+    .eq('region', 'TV')
+    .gte('picked_date', monthStart)
+    .lt('picked_date', monthEnd)
+    .order('id', { ascending: true })
+  const tvData: TvStationData[] = TV_STATIONS.map((st) => ({
+    ...st,
+    entries: (tvPicks ?? [])
+      .filter((p) => p.station_name === st.stationName)
+      .map((p) => ({
+        stationName: st.stationName,
+        campaign: p.campaign_name,
+        targetLabel: [p.track_title, p.artist_name].filter(Boolean).join(' — '),
+        targetHref: null,
+        musicType: (p.is_domestic === false ? 'OVERSEAS' : 'DOMESTIC') as 'DOMESTIC' | 'OVERSEAS',
+        artworkUrl: p.candidate_artwork_url,
+      })),
+  }))
+
+  const c = hubContent('nextBreak')
 
   const monthNavBlock = (
     <>
@@ -292,7 +314,7 @@ export default async function OnAirPage({
   const rankingBlock =
     ranking.length > 0 ? (
       <div>
-        <h2 className="text-lg font-semibold">🏆 {monthLabel(currentMonth)}のランキング</h2>
+        <SectionHeading number="01" label="RANKING" color={c.color} right={monthLabel(currentMonth)} />
 
         {/* Top3はジャケットを大きめにして目立たせる。4位以降は小さめの
          * サムネイル付きリストに(2026-09-23、ユーザー要望)。 */}
@@ -309,7 +331,7 @@ export default async function OnAirPage({
                 <div className="h-16 w-16 shrink-0 overflow-hidden rounded bg-white/5">
                   {r.jacketUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={r.jacketUrl} alt="" className="h-full w-full object-cover" />
+                    <img src={artworkAt(r.jacketUrl, 400) ?? undefined} alt="" className="h-full w-full object-cover" />
                   ) : (
                     <div className="flex h-full w-full items-center justify-center text-[9px] text-white/20">
                       No Art
@@ -337,7 +359,7 @@ export default async function OnAirPage({
                   <div className="h-10 w-10 shrink-0 overflow-hidden rounded bg-white/5">
                     {r.jacketUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={r.jacketUrl} alt="" className="h-full w-full object-cover" />
+                      <img src={artworkAt(r.jacketUrl, 400) ?? undefined} alt="" className="h-full w-full object-cover" />
                     ) : (
                       <div className="flex h-full w-full items-center justify-center text-[8px] text-white/20">
                         No Art
@@ -361,18 +383,17 @@ export default async function OnAirPage({
 
   const mapBlock = (
     <section>
-      <h2 className="text-lg font-semibold">都道府県別プッシュ状況</h2>
-      <p className="mt-1 text-xs text-white/40">数字はその月にプッシュした局数</p>
+      <SectionHeading number="02" label="PUSH MAP" color={c.color} right="数字はその月にプッシュした局数" />
       <div className="mt-4">
-        <PrefectureMap data={prefectureData} />
+        <PrefectureMap data={prefectureData} tv={tvData} />
       </div>
     </section>
   )
 
-  const entriesBlock = (
+  const filterBlock = (
     <div>
-      <h2 className="text-lg font-semibold">エントリ一覧</h2>
-      <form className="mt-4 flex flex-wrap gap-2" action="/media/on-air">
+      <p className="mb-3 text-[11px] tracking-[0.2em] text-white/40">FILTER</p>
+      <form className="flex flex-col gap-2" action="/media/on-air">
             <input type="hidden" name="month" value={currentMonth} />
             <select
               name="media"
@@ -398,16 +419,23 @@ export default async function OnAirPage({
             </select>
             <button
               type="submit"
-              className="rounded-md bg-white px-4 py-2 text-sm font-medium text-black transition hover:bg-white/85"
+              className="rounded-md px-4 py-2 text-sm font-bold text-black transition hover:opacity-85"
+              style={{ backgroundColor: c.color }}
             >
               絞り込む
             </button>
           </form>
+    </div>
+  )
+
+  const entriesBlock = (
+    <div>
+      <SectionHeading number="03" label="ENTRIES" color={c.color} />
 
           {!rotations || rotations.length === 0 ? (
-            <p className="mt-10 text-sm text-white/40">この月のオンエアデータはまだ登録されていません。</p>
+            <p className="text-sm text-white/40">この月のオンエアデータはまだ登録されていません。</p>
           ) : (
-            <ul className="mt-6 divide-y divide-white/10">
+            <ul className="divide-y divide-white/10">
               {rotations.map((row) => {
                 const program = firstOf(row.media_program)
                 const media = program ? firstOf(program.media) : null
@@ -494,25 +522,36 @@ export default async function OnAirPage({
     </div>
   )
 
+  const stats = [
+    { label: `${monthLabel(currentMonth)}のランキング`, value: ranking.length },
+    { label: 'プッシュした都道府県', value: prefectureData.length },
+  ]
+
   return (
-    <DetailPageShell
-      topBar={<BackLink fallbackHref="/media" fallbackLabel="メディア&パワープレイに戻る" />}
-      left={
-        <div className="mt-4">
-          {titleBlock}
+    <HubShell
+      hubKey="nextBreak"
+      stats={stats}
+      leftExtra={
+        <>
+          <p className="text-xs leading-relaxed text-white/50">全国ラジオ局の週間・月間プッシュ楽曲データ。</p>
           {monthNavBlock}
-          <div className="mt-8">{rankingBlock}</div>
-        </div>
+        </>
       }
-      center={mapBlock}
-      right={entriesBlock}
+      rightExtra={filterBlock}
       mobileContent={
-        <div className="mt-4">
-          {titleBlock}
+        <>
+          <HubIdentity hubKey="nextBreak" stats={stats} />
           {monthNavBlock}
+          <div className="mt-6">{filterBlock}</div>
           <OnAirMobileTabs ranking={rankingBlock} map={mapBlock} entries={entriesBlock} />
-        </div>
+        </>
       }
-    />
+    >
+      <div className="space-y-12">
+        {rankingBlock}
+        {mapBlock}
+        {entriesBlock}
+      </div>
+    </HubShell>
   )
 }
