@@ -6,17 +6,38 @@
 // scripts/import-fender-next.tsと同じ構造(ranking/ranking_entryスキーマ、
 // list_type='selection'、period_dateは`{year}-01-01`、再実行しても安全)。
 //
-// 実行: npx tsx scripts/import-future-of-music.ts <csvのパス>
+// 米国版(Rolling Stone US「Future 25」、2023〜2026年)も同じスクリプトで、別の企画として取り込める
+// (--edition=us)。日本版は既定(--edition 省略)。
+//
+// 実行: npx tsx --env-file=.env.local scripts/import-future-of-music.ts <csvのパス> [--edition=jp|us]
 
 import { createClient } from '@supabase/supabase-js'
 import * as fs from 'fs'
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 
-const RANKING_NAME = 'Future of Music'
-const RANKING_SOURCE = 'Rolling Stone Japan'
-const RANKING_DESCRIPTION =
-  'Rolling Stone誌のグローバル連動企画「Future of Music」の日本版。世界各国のRolling Stone誌が次世代を担うアーティストを選出する中、日本版が独自にピックアップした「日本代表」25組を毎年紹介する。2024年開始。'
+const EDITIONS = {
+  jp: {
+    name: 'Future of Music',
+    source: 'Rolling Stone Japan',
+    description:
+      'Rolling Stone誌のグローバル連動企画「Future of Music」の日本版。世界各国のRolling Stone誌が次世代を担うアーティストを選出する中、日本版が独自にピックアップした「日本代表」25組を毎年紹介する。2024年開始。',
+  },
+  us: {
+    name: 'Future of Music (Rolling Stone US)',
+    source: 'Rolling Stone',
+    description:
+      'Rolling Stone誌(米国版)の企画「Future of Music」の「Future 25」。毎年、次世代を担う世界のアーティスト25組を、ジャンル・国を問わず選出する(2023年は「Meet Music\'s Future 25」)。2023年開始。',
+  },
+} as const
+const edition = (process.argv.find((a) => a.startsWith('--edition=')) ?? '--edition=jp').replace('--edition=', '') as keyof typeof EDITIONS
+if (!(edition in EDITIONS)) {
+  console.error('--edition は jp か us を指定してください。')
+  process.exit(1)
+}
+const RANKING_NAME = EDITIONS[edition].name
+const RANKING_SOURCE = EDITIONS[edition].source
+const RANKING_DESCRIPTION = EDITIONS[edition].description
 
 function normalize(s: string): string {
   return s.trim().toLowerCase().replace(/\s+/g, ' ')
@@ -119,9 +140,9 @@ async function fetchExistingEntryKeys(rankingId: string): Promise<Set<string>> {
 }
 
 async function main() {
-  const csvPath = process.argv[2]
+  const csvPath = process.argv.slice(2).find((a) => !a.startsWith('--'))
   if (!csvPath) {
-    console.error('使い方: npx tsx scripts/import-future-of-music.ts <csvのパス>')
+    console.error('使い方: npx tsx --env-file=.env.local scripts/import-future-of-music.ts <csvのパス> [--edition=jp|us]')
     process.exit(1)
   }
 
