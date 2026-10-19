@@ -301,7 +301,7 @@ export default async function OnAirPage({
             key={currentMonth}
             name="month"
             defaultValue={currentMonth}
-            className="w-full rounded-md border border-white/15 bg-white/5 px-2 py-1.5 text-xs text-white focus:border-white/30 focus:outline-none"
+            className="w-full rounded-md border border-white/15 bg-white/5 px-3 py-2.5 text-sm text-white focus:border-white/30 focus:outline-none"
           >
             {availableMonths
               .slice()
@@ -312,7 +312,10 @@ export default async function OnAirPage({
                 </option>
               ))}
           </select>
-          <button type="submit" className="shrink-0 text-xs text-white/40 hover:text-white/70">
+          <button
+            type="submit"
+            className="min-h-11 shrink-0 rounded-md border border-white/20 bg-white/10 px-5 text-sm font-bold text-white transition hover:bg-white/20 active:bg-white/25"
+          >
             移動
           </button>
         </form>
