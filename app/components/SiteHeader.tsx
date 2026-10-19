@@ -17,6 +17,7 @@ const NAV_LINKS: NavLink[] = [
   { href: '/albums/calendar', label: '新譜カレンダー' },
   { href: '/map', label: 'マップ' },
   { href: '/media', label: 'メディア' },
+  { href: '/game', label: 'ジャケットゲーム' },
   { href: '/admin/import', label: 'iTunes登録' },
   { href: '/admin/data', label: '手動データ' },
 ]
