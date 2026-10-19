@@ -40,12 +40,12 @@ export type Board = {
   cards: BoardCard[]
 }
 
-export const BOARD_PAIRS = 6
+export const BOARD_PAIRS = 8
 /** 制限時間(最初のカードをめくってから) */
 export const GAME_SECONDS = 30
 /** 残り時間で星を決める(クリア時): この秒数以上で3つ・2つ、それ未満は1つ */
-export const STAR3_SECONDS_LEFT = 15
-export const STAR2_SECONDS_LEFT = 8
+export const STAR3_SECONDS_LEFT = 10
+export const STAR2_SECONDS_LEFT = 5
 
 function firstOf<T>(value: T | T[] | null | undefined): T | null {
   return Array.isArray(value) ? (value[0] ?? null) : (value ?? null)

@@ -202,7 +202,7 @@ export default function PlayClient({ themeId, themeTitle, initialBoard }: { them
         )}
       </div>
 
-      {/* 残り時間: 大きな数字と太いバー。15秒を切ると黄色、8秒を切ると赤で点滅する */}
+      {/* 残り時間: 大きな数字と太いバー。10秒を切ると黄色、5秒を切ると赤で点滅する */}
       <div
         className="mt-3 rounded-xl border px-4 py-3"
         style={{ borderColor: `${timerColor}66`, backgroundColor: `${timerColor}14` }}
@@ -230,7 +230,7 @@ export default function PlayClient({ themeId, themeTitle, initialBoard }: { them
         </div>
       </div>
 
-      <div className="mt-4 grid grid-cols-3 gap-2.5">
+      <div className="mt-4 grid grid-cols-4 gap-2">
         {board.cards.map((card) => {
           const pair = pairById.get(card.albumId)!
           const up = isUp(card)
@@ -251,15 +251,15 @@ export default function PlayClient({ themeId, themeTitle, initialBoard }: { them
               >
                 {/* 裏面(伏せた状態) */}
                 <span
-                  className="absolute inset-0 flex items-center justify-center rounded-lg border border-white/10 bg-gradient-to-br from-white/[0.08] to-white/[0.02] [backface-visibility:hidden]"
+                  className="absolute inset-0 flex items-center justify-center rounded-md border border-white/10 bg-gradient-to-br from-white/[0.08] to-white/[0.02] [backface-visibility:hidden]"
                 >
-                  <span className="text-2xl font-black" style={{ color: `${ACCENT}99` }}>
+                  <span className="text-xl font-black" style={{ color: `${ACCENT}99` }}>
                     ♪
                   </span>
                 </span>
                 {/* 表面 */}
                 <span
-                  className="absolute inset-0 overflow-hidden rounded-lg [backface-visibility:hidden]"
+                  className="absolute inset-0 overflow-hidden rounded-md [backface-visibility:hidden]"
                   style={{
                     transform: 'rotateY(180deg)',
                     boxShadow: done ? `0 0 0 2px ${ACCENT}` : undefined,
@@ -332,7 +332,7 @@ export default function PlayClient({ themeId, themeTitle, initialBoard }: { them
           )}
 
           {matched.length > 0 && (
-            <ul className="mt-4 grid grid-cols-3 gap-2">
+            <ul className="mt-4 grid grid-cols-4 gap-2">
               {matched.map((id) => {
                 const p = pairById.get(id)!
                 return (
