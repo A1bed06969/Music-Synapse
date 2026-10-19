@@ -245,7 +245,13 @@ export default async function OnAirPage({
   ]
   const { data: tvPicks } = await supabase
     .from('radio_airplay_pick')
-    .select('station_name, campaign_name, artist_name, track_title, is_domestic, candidate_artist_name, candidate_artwork_url, picked_date')
+    .select(
+      `station_name, campaign_name, artist_name, track_title, is_domestic, candidate_artist_name, candidate_artwork_url, picked_date,
+       rotation:registered_rotation_id(
+         track:track_id(id, title, artist:artist_id(name), album:album_id(jacket_url)),
+         album:album_id(id, title, jacket_url, artist:artist_id(name))
+       )`
+    )
     .eq('region', 'TV')
     .gte('picked_date', monthStart)
     .lt('picked_date', monthEnd)
@@ -254,15 +260,35 @@ export default async function OnAirPage({
     ...st,
     entries: (tvPicks ?? [])
       .filter((p) => p.station_name === st.stationName)
-      .map((p) => ({
-        stationName: st.stationName,
-        campaign: p.campaign_name,
-        targetLabel: [p.track_title, p.artist_name].filter(Boolean).join(' — '),
-        targetHref: null,
-        musicType: (p.is_domestic === false ? 'OVERSEAS' : 'DOMESTIC') as 'DOMESTIC' | 'OVERSEAS',
-        // iTunesの候補は検索上位1件なので、アーティスト名が似ているときだけジャケットを出す(別人の曲の誤表示を防ぐ)
-        artworkUrl: sameArtist(p.artist_name, p.candidate_artist_name) ? artworkAt(p.candidate_artwork_url, 200) : null,
-      })),
+      .map((p) => {
+        // 本登録済み(radio_rotationに紐付いた)ものは曲ページへのリンクと実際のジャケットを出す。
+        // 未登録のものは文字だけ、候補のジャケットはアーティスト名が似ているときだけ出す
+        const rotation = firstOf(p.rotation)
+        const track = rotation ? firstOf(rotation.track) : null
+        const album = rotation ? firstOf(rotation.album) : null
+        const trackAlbum = track ? firstOf(track.album) : null
+        const trackArtist = track ? firstOf(track.artist) : null
+        const albumArtist = album ? firstOf(album.artist) : null
+        const registeredLabel = track
+          ? [track.title, trackArtist?.name].filter(Boolean).join(' — ')
+          : album
+            ? [album.title, albumArtist?.name].filter(Boolean).join(' — ')
+            : null
+        return {
+          stationName: st.stationName,
+          campaign: p.campaign_name,
+          targetLabel: registeredLabel ?? [p.track_title, p.artist_name].filter(Boolean).join(' — '),
+          targetHref: track ? `/tracks/${track.id}` : album ? `/albums/${album.id}` : null,
+          musicType: (p.is_domestic === false ? 'OVERSEAS' : 'DOMESTIC') as 'DOMESTIC' | 'OVERSEAS',
+          artworkUrl: track
+            ? artworkAt(trackAlbum?.jacket_url ?? null, 200)
+            : album
+              ? artworkAt(album.jacket_url, 200)
+              : sameArtist(p.artist_name, p.candidate_artist_name)
+                ? artworkAt(p.candidate_artwork_url, 200)
+                : null,
+        }
+      }),
   }))
 
   const c = hubContent('nextBreak')

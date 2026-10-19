@@ -16,7 +16,8 @@
 // 実際のHTTPリクエストとして本番デプロイに投げる)。
 //
 // 実行方法:
-//   npx tsx --env-file=.env.local scripts/verify-radio-pick-matches.ts [--limit=N]
+//   npx tsx --env-file=.env.local scripts/verify-radio-pick-matches.ts [--limit=N] [--region=TV]
+//   --region を付けると、その region の行だけを対象にする(TV局のパワープレイなど)
 import { createAdminClient } from '@/utils/Supabase/admin'
 import { internalApiBaseUrl } from '@/utils/internalApiBaseUrl'
 import { fetchDevServer } from '@/utils/devServerFetch'
@@ -29,6 +30,7 @@ const BASE_URL = internalApiBaseUrl()
 
 const limitArg = process.argv.find((a) => a.startsWith('--limit='))
 const LIMIT = limitArg ? Number(limitArg.split('=')[1]) : undefined
+const REGION = (process.argv.find((a) => a.startsWith('--region=')) ?? '').replace('--region=', '')
 
 type VerifyResponse = {
   status: 'registered' | 'cleared' | 'needs_review' | 'error'
@@ -57,13 +59,13 @@ async function main() {
   const pageSize = 1000
   let offset = 0
   while (true) {
-    const { data } = await supabase
+    let query = supabase
       .from('radio_airplay_pick')
       .select('id')
       .not('candidate_collection_id', 'is', null)
       .is('registered_rotation_id', null)
-      .order('picked_date', { ascending: true })
-      .range(offset, offset + pageSize - 1)
+    if (REGION) query = query.eq('region', REGION)
+    const { data } = await query.order('picked_date', { ascending: true }).range(offset, offset + pageSize - 1)
     const page = data ?? []
     targetIds.push(...page.map((r) => r.id as string))
     if (page.length < pageSize) break
