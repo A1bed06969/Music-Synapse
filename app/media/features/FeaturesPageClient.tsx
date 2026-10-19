@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useEffect, useRef, useState, useTransition } from 'react'
 import HubShell, { HubIdentity } from '@/app/components/hub/HubShell'
 import SectionHeading from '@/app/components/detail/SectionHeading'
 import { hubContent } from '@/app/components/hub/hubContents'
@@ -32,6 +32,72 @@ export default function FeaturesPageClient({
   const [selectedId, setSelectedId] = useState<string | null>(initialPreview?.id ?? null)
   const [preview, setPreview] = useState<RankingPreview | null>(initialPreview)
   const [isPending, startTransition] = useTransition()
+
+  // アーティストなどのリンクを開く直前に、選んでいた企画とスクロール位置を覚えておく。
+  // 「戻る」でこのページに戻ってきたときに、同じ企画の一覧と位置に戻す
+  // (履歴のURLには頼らない: 戻ると、ページがサーバーで先頭の企画から作り直されるため)。
+  // スクロールするのは、スマホはページ全体、PCは中央・右などのカラム。
+  const RETURN_KEY = 'features-return'
+  const RETURN_TTL_MS = 30 * 60_000
+  const pendingScrollRef = useRef<{ id: string; scroll: number[] } | null>(null)
+  const containers = (): (HTMLElement | Window)[] => [window, ...Array.from(document.querySelectorAll<HTMLElement>('div[class*="overflow-y-auto"]'))]
+
+  useEffect(() => {
+    function remember(e: MouseEvent) {
+      const a = (e.target as Element | null)?.closest?.('a[href]') as HTMLAnchorElement | null
+      if (!a || !selectedId) return
+      const href = a.getAttribute('href') ?? ''
+      if (!href.startsWith('/') || href.startsWith('/media/features')) return
+      try {
+        sessionStorage.setItem(
+          RETURN_KEY,
+          JSON.stringify({ id: selectedId, ts: Date.now(), scroll: containers().map((c) => (c instanceof Window ? c.scrollY : c.scrollTop)) })
+        )
+      } catch {}
+    }
+    document.addEventListener('click', remember, true)
+    return () => document.removeEventListener('click', remember, true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId])
+
+  // 開いた直後に、覚えていた企画があれば切り替える(開いたら消す。最初の1回だけ)
+  const restoredOnceRef = useRef(false)
+  useEffect(() => {
+    if (restoredOnceRef.current) return
+    restoredOnceRef.current = true
+    let saved: { id: string; ts: number; scroll: number[] } | null = null
+    try {
+      saved = JSON.parse(sessionStorage.getItem(RETURN_KEY) ?? 'null')
+      sessionStorage.removeItem(RETURN_KEY)
+    } catch {}
+    if (!saved || Date.now() - saved.ts > RETURN_TTL_MS || !cards.some((c) => c.id === saved!.id)) return
+    pendingScrollRef.current = { id: saved.id, scroll: saved.scroll }
+    if (saved.id !== selectedId) handleSelect(saved.id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // 企画の中身が表示できたら、覚えていたスクロール位置へ戻す(画像などで高さが決まるまで数回試す)
+  useEffect(() => {
+    const pending = pendingScrollRef.current
+    // 戻る前に見ていた企画の中身が表示できてから戻す(切り替え中の古い中身には適用しない)
+    if (!pending || isPending || preview?.id !== pending.id) return
+    const target = pending.scroll
+    pendingScrollRef.current = null
+    if (!target.some((n) => n > 0)) return
+    let tries = 0
+    const timer = window.setInterval(() => {
+      const cs = containers()
+      target.forEach((y, i) => {
+        const c = cs[i]
+        if (!c || y <= 0) return
+        if (c instanceof Window) c.scrollTo(0, y)
+        else c.scrollTop = y
+      })
+      if (++tries >= 8) window.clearInterval(timer)
+    }, 150)
+    return () => window.clearInterval(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preview, isPending])
 
   function handleSelect(id: string) {
     setSelectedId(id)
@@ -123,7 +189,28 @@ export default function FeaturesPageClient({
           <HubIdentity hubKey="curation" stats={stats} />
           <div className="mt-2">{headerBlock}</div>
           <div className="mt-8">{selectorBlock}</div>
-          <div className="mt-8">{entriesBlock}</div>
+          {/* 下へスクロールしても、どの企画の一覧を見ているか分かるように、企画名を上に追従させる
+              (サイトのヘッダー(高さ57px)のすぐ下に貼り付く) */}
+          {preview && (
+            <div className="sticky top-[57px] z-10 -mx-6 mt-8 border-y border-white/10 bg-[#0a0a0a]/95 px-6 py-2 backdrop-blur">
+              <div className="flex items-center gap-3">
+                <span className="h-9 w-9 shrink-0 overflow-hidden rounded bg-white/5">
+                  {cards.find((card) => card.id === preview.id)?.imageUrl && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={cards.find((card) => card.id === preview.id)!.imageUrl!} alt="" className="h-full w-full object-cover" />
+                  )}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[10px] tracking-[0.14em]" style={{ color: c.color }}>
+                    {preview.mediaName ?? 'メディア企画'}
+                  </span>
+                  <span className="block truncate text-sm font-bold">{preview.name}</span>
+                </span>
+                <span className="shrink-0 text-[11px] text-white/40">全{preview.totalCount}件</span>
+              </div>
+            </div>
+          )}
+          <div className="mt-4">{entriesBlock}</div>
         </>
       }
     >

@@ -7,7 +7,8 @@ function firstOf<T>(value: T | T[] | null | undefined): T | null {
   return value ?? null
 }
 
-export default async function MediaFeaturesPage() {
+export default async function MediaFeaturesPage({ searchParams }: { searchParams: Promise<{ f?: string }> }) {
+  const { f } = await searchParams
   const supabase = await createClient()
 
   const { data: rankings } = await supabase
@@ -29,7 +30,9 @@ export default async function MediaFeaturesPage() {
 
   // 空状態を避けるため、最新の企画(先頭)のプレビューをサーバー側で先読みして
   // 右カラムの初期表示に渡す(クリックで選び直した以降はクライアント側で取得)
-  const initialPreview = cards.length > 0 ? await getRankingPreview(cards[0].id) : null
+  // 選んでいた企画は ?f= に残している(アーティストを開いて戻ったときに、その企画の一覧に戻れるように)
+  const initialId = cards.find((c) => c.id === f)?.id ?? cards[0]?.id
+  const initialPreview = initialId ? await getRankingPreview(initialId) : null
 
   return <FeaturesPageClient cards={cards} initialPreview={initialPreview} />
 }
