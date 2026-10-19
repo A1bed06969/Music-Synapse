@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/utils/Supabase/server'
 import { createAdminClient } from '@/utils/Supabase/admin'
-import { buildBoard, fetchThemeAlbums, MAX_MISSES, type Board } from '@/utils/gameData'
+import { buildBoard, fetchThemeAlbums, GAME_SECONDS, STAR2_SECONDS_LEFT, STAR3_SECONDS_LEFT, type Board } from '@/utils/gameData'
 
 export async function newBoard(themeId: string): Promise<Board | null> {
   const supabase = await createClient()
@@ -19,7 +19,7 @@ export type GameResult = {
   rare: { albumId: string; title: string; jacketUrl: string; artistName: string } | null
 }
 
-/** ゲーム終了時に呼ぶ。揃えたペアのアルバムを図鑑に入れ、ミスなしクリアならレア枠を1枚足す。
+/** ゲーム終了時に呼ぶ。揃えたペアのアルバムを図鑑に入れ、3つ星のクリアならレア枠を1枚足す。
  * 図鑑に入れるアルバムは、必ずそのテーマ(ディスクガイド)の掲載作品に限る(外から任意のIDを入れられないように)。 */
 export async function completeGame(input: {
   themeId: string
@@ -27,14 +27,17 @@ export async function completeGame(input: {
   cleared: boolean
   misses: number
   moves: number
+  /** クリア時の残り時間(ミリ秒)。時間切れなら0 */
+  timeLeftMs: number
 }): Promise<GameResult> {
   const supabase = createAdminClient()
   const themeAlbums = await fetchThemeAlbums(supabase, input.themeId)
   const themeById = new Map(themeAlbums.map((a) => [a.albumId, a]))
 
   const albumIds = Array.from(new Set(input.albumIds)).filter((id) => themeById.has(id))
-  const misses = Math.max(0, Math.min(MAX_MISSES, Math.floor(input.misses)))
-  const stars = input.cleared ? Math.max(1, 3 - misses) : 0
+  const misses = Math.max(0, Math.floor(input.misses))
+  const secondsLeft = Math.max(0, Math.min(GAME_SECONDS, input.timeLeftMs / 1000))
+  const stars = !input.cleared ? 0 : secondsLeft >= STAR3_SECONDS_LEFT ? 3 : secondsLeft >= STAR2_SECONDS_LEFT ? 2 : 1
 
   const { data: existingRows } = await supabase.from('game_collection').select('album_id')
   const collectedIds = new Set((existingRows ?? []).map((r) => r.album_id as string))
@@ -43,9 +46,9 @@ export async function completeGame(input: {
     .filter((id) => !collectedIds.has(id))
     .map((id) => ({ album_id: id, theme_id: input.themeId, source: 'pair' }))
 
-  // ミスなしクリアの達成報酬: まだ持っていない、受賞・ランキング選出のあるアルバムを1枚
+  // 3つ星(残り時間が十分あるクリア)の達成報酬: まだ持っていない、受賞・ランキング選出のあるアルバムを1枚
   let rare: GameResult['rare'] = null
-  if (input.cleared && misses === 0) {
+  if (stars === 3) {
     const candidateIds = themeAlbums
       .map((a) => a.albumId)
       .filter((id) => !collectedIds.has(id) && !albumIds.includes(id))

@@ -31,7 +31,7 @@ export type BoardPair = {
   previewUrl: string | null
 }
 
-export type BoardCard = { key: string; albumId: string; kind: 'jacket' | 'artist' }
+export type BoardCard = { key: string; albumId: string }
 
 export type Board = {
   themeId: string
@@ -41,7 +41,11 @@ export type Board = {
 }
 
 export const BOARD_PAIRS = 6
-export const MAX_MISSES = 3
+/** 制限時間(最初のカードをめくってから) */
+export const GAME_SECONDS = 30
+/** 残り時間で星を決める(クリア時): この秒数以上で3つ・2つ、それ未満は1つ */
+export const STAR3_SECONDS_LEFT = 15
+export const STAR2_SECONDS_LEFT = 8
 
 function firstOf<T>(value: T | T[] | null | undefined): T | null {
   return Array.isArray(value) ? (value[0] ?? null) : (value ?? null)
@@ -111,7 +115,7 @@ async function fetchPreviewUrls(supabase: Supabase, albumIds: string[]): Promise
   return result
 }
 
-/** 盤面を作る。同じアーティストが2組入らないようにする(アーティスト名で見分けるゲームなので) */
+/** 盤面を作る。同じジャケット2枚が1ペア。同じアーティストの別作品が並ぶと紛らわしいので、アーティストは1組ずつにする */
 export async function buildBoard(supabase: Supabase, themeId: string): Promise<Board | null> {
   const albums = await fetchThemeAlbums(supabase, themeId)
   const picked: ThemeAlbum[] = []
@@ -134,8 +138,8 @@ export async function buildBoard(supabase: Supabase, themeId: string): Promise<B
   }))
   const cards: BoardCard[] = shuffle(
     pairs.flatMap((p) => [
-      { key: `${p.albumId}:jacket`, albumId: p.albumId, kind: 'jacket' as const },
-      { key: `${p.albumId}:artist`, albumId: p.albumId, kind: 'artist' as const },
+      { key: `${p.albumId}:a`, albumId: p.albumId },
+      { key: `${p.albumId}:b`, albumId: p.albumId },
     ])
   )
   return { themeId, pairs, cards }

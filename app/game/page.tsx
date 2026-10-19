@@ -57,7 +57,7 @@ export default async function GameHomePage() {
       </p>
       <h1 className="mt-1 text-2xl font-black leading-tight">ジャケット神経衰弱</h1>
       <p className="mt-2 text-sm leading-relaxed text-white/60">
-        ジャケットと、そのアーティスト名のペアを揃えよう。揃えたジャケットは図鑑に集まります。1枚目をめくると、そのアルバムの曲が流れます。
+        同じジャケットのペアを、30秒で揃えよう。揃えたジャケットは図鑑に集まります。1枚目をめくると、そのアルバムの曲が流れます。
       </p>
 
       <div className="mt-4 flex items-center gap-3 text-sm">

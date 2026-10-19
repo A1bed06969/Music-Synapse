@@ -3,12 +3,12 @@
 import Link from 'next/link'
 import { useEffect, useRef, useState } from 'react'
 import { artworkAt } from '@/utils/artworkSize'
-import type { Board, BoardCard } from '@/utils/gameData'
+import { GAME_SECONDS, STAR2_SECONDS_LEFT, STAR3_SECONDS_LEFT, type Board, type BoardCard } from '@/utils/gameData'
 import { completeGame, newBoard, type GameResult } from '../../actions'
 
 const ACCENT = '#3fd0e0'
-const MAX_MISSES = 3
-const MISMATCH_DELAY_MS = 1000
+const LIMIT_MS = GAME_SECONDS * 1000
+const MISMATCH_DELAY_MS = 700
 
 type Status = 'playing' | 'cleared' | 'failed'
 
@@ -23,7 +23,14 @@ export default function PlayClient({ themeId, themeTitle, initialBoard }: { them
   const [result, setResult] = useState<GameResult | null>(null)
   const [muted, setMuted] = useState(false)
   const [loading, setLoading] = useState(false)
+  // 最初のカードをめくった瞬間から30秒。startedAt が null の間はまだ始まっていない
+  const [startedAt, setStartedAt] = useState<number | null>(null)
+  const [timeLeftMs, setTimeLeftMs] = useState(LIMIT_MS)
   const lockedRef = useRef(false)
+  const statusRef = useRef<Status>('playing')
+  const matchedRef = useRef<string[]>([])
+  const missesRef = useRef(0)
+  const movesRef = useRef(0)
   const audioRef = useRef<HTMLAudioElement | null>(null)
 
   const pairById = new Map(board.pairs.map((p) => [p.albumId, p]))
@@ -53,15 +60,32 @@ export default function PlayClient({ themeId, themeTitle, initialBoard }: { them
     }
   }, [])
 
-  async function finish(nextStatus: Status, matchedIds: string[], finalMisses: number, finalMoves: number) {
+  // 残り時間を進める。0になったら時間切れ(揃えた分は図鑑に入る)
+  useEffect(() => {
+    if (startedAt === null || status !== 'playing') return
+    const id = window.setInterval(() => {
+      const left = Math.max(0, LIMIT_MS - (Date.now() - startedAt))
+      setTimeLeftMs(left)
+      if (left <= 0) void finish('failed', 0)
+    }, 100)
+    return () => window.clearInterval(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [startedAt, status])
+
+  async function finish(nextStatus: Status, finalTimeLeftMs: number) {
+    if (statusRef.current !== 'playing') return
+    statusRef.current = nextStatus
     setStatus(nextStatus)
+    setFlipped([])
+    stopAudio()
     try {
       const r = await completeGame({
         themeId,
-        albumIds: matchedIds,
+        albumIds: matchedRef.current,
         cleared: nextStatus === 'cleared',
-        misses: finalMisses,
-        moves: finalMoves,
+        misses: missesRef.current,
+        moves: movesRef.current,
+        timeLeftMs: nextStatus === 'cleared' ? finalTimeLeftMs : 0,
       })
       setResult(r)
     } catch {
@@ -70,9 +94,11 @@ export default function PlayClient({ themeId, themeTitle, initialBoard }: { them
   }
 
   function flip(card: BoardCard) {
-    if (status !== 'playing' || lockedRef.current) return
+    if (statusRef.current !== 'playing' || lockedRef.current) return
     if (matched.includes(card.albumId)) return
     if (flipped.some((f) => f.key === card.key)) return
+
+    if (startedAt === null) setStartedAt(Date.now())
 
     if (flipped.length === 0) {
       setFlipped([card])
@@ -83,29 +109,32 @@ export default function PlayClient({ themeId, themeTitle, initialBoard }: { them
     const first = flipped[0]
     const nextMoves = moves + 1
     setMoves(nextMoves)
+    movesRef.current = nextMoves
     setFlipped([first, card])
 
     if (first.albumId === card.albumId) {
       const nextMatched = [...matched, card.albumId]
       setMatched(nextMatched)
+      matchedRef.current = nextMatched
       setCombo((c) => c + 1)
       setFlipped([])
       if (nextMatched.length === board.pairs.length) {
+        const left = Math.max(0, LIMIT_MS - (Date.now() - (startedAt ?? Date.now())))
+        setTimeLeftMs(left)
         window.setTimeout(stopAudio, 2500)
-        void finish('cleared', nextMatched, misses, nextMoves)
+        void finish('cleared', left)
       }
       return
     }
 
     lockedRef.current = true
-    const nextMisses = misses + 1
-    setMisses(nextMisses)
+    setMisses((m) => m + 1)
+    missesRef.current += 1
     setCombo(0)
     window.setTimeout(() => {
       setFlipped([])
       stopAudio()
       lockedRef.current = false
-      if (nextMisses >= MAX_MISSES) void finish('failed', matched, nextMisses, nextMoves)
     }, MISMATCH_DELAY_MS)
   }
 
@@ -122,10 +151,20 @@ export default function PlayClient({ themeId, themeTitle, initialBoard }: { them
       setCombo(0)
       setResult(null)
       setStatus('playing')
+      statusRef.current = 'playing'
+      matchedRef.current = []
+      missesRef.current = 0
+      movesRef.current = 0
+      setStartedAt(null)
+      setTimeLeftMs(LIMIT_MS)
       lockedRef.current = false
     }
     setLoading(false)
   }
+
+  const started = startedAt !== null
+  const urgent = started && status === 'playing' && timeLeftMs <= STAR2_SECONDS_LEFT * 1000
+  const timerColor = urgent ? '#ff5a5f' : started && timeLeftMs <= STAR3_SECONDS_LEFT * 1000 ? '#ffd23f' : ACCENT
 
   const isUp = (card: BoardCard) => matched.includes(card.albumId) || flipped.some((f) => f.key === card.key)
 
@@ -150,13 +189,6 @@ export default function PlayClient({ themeId, themeTitle, initialBoard }: { them
       <h1 className="mt-3 text-lg font-black leading-tight">{themeTitle}</h1>
 
       <div className="mt-3 flex items-center gap-4 text-sm">
-        <span className="flex items-center gap-1" aria-label={`ミス ${misses}/${MAX_MISSES}`}>
-          {Array.from({ length: MAX_MISSES }).map((_, i) => (
-            <span key={i} className="text-lg" style={{ color: i < MAX_MISSES - misses ? ACCENT : 'rgba(255,255,255,0.15)' }}>
-              ♥
-            </span>
-          ))}
-        </span>
         <span className="text-white/60">
           手数 <span className="font-bold tabular-nums text-white">{moves}</span>
         </span>
@@ -168,6 +200,34 @@ export default function PlayClient({ themeId, themeTitle, initialBoard }: { them
             {combo} COMBO
           </span>
         )}
+      </div>
+
+      {/* 残り時間: 大きな数字と太いバー。15秒を切ると黄色、8秒を切ると赤で点滅する */}
+      <div
+        className="mt-3 rounded-xl border px-4 py-3"
+        style={{ borderColor: `${timerColor}66`, backgroundColor: `${timerColor}14` }}
+        role="timer"
+        aria-label={`残り ${Math.ceil(timeLeftMs / 1000)} 秒`}
+      >
+        <div className="flex items-end justify-between gap-3">
+          <span className="text-[11px] font-bold tracking-[0.14em]" style={{ color: timerColor }}>
+            {started ? 'TIME' : `制限時間 ${GAME_SECONDS}秒`}
+          </span>
+          <span className="text-[11px] text-white/50">{started ? '' : '最初のカードをめくるとスタート'}</span>
+        </div>
+        <p
+          className={`text-center text-6xl font-black leading-none tabular-nums ${urgent ? 'animate-pulse' : ''}`}
+          style={{ color: timerColor }}
+        >
+          {(timeLeftMs / 1000).toFixed(1)}
+          <span className="ml-1 text-xl font-bold text-white/60">秒</span>
+        </p>
+        <div className="mt-3 h-3 overflow-hidden rounded-full bg-white/10" aria-hidden>
+          <div
+            className="h-full rounded-full transition-[width] duration-100 ease-linear"
+            style={{ width: `${(timeLeftMs / LIMIT_MS) * 100}%`, backgroundColor: timerColor }}
+          />
+        </div>
       </div>
 
       <div className="mt-4 grid grid-cols-3 gap-2.5">
@@ -182,7 +242,7 @@ export default function PlayClient({ themeId, themeTitle, initialBoard }: { them
               data-album-id={card.albumId}
               onClick={() => flip(card)}
               disabled={status !== 'playing'}
-              aria-label={up ? (card.kind === 'jacket' ? pair.albumTitle : pair.artistName) : '裏向きのカード'}
+              aria-label={up ? pair.albumTitle : '裏向きのカード'}
               className="relative aspect-square w-full [perspective:800px]"
             >
               <span
@@ -205,14 +265,8 @@ export default function PlayClient({ themeId, themeTitle, initialBoard }: { them
                     boxShadow: done ? `0 0 0 2px ${ACCENT}` : undefined,
                   }}
                 >
-                  {card.kind === 'jacket' ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={artworkAt(pair.jacketUrl, 300) ?? pair.jacketUrl} alt="" className="h-full w-full object-cover" />
-                  ) : (
-                    <span className="flex h-full w-full items-center justify-center bg-gradient-to-br from-[#1b2a33] to-[#10161b] p-2 text-center">
-                      <span className="line-clamp-4 text-sm font-black leading-snug text-white">{pair.artistName}</span>
-                    </span>
-                  )}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={artworkAt(pair.jacketUrl, 300) ?? pair.jacketUrl} alt="" className="h-full w-full object-cover" />
                 </span>
               </span>
             </button>
@@ -221,13 +275,13 @@ export default function PlayClient({ themeId, themeTitle, initialBoard }: { them
       </div>
 
       {status === 'playing' && (
-        <p className="mt-4 text-center text-xs text-white/40">ジャケットと、そのアーティスト名のペアを探そう</p>
+        <p className="mt-4 text-center text-xs text-white/40">同じジャケットのペアを探そう。最初にめくってから{GAME_SECONDS}秒!</p>
       )}
 
       {status !== 'playing' && (
         <section className="mt-6 rounded-xl border p-4" style={{ borderColor: `${ACCENT}66`, backgroundColor: `${ACCENT}10` }}>
           <p className="text-[11px] font-bold tracking-[0.14em]" style={{ color: ACCENT }}>
-            {status === 'cleared' ? 'CLEAR' : 'GAME OVER'}
+            {status === 'cleared' ? 'CLEAR' : 'TIME UP'}
           </p>
           {status === 'cleared' && (
             <p className="mt-1 text-2xl" aria-label={`星 ${result?.stars ?? 0}`}>
@@ -268,7 +322,7 @@ export default function PlayClient({ themeId, themeTitle, initialBoard }: { them
                     <img src={artworkAt(result.rare.jacketUrl, 200) ?? result.rare.jacketUrl} alt="" className="h-full w-full object-cover" />
                   </span>
                   <span className="min-w-0">
-                    <span className="block text-[11px] font-black tracking-[0.14em] text-[#ffd23f]">RARE ・ ミスなしクリア報酬</span>
+                    <span className="block text-[11px] font-black tracking-[0.14em] text-[#ffd23f]">RARE ・ 3つ星クリア報酬</span>
                     <span className="block truncate text-sm font-bold">{result.rare.title}</span>
                     <span className="block truncate text-xs text-white/60">{result.rare.artistName}</span>
                   </span>
