@@ -76,13 +76,5 @@ export default async function GenresPage() {
 
   const genresWithImage = genres.map((g) => ({ ...g, imageUrl: imageByMainGenreId.get(g.id) ?? null }))
 
-  return (
-    <div className="mx-auto max-w-[1600px] px-6 py-12">
-      <h1 className="text-2xl font-bold">ジャンル年表</h1>
-      <p className="mt-2 text-sm text-white/50">
-        ジャンルを選ぶと、発祥・サブジャンル・代表アーティストを時系列で並べた年表を見られます。
-      </p>
-      <GenreListClient genres={genresWithImage} />
-    </div>
-  )
+  return <GenreListClient genres={genresWithImage} />
 }
