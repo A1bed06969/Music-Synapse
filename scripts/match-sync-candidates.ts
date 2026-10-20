@@ -17,41 +17,12 @@
  */
 import { createAdminClient } from '@/utils/Supabase/admin'
 import { fetchAllRows } from '@/utils/fetchAllRows'
+import { artistVariants, BAD_VERSION, norm, normTitle } from '@/utils/syncMatching'
 
 const DRY_RUN = process.argv.includes('--dry-run')
 const RETRY_UNMATCHED = process.argv.includes('--retry-unmatched')
 const limitArg = process.argv.find((a) => a.startsWith('--limit='))
 const LIMIT = limitArg ? Number(limitArg.split('=')[1]) : undefined
-
-const norm = (s: string) =>
-  s
-    .normalize('NFKC')
-    .toLowerCase()
-    .replace(/[\s'’"`.,!?・&\-_/()[\]［］「」『』~〜:：;♪★☆♡×]/g, '')
-
-/** 曲名の比較用。TV size・Short ver.・feat.表記のような「同じ曲の付記」だけを外す。
- * English ver. / Remix / Live など、別バージョンを示す表記は外さない(別の曲に紐付けないため) */
-const SAME_SONG_NOTE = /[(（[［]\s*(?:tv\s*(?:size|ver\.?|edit)|short\s*(?:ver\.?|size)|feat\.?[^)）\]］]*|featuring[^)）\]］]*)\s*[)）\]］]/gi
-const normTitle = (s: string) =>
-  norm(
-    s
-      .normalize('NFKC')
-      .replace(SAME_SONG_NOTE, '')
-      .replace(/[-–—]\s*(?:tv\s*(?:size|ver\.?|edit)|short\s*(?:ver\.?|size))\s*[-–—]?/gi, '')
-      .replace(/\s+(?:feat\.?|featuring)\s+.+$/i, '')
-  )
-
-const BAD_VERSION = /live|ライブ|karaoke|カラオケ|instrumental|インスト|off vocal|オフボーカル|acoustic|アコースティック|remix|リミックス|orchestra|オーケストラ|cover|カバー|ピアノ|piano/i
-
-/** 歌い手の表記から、照合に使う名前の候補(完全な表記→先頭の名前)を作る */
-function artistVariants(name: string): string[] {
-  const out = [name]
-  const first = name.split(/\s*(?:feat\.?|featuring|with|×|＆|&|、|,|と|\/|・)\s*/i)[0]?.trim()
-  if (first && first !== name) out.push(first)
-  const noParen = name.replace(/[（(][^）)]*[）)]/g, '').trim()
-  if (noParen && !out.includes(noParen)) out.push(noParen)
-  return out.filter(Boolean)
-}
 
 /** Wikipediaの記事名の末尾の曖昧さ回避((アニメ)・(漫画)・(2025年のテレビドラマ)など)を外して、作品名にする */
 function cleanWorkTitle(title: string): string {
@@ -64,7 +35,7 @@ async function main() {
   const statuses = RETRY_UNMATCHED ? ['pending', 'unmatched'] : ['pending']
   const targets: {
     id: string; work_key: string; work_title: string; work_type: string; year: number | null; season_label: string | null
-    role: string | null; song_title: string; artist_name: string | null; note: string | null; source_url: string
+    role: string | null; song_title: string; artist_name: string | null; note: string | null; source_url: string; match_method: string | null
   }[] = []
   for (let offset = 0; ; offset += 1000) {
     const { data } = await supabase.from('sync_candidate').select('*').in('status', statuses).order('created_at').range(offset, offset + 999)
@@ -77,12 +48,13 @@ async function main() {
   // アーティスト名 → アーティスト(同名が複数なら、アルバムを持つ方)
   const artists = await fetchAllRows<{ id: string; name: string }>(supabase, 'artist', 'id, name', 'id')
   const albumOwners = new Set((await fetchAllRows<{ artist_id: string | null }>(supabase, 'album', 'artist_id', 'id')).map((r) => r.artist_id))
-  const byName = new Map<string, { id: string; name: string }>()
+  // 同じ名前のアーティストが複数いることがある(LiSA など)。曲は、同名の全員ぶんを探す
+  const byName = new Map<string, { id: string; name: string }[]>()
   for (const a of artists) {
     const k = norm(a.name)
-    const cur = byName.get(k)
-    if (!cur || (!albumOwners.has(cur.id) && albumOwners.has(a.id))) byName.set(k, a)
+    byName.set(k, [...(byName.get(k) ?? []), a])
   }
+  void albumOwners
 
   const trackCache = new Map<string, { id: string; title: string; albumTitle: string; albumType: string | null; releaseDate: string | null }[]>()
   async function tracksOf(artistId: string) {
@@ -133,22 +105,56 @@ async function main() {
       continue
     }
 
-    let artist: { id: string; name: string } | undefined
+    // 1) 名前が完全一致するアーティスト(同名は全員)の曲を探す
+    let owners: { id: string; name: string }[] = []
+    let method = 'exact'
+    let confidence = 1
     for (const v of artistVariants(c.artist_name)) {
-      artist = byName.get(norm(v))
-      if (artist) break
+      owners = byName.get(norm(v)) ?? []
+      if (owners.length > 0) break
     }
+    const want = normTitle(c.song_title)
+    const findTracks = async (rows: { id: string; name: string }[]) => {
+      const all = (await Promise.all(rows.map((r) => tracksOf(r.id)))).flat()
+      return all.filter((t) => normTitle(t.title) === want && want.length > 0)
+    }
+    let tracks = owners.length > 0 ? await findTracks(owners) : []
+
+    // 2) 見つからなければ、名前がその歌い手で「始まる」アーティスト(「back numberと秦 基博と小林武史」のようなコラボ名義)
+    //    の曲から、曲名が完全一致するものを探す。曲名の一致が条件なので、別人に当たる可能性は低いが、確信度は下げる
+    if (tracks.length === 0 && c.artist_name) {
+      const seen = new Set(owners.map((o) => o.id))
+      const prefixRows: { id: string; name: string }[] = []
+      for (const v of artistVariants(c.artist_name)) {
+        if (norm(v).length < 3) continue
+        const { data } = await supabase.from('artist').select('id, name').ilike('name', `${v.replace(/[%_]/g, '')}%`).limit(30)
+        for (const r of data ?? []) {
+          if (seen.has(r.id)) continue
+          // 直後が区切り(&・と・/・、・feat. など)か、名前がそこで終わるものだけ(「Eve」に「Everlast」が当たらないように)
+          const rest = r.name.slice(v.length)
+          if (rest !== '' && !/^\s*(?:[&＆/／、,，×]|feat\.?|featuring|with\b|と|and\b)/i.test(rest) && !/^\s/.test(rest)) continue
+          seen.add(r.id)
+          prefixRows.push(r)
+        }
+      }
+      if (prefixRows.length > 0) {
+        tracks = await findTracks(prefixRows)
+        if (tracks.length > 0) {
+          method = 'artist_prefix'
+          confidence = 0.85
+          owners = prefixRows
+        }
+      }
+    }
+    const artist = owners[0]
     if (!artist) {
       stat.unmatched_artist++
-      await set({ status: 'unmatched', match_method: 'exact', match_reason: `アーティスト「${c.artist_name}」がカタログに無い` })
+      await set({ status: 'unmatched', match_method: c.match_method === 'itunes_no_match' ? 'itunes_no_match' : 'exact', match_reason: `アーティスト「${c.artist_name}」がカタログに無い` })
       continue
     }
-
-    const want = normTitle(c.song_title)
-    const tracks = (await tracksOf(artist.id)).filter((t) => normTitle(t.title) === want && want.length > 0)
     if (tracks.length === 0) {
       stat.unmatched_track++
-      await set({ status: 'unmatched', match_method: 'exact', match_reason: `「${artist.name}」の曲「${c.song_title}」がカタログに無い` })
+      await set({ status: 'unmatched', match_method: c.match_method === 'itunes_no_match' ? 'itunes_no_match' : 'exact', match_reason: `「${artist.name}」の曲「${c.song_title}」がカタログに無い` })
       continue
     }
     // ライブ・カラオケ・インスト盤を除いて、最初にリリースされた版
@@ -173,12 +179,12 @@ async function main() {
     if (!workId) continue
     const { data: entry, error } = await supabase
       .from('sync_entry')
-      .insert({ sync_work_id: workId, track_id: chosen.id, usage_detail: c.note, role: c.role || null, source_url: c.source_url, match_method: 'exact', confidence: 1, candidate_id: c.id })
+      .insert({ sync_work_id: workId, track_id: chosen.id, usage_detail: c.note, role: c.role || null, source_url: c.source_url, match_method: method, confidence, candidate_id: c.id })
       .select('id')
       .single()
     if (error?.code === '23505') {
       stat.dup++
-      await set({ status: 'applied', matched_track_id: chosen.id, match_method: 'exact', match_confidence: 1, match_reason: '同じ作品・曲・役割が反映済み' })
+      await set({ status: 'applied', matched_track_id: chosen.id, match_method: method, match_confidence: confidence, match_reason: '同じ作品・曲・役割が反映済み' })
       continue
     }
     if (error || !entry) {
@@ -186,7 +192,7 @@ async function main() {
       continue
     }
     stat.applied++
-    await set({ status: 'applied', matched_track_id: chosen.id, match_method: 'exact', match_confidence: 1, match_reason: null, applied_entry_id: entry.id })
+    await set({ status: 'applied', matched_track_id: chosen.id, match_method: method, match_confidence: confidence, match_reason: method === 'artist_prefix' ? `コラボ名義「${artist.name}」の曲として一致` : null, applied_entry_id: entry.id })
   }
 
   console.log(`\n=== 結果${DRY_RUN ? '(dry-run)' : ''} ===`)
