@@ -94,6 +94,44 @@ export function cleanWikitext(raw: string): string {
   return t.replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim()
 }
 
+const SEASON_MARK = /[（(]第\d+[期作][^）)]*[）)]/g
+const normForCompare = (t: string) => t.normalize('NFKC').toLowerCase().replace(/[\s\-_/・!?！？「」『』()（）[\]【】〜~:：。．.,、]/g, '')
+
+/** アニメ自身のタイトル。記事名は原作(漫画・小説)のタイトルのことがあり、アニメのタイトルとは違う場合がある
+ * (例: 記事名「…挿れてもいいよ…」に対して、アニメ版は「…触れてもいいよ…」)。基礎情報(TVAnime)の「タイトル」欄から取る。
+ * 取れなかった・複数の期が並んでいて決められない場合は null */
+export function extractAnimeTitle(raw: string): string | null {
+  const head = raw.slice(0, 12000)
+  // 「=」のあとの空白は、改行を含めない(値が空の欄で、次の行を値として取り込まないため)
+  const m = head.match(/\{\{\s*Infobox animanga\/TVAnime[\s\S]*?\n[ \t]*\|[ \t]*タイトル[ \t]*=[ \t]*([^\n]*)/i)
+  if (!m) return null
+  let t = m[1]
+    .replace(/<br\s*\/?>/gi, '')
+    .replace(/<ref[\s\S]*?<\/ref>/gi, '')
+    .replace(/\{\{[^{}]*\}\}/g, '')
+    .replace(/\[\[(?:[^|\]]*\|)?([^\]]*)\]\]/g, '$1')
+    .replace(/'''?/g, '')
+    .replace(/<[^>]+>/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+  const marks = t.match(SEASON_MARK) ?? []
+  if (marks.length > 1) return null
+  t = t.replace(SEASON_MARK, '').trim()
+  return t.length > 0 ? t : null
+}
+
+/** 表示する作品名を決める。アニメは、記事名と実質的に違うタイトル(原作とアニメで題名が違う場合)のときだけ、アニメ自身の
+ * タイトルにする。片方がもう片方を含む(副題の有無・表記の差)なら、記事名のまま。ドラマは記事名のまま */
+export function chooseWorkTitle(pageTitle: string, raw: string, kind: WorkKind): string {
+  if (kind !== 'anime') return pageTitle
+  const anime = extractAnimeTitle(raw)
+  if (!anime) return pageTitle
+  const a = normForCompare(anime)
+  const p = normForCompare(pageTitle.replace(/\s*[（(][^）)]*(?:アニメ|漫画|ドラマ|小説|ゲーム|映画|作品|テレビ)[^）)]*[）)]\s*$/, ''))
+  if (!a || a.includes(p) || p.includes(a)) return pageTitle
+  return anime
+}
+
 const THEME_HEADING = /主題歌|主題曲|テーマソング|テーマ曲|劇中歌|挿入歌|オープニング|エンディング|OP|ED/
 const STAFF_THEME_LINE = /^[*#;: ]*(主題歌|挿入歌|劇中歌|オープニングテーマ|エンディングテーマ|テーマ曲|テーマソング|主題曲|オープニング|エンディング)\s*[-－–—:：]/
 const INFOBOX_KEY = /^\s*\|\s*(オープニング|エンディング|主題歌|テーマ曲|挿入歌|音楽)[^=]*=/
@@ -202,4 +240,67 @@ ${themeText}`
     out.push({ role, song_title: song, artist_name: artist, note: typeof e.note === 'string' && e.note.trim() ? e.note.trim().slice(0, 60) : null })
   }
   return out
+}
+
+/** 複数の作品(最大4件ほど)をまとめて1回で取り出す。無料枠の呼び出し回数を減らすため。
+ * 作品ごとに番号を付けて渡し、結果にも番号(work_no)を付けさせて、混ざらないようにする。 */
+export async function extractTieUpsBatch(
+  works: { title: string; kind: WorkKind; themeText: string }[]
+): Promise<ExtractedTieUp[][]> {
+  if (works.length === 1) return [await extractTieUps(works[0].title, works[0].kind, works[0].themeText)]
+  const sections = works
+    .map((w, i) => `=== 作品${i + 1}: ${KIND_LABEL[w.kind]}『${w.title}』 ===\n${w.themeText}`)
+    .join('\n\n')
+  const prompt = `以下は、日本語Wikipediaの作品${works.length}件について、主題歌などに関する部分だけを抜き出した文章です(作品ごとに「=== 作品N: … ===」で区切っています)。
+各作品に実際に使われた「歌(楽曲)」を、すべて抽出してください。どの作品の歌かを、work_no(作品の番号)で示してください。
+
+ルール:
+- 対象は、主題歌・オープニングテーマ(OP)・エンディングテーマ(ED)・挿入歌・劇中歌・ラストソングなど、名前のある歌だけ
+- 作品のサウンドトラック(劇伴・BGM)、アルバム名、作曲家名だけの記述、キャラクターの声優名だけの記述は含めない
+- ある作品の区間に書かれた歌は、必ずその作品のwork_noにする(他の作品と混ぜない)
+- song_title は曲名だけ(「」『』は付けない)。副題やバージョン表記(TV size など)は付けない
+- artist_name は、その曲を歌っている(演奏している)アーティストの名前。ユニット名・バンド名はそのまま。不明なら省略
+- role は OP / ED / 主題歌 / 挿入歌 / 劇中歌 のどれかに揃える(第1クールのOP、などは OP にして、期や話数は note に)
+- note は短く(例: 「第1期OP」「第5話」「第2クール」)。40文字以内。無ければ省略
+- 同じ作品で同じ曲が複数箇所に出てきたら1回だけ
+- 該当する歌が書かれていない作品は、何も出力しない
+
+${sections}`
+  const text = await generateJudgementText(prompt, BATCH_SCHEMA)
+  const out: ExtractedTieUp[][] = works.map(() => [])
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(text)
+  } catch {
+    return out
+  }
+  if (!Array.isArray(parsed)) return out
+  const seen = works.map(() => new Set<string>())
+  for (const e of parsed as Record<string, unknown>[]) {
+    const no = typeof e.work_no === 'number' ? e.work_no : Number(e.work_no)
+    const song = typeof e.song_title === 'string' ? e.song_title.trim() : ''
+    if (!Number.isInteger(no) || no < 1 || no > works.length || !song) continue
+    const artist = typeof e.artist_name === 'string' && e.artist_name.trim() ? e.artist_name.trim() : null
+    const role = typeof e.role === 'string' && e.role.trim() ? e.role.trim() : null
+    const key = `${role ?? ''}|${song}|${artist ?? ''}`
+    if (seen[no - 1].has(key)) continue
+    seen[no - 1].add(key)
+    out[no - 1].push({ role, song_title: song, artist_name: artist, note: typeof e.note === 'string' && e.note.trim() ? e.note.trim().slice(0, 60) : null })
+  }
+  return out
+}
+
+const BATCH_SCHEMA = {
+  type: Type.ARRAY,
+  items: {
+    type: Type.OBJECT,
+    properties: {
+      work_no: { type: Type.INTEGER },
+      role: { type: Type.STRING },
+      song_title: { type: Type.STRING },
+      artist_name: { type: Type.STRING },
+      note: { type: Type.STRING },
+    },
+    required: ['work_no', 'song_title'],
+  },
 }
