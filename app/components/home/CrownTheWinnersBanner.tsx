@@ -20,8 +20,9 @@ export default function CrownTheWinnersBanner({ data }: { data: CrownData }) {
         <p className="text-sm text-white/30">受賞データはまだ登録されていません。</p>
       ) : (
         <ul className="grid w-full grid-cols-2 gap-3 @md:grid-cols-3">
-          {data.winners.map((w) => (
-            <li key={w.id} className="min-w-0">
+          {/* 縦に伸びて他のバナーと枠の高さがずれないよう、2段までにする。狭いカードは2列×2段(4件)、幅が広ければ3列×2段(6件) */}
+          {data.winners.slice(0, 6).map((w, i) => (
+            <li key={w.id} className={`min-w-0 ${i >= 4 ? 'hidden @md:block' : ''}`}>
               <Link href={`/artists/${w.artistId}`} className="group block">
                 <div className="relative aspect-square overflow-hidden rounded-lg ring-1 ring-white/10">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
