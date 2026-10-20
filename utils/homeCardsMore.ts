@@ -197,3 +197,75 @@ export async function fetchCurations(supabase: Supabase, limit: number): Promise
     }),
   )
 }
+
+// ---------- ⑩ Tie-Up Time Machine ----------
+
+export type TieUpItem = {
+  trackId: string
+  title: string
+  artist: string | null
+  jacketUrl: string | null
+  workTitle: string
+  role: string | null
+}
+
+export type TieUpYear = {
+  year: number
+  workCount: number
+  entryCount: number
+  /** その年の代表(作品ごとに1曲ずつ、ジャケットのあるものを優先して最大8曲) */
+  items: TieUpItem[]
+}
+
+/** 年ごとのタイアップ(主題歌・挿入歌など)の件数と、代表の曲。新しい年から。年ダイヤルで切り替える用 */
+export async function fetchTieUpYears(supabase: Supabase): Promise<TieUpYear[]> {
+  const rows: {
+    role: string | null
+    track: { id: string; title: string; artist: { name: string } | { name: string }[] | null; album: { jacket_url: string | null } | { jacket_url: string | null }[] | null } | { id: string; title: string; artist: { name: string } | { name: string }[] | null; album: { jacket_url: string | null } | { jacket_url: string | null }[] | null }[] | null
+    work: { id: string; title: string; year: number | null } | { id: string; title: string; year: number | null }[] | null
+  }[] = []
+  for (let offset = 0; ; offset += 1000) {
+    const { data } = await supabase
+      .from('sync_entry')
+      .select('role, track:track_id(id, title, artist:artist_id(name), album:album_id(jacket_url)), work:sync_work_id(id, title, year)')
+      .not('track_id', 'is', null)
+      .order('id')
+      .range(offset, offset + 999)
+    rows.push(...((data ?? []) as typeof rows))
+    if ((data ?? []).length < 1000) break
+  }
+
+  const byYear = new Map<number, { works: Set<string>; entries: number; picks: Map<string, TieUpItem>; extra: TieUpItem[] }>()
+  for (const r of rows) {
+    const track = firstOf(r.track)
+    const work = firstOf(r.work)
+    if (!track || !work?.year) continue
+    const y = byYear.get(work.year) ?? { works: new Set<string>(), entries: 0, picks: new Map<string, TieUpItem>(), extra: [] }
+    byYear.set(work.year, y)
+    y.works.add(work.id)
+    y.entries++
+    const item: TieUpItem = {
+      trackId: track.id,
+      title: track.title,
+      artist: firstOf(track.artist)?.name ?? null,
+      jacketUrl: firstOf(track.album)?.jacket_url ?? null,
+      workTitle: work.title,
+      role: r.role,
+    }
+    // 作品ごとに1曲(ジャケットがあるものを優先)
+    const cur = y.picks.get(work.id)
+    if (!cur || (!cur.jacketUrl && item.jacketUrl)) y.picks.set(work.id, item)
+  }
+
+  return Array.from(byYear.entries())
+    .sort((a, b) => b[0] - a[0])
+    .map(([year, y]) => ({
+      year,
+      workCount: y.works.size,
+      entryCount: y.entries,
+      items: pickDaily(
+        Array.from(y.picks.values()).filter((i) => i.jacketUrl),
+        8
+      ),
+    }))
+}

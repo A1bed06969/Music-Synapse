@@ -72,7 +72,8 @@ export async function fetchUpcomingFestivals(supabase: Supabase, limit: number):
     supabase
       .from('event_edition')
       .select('id, start_date, end_date, venue, event:event_id(id, name, name_ja, image_url)')
-      .gte('end_date', tomorrow),
+      // 終了日が未登録(1日開催など)のものは開始日で判定する
+      .or(`end_date.gte.${tomorrow},and(end_date.is.null,start_date.gte.${tomorrow})`),
   ])
 
   const editionsWithDates = new Set((allEditionDateRows ?? []).map((r) => r.event_edition_id))
@@ -102,7 +103,8 @@ export async function fetchUpcomingFestivals(supabase: Supabase, limit: number):
   for (const edition of editionRows ?? []) {
     if (editionsWithDates.has(edition.id)) continue
     const ev = firstOf(edition.event)
-    if (!ev?.id || !edition.start_date || !edition.end_date) continue
+    if (!ev?.id || !edition.start_date) continue
+    const endDate = edition.end_date ?? edition.start_date
     const startDate = edition.start_date < tomorrow ? tomorrow : edition.start_date
     const existing = byEvent.get(ev.id)
     if (!existing) {
@@ -111,7 +113,7 @@ export async function fetchUpcomingFestivals(supabase: Supabase, limit: number):
         name: ev.name || ev.name_ja || '(名称不明)',
         imageUrl: ev.image_url ?? null,
         startDate,
-        endDate: edition.end_date,
+        endDate,
         venue: edition.venue,
       })
     }

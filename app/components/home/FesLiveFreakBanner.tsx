@@ -1,5 +1,5 @@
 import BannerShell from './BannerShell'
-import FestivalFocusCarousel from './FestivalFocusCarousel'
+import VisualCarousel from './VisualCarousel'
 import type { UpcomingFestivalCard } from '@/utils/homeCards'
 
 const ACCENT = '#4fd1a5'
@@ -27,7 +27,17 @@ export default function FesLiveFreakBanner({ festivals }: { festivals: UpcomingF
       {festivals.length === 0 ? (
         <p className="text-sm text-white/30">近日開催予定のフェス情報はまだ登録されていません。</p>
       ) : (
-        <FestivalFocusCarousel festivals={festivals} accent={ACCENT} />
+        <VisualCarousel
+          accent={ACCENT}
+          slides={festivals.map((f) => ({
+            id: f.id,
+            href: `/events/${f.id}`,
+            imageUrl: f.imageUrl,
+            eyebrow: f.startDate === f.endDate ? formatShortDate(f.startDate) : `${formatShortDate(f.startDate)} - ${formatShortDate(f.endDate)}`,
+            title: f.name,
+            sub: f.venue,
+          }))}
+        />
       )}
     </BannerShell>
   )

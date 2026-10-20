@@ -27,8 +27,8 @@ export default function MonthlyNextBreakBanner({
       {top.length === 0 ? (
         <p className="text-sm text-white/30">{monthLabel}のパワープレイ実績はまだありません。</p>
       ) : (
-        <div>
-          <div className="flex flex-col gap-5 @sm:flex-row">
+        <div className="min-w-0">
+          <div className="flex min-w-0 flex-col gap-5 @sm:flex-row">
             {first && (
               <Link
                 href={first.href || (first.artistId ? `/artists/${first.artistId}` : '#')}
@@ -56,8 +56,10 @@ export default function MonthlyNextBreakBanner({
               </Link>
             )}
 
+            {/* min-w-0が無いと長い曲名に合わせて一覧が横に広がり、省略表示(truncate)が効かずに
+                行全体がカードからはみ出す(中央寄せのため1位の文字の頭が切れていた) */}
             {rest.length > 0 && (
-              <ul className="flex-1 space-y-3 @sm:pt-1">
+              <ul className="min-w-0 flex-1 space-y-3 @sm:pt-1">
                 {rest.map((r, i) => (
                   <li key={r.key}>
                     <Link

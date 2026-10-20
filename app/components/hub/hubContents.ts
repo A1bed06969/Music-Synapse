@@ -1,5 +1,5 @@
-// トップの6連載(01〜06)の名前・色・コピー・リンク先。各連載のページ(3カラム)と右カラムの目次で共有する
-export type HubKey = 'discover' | 'fes' | 'nextBreak' | 'planet' | 'discGuide' | 'curation' | 'crown' | 'genreRoots' | 'connect'
+// トップの連載(01〜10)の名前・色・コピー・リンク先。各連載のページ(3カラム)と右カラムの目次で共有する
+export type HubKey = 'discover' | 'fes' | 'nextBreak' | 'planet' | 'discGuide' | 'curation' | 'crown' | 'genreRoots' | 'connect' | 'tieup'
 
 export type HubContent = {
   key: HubKey
@@ -23,6 +23,7 @@ export const HUB_CONTENTS: HubContent[] = [
   { key: 'crown', number: '07', label: 'CROWN THE WINNERS', heading: ['Crown The', 'Winners'], tagline: '栄冠を手にしたのは誰だ', color: '#ff4d5e', href: '/chronology/awards' },
   { key: 'genreRoots', number: '08', label: 'GENRE ROOTS TAPESTRY', heading: ['Genre Roots', 'Tapestry'], tagline: 'ジャンルの系譜を、一枚の織物に', color: '#3fd0e0', href: '/genres' },
   { key: 'connect', number: '09', label: 'CONNECT THE MUSIC MAKERS', heading: ['Connect The', 'Music Makers'], tagline: '音楽をつくる人たちをつなぐ', color: '#b6f23a', href: '/relations' },
+  { key: 'tieup', number: '10', label: 'TIE-UP TIME MACHINE', heading: ['Tie-Up', 'Time Machine'], tagline: 'あの頃の主題歌へ、時間旅行', color: '#d86bff', href: '/media/sync' },
 ]
 
 export function hubContent(key: HubKey): HubContent {

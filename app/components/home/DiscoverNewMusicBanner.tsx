@@ -1,5 +1,6 @@
 import BannerShell from './BannerShell'
-import AlbumFocusCarousel from './AlbumFocusCarousel'
+import VisualCarousel from './VisualCarousel'
+import { artworkAt } from '@/utils/artworkSize'
 import type { UpcomingAlbumCard } from '@/utils/homeCards'
 
 const ACCENT = '#5b8def'
@@ -29,7 +30,17 @@ export default function DiscoverNewMusicBanner({ albums }: { albums: UpcomingAlb
       {albums.length === 0 ? (
         <p className="text-sm text-white/30">近日リリース予定の新譜はまだ登録されていません。</p>
       ) : (
-        <AlbumFocusCarousel albums={albums} />
+        <VisualCarousel
+          accent={ACCENT}
+          slides={albums.map((a) => ({
+            id: a.id,
+            href: `/albums/${a.id}`,
+            imageUrl: artworkAt(a.jacketUrl, 600),
+            eyebrow: `${formatShortDate(a.releaseDate)} RELEASE`,
+            title: a.title,
+            sub: a.artistName,
+          }))}
+        />
       )}
     </BannerShell>
   )
