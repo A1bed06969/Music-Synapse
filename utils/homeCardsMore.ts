@@ -85,7 +85,8 @@ function areaCodes(): Record<PlanetArea, string[]> {
 export async function fetchPlanetArtists(supabase: Supabase): Promise<PlanetData> {
   const codes = areaCodes()
   const [{ count: total }, ...perArea] = await Promise.all([
-    supabase.from('artist').select('id', { count: 'exact', head: true }).not('origin_country_code', 'is', null),
+    // 「◯組の出身地」は、地球儀に実際に置ける(座標がある)人数。国コードだけ入っている人数だと、実際より少なく出ていた
+    supabase.from('artist').select('id', { count: 'exact', head: true }).not('origin_latitude', 'is', null),
     ...PLANET_AREAS.map((area) =>
       supabase
         .from('artist')
