@@ -10,6 +10,7 @@ const WORK_TYPE_OPTIONS = [
   { value: 'anime', label: 'アニメ' },
   { value: 'game', label: 'ゲーム' },
   { value: 'movie', label: '映画' },
+  { value: 'drama', label: 'ドラマ' },
   { value: 'tv_program', label: 'テレビ番組' },
 ]
 
@@ -39,6 +40,9 @@ export default async function SyncAdminPage({
 
       <div className="mt-4 flex items-baseline justify-between">
         <h1 className="text-2xl font-bold">タイアップ・シンクロアーカイブ</h1>
+        <Link href="/admin/data/sync/review" className="text-xs text-fuchsia-300 hover:text-fuchsia-200">
+          タイアップ候補の確認 →
+        </Link>
         <Link href="/admin/data/sync/grid" className="text-xs text-amber-300 hover:text-amber-200">
           作品を表で編集 →
         </Link>
