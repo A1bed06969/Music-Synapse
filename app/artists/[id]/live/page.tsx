@@ -3,12 +3,20 @@ import { createClient } from '@/utils/Supabase/server'
 import { buildArtistAppearanceQuery } from '@/utils/artistAppearanceQuery'
 import { formatDate } from '@/utils/format'
 import LiveTabs from '@/app/components/artist-detail/LiveTabs'
+import SectionHeading from '@/app/components/detail/SectionHeading'
+import FestivalPickCard from '@/app/components/detail/FestivalPickCard'
+import { headingOf } from '@/app/components/artist-detail/artistSections'
 
+const LIVE_COLOR = headingOf('live').color
+
+type EventInfo = { id: string; name: string; image_url: string | null }
+type EditionInfo = { year: number | null; venue: string | null; event: EventInfo | EventInfo[] | null }
 type AppearanceRow = {
   id: number
   venue: string | null
+  stage: string | null
   start_time: string | null
-  event_edition: { year: number | null; venue: string | null; event: { name: string } | { name: string }[] | null } | { year: number | null; venue: string | null; event: { name: string } | { name: string }[] | null }[] | null
+  event_edition: EditionInfo | EditionInfo[] | null
 }
 
 function firstOf<T>(value: T | T[] | null | undefined): T | null {
@@ -31,7 +39,7 @@ export default async function LivePage({
   const { data } = await buildArtistAppearanceQuery<AppearanceRow>(
     supabase,
     id,
-    'id, venue, start_time, event_edition:event_edition_id(year, venue, event:event_id(name))'
+    'id, venue, stage, start_time, event_edition:event_edition_id(year, venue, event:event_id(id, name, image_url))'
   )
 
   const now = new Date().toISOString()
@@ -41,7 +49,7 @@ export default async function LivePage({
 
   return (
     <div>
-      <h2 className="text-xs uppercase tracking-wide text-white/40">Festival & Live</h2>
+      <SectionHeading {...headingOf('live')} />
       <div className="mt-3">
         <Suspense fallback={null}>
           <LiveTabs tab={tab} />
@@ -51,17 +59,23 @@ export default async function LivePage({
       {rows.length === 0 ? (
         <p className="mt-8 text-sm text-white/40">{tab === 'upcoming' ? '予定されている出演はありません。' : '過去の出演履歴がありません。'}</p>
       ) : (
-        <ul className="mt-4 divide-y divide-white/5">
+        <ul className="mt-4 flex flex-col gap-3">
           {rows.map((row) => {
             const edition = firstOf(row.event_edition)
             const event = edition ? firstOf(edition.event) : null
+            const venue = row.venue ?? edition?.venue ?? null
             return (
-              <li key={row.id} className="py-3 text-sm">
-                <p className="font-medium">{event?.name ?? '—'}</p>
-                <p className="mt-0.5 text-xs text-white/40">
-                  {row.start_time ? formatDate(row.start_time.slice(0, 10)) : edition?.year ? `${edition.year}年` : ''}
-                  {(row.venue ?? edition?.venue) ? ` · ${row.venue ?? edition?.venue}` : ''}
-                </p>
+              <li key={row.id}>
+                <FestivalPickCard
+                  color={LIVE_COLOR}
+                  href={event ? `/events/${event.id}` : null}
+                  imageUrl={event?.image_url}
+                  eventName={event?.name ?? '—'}
+                  dateLabel={row.start_time ? formatDate(row.start_time.slice(0, 10)) : edition?.year ? `${edition.year}年` : undefined}
+                  venue={venue}
+                  stage={row.stage}
+                  upcoming={tab === 'upcoming'}
+                />
               </li>
             )
           })}
