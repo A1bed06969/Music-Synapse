@@ -1,0 +1,205 @@
+// utils/wikipediaSync.ts
+/**
+ * 日本語Wikipediaの作品ページ(テレビアニメ・テレビドラマ)から、主題歌・挿入歌などのタイアップ候補を取り出す部品。
+ *  - 年ごとのカテゴリー(「2025年のテレビアニメ」「2025年のテレビドラマ」)から作品の一覧を取る
+ *  - 各作品のwikitextを取り、「主題歌」などの節と基礎情報の関連欄だけを切り出して、AIで構造化する
+ * Wikipediaには1秒に1回までのペースで問い合わせる(礼儀とレート制限のため)。
+ */
+import { Type } from '@google/genai'
+import { generateJudgementText } from '@/utils/llmJudgeChain'
+
+const API = 'https://ja.wikipedia.org/w/api.php'
+const USER_AGENT = 'music-synapse/1.0 (personal research; tie-up collection)'
+const MIN_INTERVAL_MS = 1100
+
+let lastCall = 0
+async function throttledFetch(url: string): Promise<unknown> {
+  const wait = lastCall + MIN_INTERVAL_MS - Date.now()
+  if (wait > 0) await new Promise((r) => setTimeout(r, wait))
+  lastCall = Date.now()
+  for (let attempt = 1; attempt <= 4; attempt++) {
+    const res = await fetch(url, { headers: { 'User-Agent': USER_AGENT } })
+    if (res.ok) return res.json()
+    if (res.status === 429 || res.status >= 500) {
+      await new Promise((r) => setTimeout(r, 4000 * attempt))
+      lastCall = Date.now()
+      continue
+    }
+    throw new Error(`Wikipedia API ${res.status}`)
+  }
+  throw new Error('Wikipedia APIが繰り返し失敗しました')
+}
+
+export type WorkKind = 'anime' | 'drama'
+
+export const KIND_LABEL: Record<WorkKind, string> = { anime: 'テレビアニメ', drama: 'テレビドラマ' }
+
+/** 「2025年のテレビアニメ」などのカテゴリーの記事タイトル一覧。一覧記事(「…(日本)」など)は除く */
+export async function fetchCategoryTitles(kind: WorkKind, year: number): Promise<string[]> {
+  const titles: string[] = []
+  let cont: string | undefined
+  do {
+    const params = new URLSearchParams({
+      action: 'query', list: 'categorymembers', cmtitle: `Category:${year}年の${KIND_LABEL[kind]}`,
+      cmlimit: '500', cmnamespace: '0', format: 'json',
+    })
+    if (cont) params.set('cmcontinue', cont)
+    const json = (await throttledFetch(`${API}?${params}`)) as { query?: { categorymembers: { title: string }[] }; continue?: { cmcontinue: string } }
+    for (const m of json.query?.categorymembers ?? []) titles.push(m.title)
+    cont = json.continue?.cmcontinue
+  } while (cont)
+  return titles.filter((t) => !/^\d{4}年の/.test(t) && !/一覧/.test(t))
+}
+
+export type WikiPage = { title: string; revisionId: number; text: string }
+
+/** 複数ページのwikitextをまとめて取る(1回20件まで) */
+export async function fetchWikitexts(titles: string[]): Promise<WikiPage[]> {
+  const pages: WikiPage[] = []
+  for (let i = 0; i < titles.length; i += 20) {
+    const params = new URLSearchParams({
+      action: 'query', prop: 'revisions', rvprop: 'content|ids', rvslots: 'main', redirects: '1',
+      titles: titles.slice(i, i + 20).join('|'), format: 'json',
+    })
+    const json = (await throttledFetch(`${API}?${params}`)) as {
+      query?: { pages: Record<string, { title: string; revisions?: { revid: number; slots: { main: { '*': string } } }[] }> }
+    }
+    for (const p of Object.values(json.query?.pages ?? {})) {
+      const rev = p.revisions?.[0]
+      if (rev) pages.push({ title: p.title, revisionId: rev.revid, text: rev.slots.main['*'] })
+    }
+  }
+  return pages
+}
+
+const WRAPPER_TEMPLATES = new Set(['dl2', 'div col', 'columns-list', 'colbegin', 'col-begin', 'multicol', 'hidden begin', '折りたたみ', 'collapse top'])
+
+/** wikitextを、読める文章に近づける(出典タグ・テンプレート・リンク記法を取る)。行頭の ; : * # は残す(並びの手がかり) */
+export function cleanWikitext(raw: string): string {
+  let t = raw
+  t = t.replace(/<!--[\s\S]*?-->/g, '')
+  t = t.replace(/<ref[^>]*\/>/gi, '').replace(/<ref[^>]*>[\s\S]*?<\/ref>/gi, '')
+  // 入れ子のテンプレートを内側から外す({{Lang|en|x}} などの中身は捨てる。主題歌の曲名は「」や[[ ]]に入っていることが多い)。
+  // ただし、主題歌の一覧を包むだけのテンプレート({{dl2 … }}・{{Div col …}} など)は、中身が本文なので残す
+  for (let i = 0; i < 8; i++) {
+    t = t.replace(/\{\{([^{}]*)\}\}/g, (_m, inner: string) => {
+      const name = inner.split('|')[0].trim().toLowerCase()
+      return WRAPPER_TEMPLATES.has(name) ? '\n' + inner.replace(/^\s*[^|\n]*/, '') + '\n' : ''
+    })
+  }
+  t = t.replace(/\[\[(?:[^|\]]*\|)?([^\]]*)\]\]/g, '$1')
+  t = t.replace(/\[https?:\/\/[^\s\]]+\s+([^\]]*)\]/g, '$1').replace(/\[https?:\/\/[^\s\]]+\]/g, '')
+  t = t.replace(/'''?/g, '').replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '')
+  t = t.replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&')
+  return t.replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim()
+}
+
+const THEME_HEADING = /主題歌|主題曲|テーマソング|テーマ曲|劇中歌|挿入歌|オープニング|エンディング|OP|ED/
+const STAFF_THEME_LINE = /^[*#;: ]*(主題歌|挿入歌|劇中歌|オープニングテーマ|エンディングテーマ|テーマ曲|テーマソング|主題曲|オープニング|エンディング)\s*[-－–—:：]/
+const INFOBOX_KEY = /^\s*\|\s*(オープニング|エンディング|主題歌|テーマ曲|挿入歌|音楽)[^=]*=/
+
+/** 主題歌などの節と、基礎情報(infobox)の関連欄だけを切り出す。無ければ空文字 */
+export function extractThemeText(raw: string, maxLength = 7000): string {
+  const parts: string[] = []
+
+  // 基礎情報の関連欄((|オープニング=… などの行)。値は次の「|」行まで
+  const lines = raw.split('\n')
+  for (let i = 0; i < Math.min(lines.length, 260); i++) {
+    if (INFOBOX_KEY.test(lines[i])) {
+      let block = lines[i]
+      let j = i + 1
+      while (j < lines.length && !/^\s*\|[^|=]*=/.test(lines[j]) && !/^\}\}/.test(lines[j]) && j < i + 12) block += '\n' + lines[j++]
+      parts.push('[基礎情報] ' + block)
+    }
+  }
+
+  // 見出し(== … ==)を数えて、主題歌系の見出しの下を、同じかそれより浅い見出しまで取る
+  const headings: { idx: number; level: number; title: string }[] = []
+  const re = /^(={2,5})\s*([^=\n]+?)\s*\1\s*$/gm
+  let m: RegExpExecArray | null
+  while ((m = re.exec(raw))) headings.push({ idx: m.index, level: m[1].length, title: m[2] })
+  let skipUntil = -1
+  for (let k = 0; k < headings.length; k++) {
+    const h = headings[k]
+    if (h.idx < skipUntil) continue
+    if (!THEME_HEADING.test(h.title)) continue
+    let end = raw.length
+    for (let n = k + 1; n < headings.length; n++) {
+      if (headings[n].level <= h.level) {
+        end = headings[n].idx
+        break
+      }
+    }
+    skipUntil = end
+    parts.push(`[節: ${h.title}]\n` + raw.slice(h.idx, end))
+  }
+
+  // ドラマは、スタッフの箇条書き(「* 主題歌 - アーティスト「曲名」」)に書かれていることが多い。節の外でも、この形の行を拾う
+  const cleanedAll = cleanWikitext(raw)
+  const staffLines = cleanedAll
+    .split('\n')
+    .filter((l) => STAFF_THEME_LINE.test(l))
+    .slice(0, 20)
+  if (staffLines.length > 0) parts.push('[箇条書き]\n' + staffLines.join('\n'))
+
+  const joined = parts.join('\n\n')
+  if (!joined) return ''
+  // 節・基礎情報は cleanWikitext を通していないので通す。箇条書きの行は済みなので、二重に通しても害は無い
+  return cleanWikitext(joined).slice(0, maxLength)
+}
+
+export type ExtractedTieUp = { role: string | null; song_title: string; artist_name: string | null; note: string | null }
+
+const SCHEMA = {
+  type: Type.ARRAY,
+  items: {
+    type: Type.OBJECT,
+    properties: {
+      role: { type: Type.STRING },
+      song_title: { type: Type.STRING },
+      artist_name: { type: Type.STRING },
+      note: { type: Type.STRING },
+    },
+    required: ['song_title'],
+  },
+}
+
+/** 切り出したテキストから、この作品に使われた歌(主題歌・挿入歌など)を取り出す */
+export async function extractTieUps(workTitle: string, kind: WorkKind, themeText: string): Promise<ExtractedTieUp[]> {
+  const prompt = `以下は、日本語Wikipediaの${KIND_LABEL[kind]}『${workTitle}』のページから、主題歌などに関する部分だけを抜き出した文章です。
+この作品に実際に使われた「歌(楽曲)」を、すべて抽出してください。
+
+ルール:
+- 対象は、主題歌・オープニングテーマ(OP)・エンディングテーマ(ED)・挿入歌・劇中歌・ラストソングなど、名前のある歌だけ
+- 作品のサウンドトラック(劇伴・BGM)、アルバム名、作曲家名だけの記述、キャラクターの声優名だけの記述は含めない
+- song_title は曲名だけ(「」『』は付けない)。副題やバージョン表記(TV size など)は付けない
+- artist_name は、その曲を歌っている(演奏している)アーティストの名前。ユニット名・バンド名はそのまま。不明なら省略
+- role は OP / ED / 主題歌 / 挿入歌 / 劇中歌 のどれかに揃える(第1クールのOP、などは OP にして、期や話数は note に)
+- note は短く(例: 「第1期OP」「第5話」「第2クール」)。40文字以内。無ければ省略
+- 同じ曲が複数箇所に出てきたら1回だけ
+- 該当する歌が書かれていなければ、空の配列を返す
+
+--- 文章 ---
+${themeText}`
+  const text = await generateJudgementText(prompt, SCHEMA)
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(text)
+  } catch {
+    return []
+  }
+  if (!Array.isArray(parsed)) return []
+  const seen = new Set<string>()
+  const out: ExtractedTieUp[] = []
+  for (const e of parsed as Record<string, unknown>[]) {
+    const song = typeof e.song_title === 'string' ? e.song_title.trim() : ''
+    if (!song) continue
+    const artist = typeof e.artist_name === 'string' && e.artist_name.trim() ? e.artist_name.trim() : null
+    const role = typeof e.role === 'string' && e.role.trim() ? e.role.trim() : null
+    const key = `${role ?? ''}|${song}|${artist ?? ''}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push({ role, song_title: song, artist_name: artist, note: typeof e.note === 'string' && e.note.trim() ? e.note.trim().slice(0, 60) : null })
+  }
+  return out
+}

@@ -6,6 +6,7 @@ const WORK_TYPE_LABEL: Record<string, string> = {
   anime: 'アニメ',
   game: 'ゲーム',
   movie: '映画',
+  drama: 'ドラマ',
   tv_program: 'テレビ番組',
 }
 
