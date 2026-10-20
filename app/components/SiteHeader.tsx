@@ -81,8 +81,9 @@ export default function SiteHeader({ stats }: { stats: SiteStats }) {
       </div>
 
       <nav
-        className={`overflow-hidden transition-[max-height] duration-300 ease-in-out ${
-          menuOpen ? 'max-h-[32rem]' : 'max-h-0'
+        // 開いたときは画面の高さいっぱいまで(項目が増えても、登録数まで見えるように)。収まらなければ中でスクロールする
+        className={`transition-[max-height] duration-300 ease-in-out ${
+          menuOpen ? 'max-h-[calc(100dvh-3.75rem)] overflow-y-auto overscroll-contain' : 'max-h-0 overflow-hidden'
         }`}
       >
         <div className="mx-auto grid max-w-[1600px] grid-cols-2 gap-1 border-t border-white/10 px-6 py-3 sm:flex sm:flex-row sm:flex-wrap sm:gap-2">
