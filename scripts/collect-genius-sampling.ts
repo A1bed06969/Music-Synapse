@@ -52,6 +52,8 @@ async function genius(path: string): Promise<{ status: number; json: any } | nul
   return null
 }
 
+const relTypeIsSample = (t: string) => t === 'samples' || t === 'sampled_in' || t === 'interpolates' || t === 'interpolated_by'
+
 type GSong = { id: number; title: string; primary_artist?: { name: string }; full_title?: string }
 
 async function main() {
@@ -132,6 +134,8 @@ async function main() {
         if (!['samples', 'sampled_in', 'interpolates', 'interpolated_by', 'remix_of', 'remixed_by'].includes(type) || !rel.songs?.length) continue
         for (const o of rel.songs.slice(0, 12)) {
           if (!o.primary_artist?.name) continue
+          // 同じアーティストの別版(デモ・リハーサル・別ミックス)は、サンプリングではないので除く
+          if (relTypeIsSample(type) && norm(o.primary_artist.name) === norm(artist.name as string)) continue
           const other = await findTrack(o.primary_artist.name, o.title)
           const relType = type.startsWith('remix') ? 'remix' : 'sample'
           const kindNote = type.startsWith('interpol') ? '引用・再演' : type.startsWith('remix') ? 'リミックス' : 'サンプリング'

@@ -94,8 +94,9 @@ export default async function AnatomyPage({ params }: { params: Promise<{ id: st
                 ))}
               </ul>
               <p className="mt-2 text-xs text-white/40">
-                この曲は、『{data.originals[0].track.title}』の{RELATION_LABEL[data.originals[0].type]}
-                {data.originals[0].note ? `(${data.originals[0].note})` : ''}です。
+                {data.originals[0].type === 'sample'
+                  ? `この曲は、『${data.originals[0].track.title}』を使っています(サンプリング・引用)。`
+                  : `この曲は、『${data.originals[0].track.title}』の${RELATION_LABEL[data.originals[0].type]}${data.originals[0].note ? `(${data.originals[0].note})` : ''}です。`}
               </p>
             </section>
           )}
@@ -128,7 +129,7 @@ export default async function AnatomyPage({ params }: { params: Promise<{ id: st
           )}
           {data.versions.length > 0 && (
             <section>
-              <p className="mb-2 text-xs font-bold tracking-[0.16em] text-white/50">この曲から生まれた版({data.versions.length})</p>
+              <p className="mb-2 text-xs font-bold tracking-[0.16em] text-white/50">この曲から生まれた曲・版({data.versions.length})</p>
               <ul className="grid gap-2">
                 {data.versions.map((l) => (
                   <TrackRow key={l.track.id} l={l} color={c.color} />

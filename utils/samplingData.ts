@@ -99,3 +99,31 @@ export async function fetchAnatomy(supabase: SupabaseClient, trackId: string): P
 }
 
 export const RELATION_LABEL: Record<string, string> = { remix: 'リミックス', edit: 'エディット', bootleg: 'ブートレッグ', mashup: 'マッシュアップ', sample: 'サンプリング' }
+
+export type SamplingPair = { derived: AnatomyTrack; original: AnatomyTrack; note: string | null }
+
+/** サンプリングで結ばれた曲のペア(新しい曲 → 元ネタ)。seed(日付など)で、毎日違う顔ぶれを選ぶ */
+export async function fetchSamplingPairs(supabase: SupabaseClient, limit: number, seed: string): Promise<SamplingPair[]> {
+  const { data } = await supabase
+    .from('track_relation')
+    .select(`note, derived:track_id(${TRACK_SELECT}), original:related_track_id(${TRACK_SELECT})`)
+    .eq('relation_type', 'sample')
+    .not('related_track_id', 'is', null)
+    .limit(400)
+  type R = { note: string | null; derived: Row | Row[] | null; original: Row | Row[] | null }
+  const pairs = ((data ?? []) as unknown as R[]).flatMap((r) => {
+    const d = one(r.derived)
+    const o = one(r.original)
+    return d && o ? [{ derived: toTrack(d), original: toTrack(o), note: r.note }] : []
+  })
+  // ジャケットのあるものを優先し、seed で並びを決める(同じ日は同じ並び)
+  const hash = (s: string) => {
+    let h = 2166136261
+    for (const ch of s + seed) h = Math.imul(h ^ ch.charCodeAt(0), 16777619)
+    return h >>> 0
+  }
+  return pairs
+    .filter((p) => p.derived.jacket && p.original.jacket)
+    .sort((a, b) => hash(a.derived.id + a.original.id) - hash(b.derived.id + b.original.id))
+    .slice(0, limit)
+}

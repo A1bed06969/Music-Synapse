@@ -231,6 +231,7 @@ async function main() {
             const hay = w.text.normalize('NFKC').toLowerCase().replace(/\s+/g, '')
             const has = (v: string) => hay.includes(v.normalize('NFKC').toLowerCase().replace(/\s+/g, ''))
             if (!has(r.song_title.trim()) || (r.artist_name?.trim() && !has(r.artist_name.trim()))) continue
+            if (r.artist_name?.trim() && norm(r.artist_name.trim()) === norm(artist.name as string)) continue // 同じアーティスト自身の別曲・別版は除く
             const other = r.artist_name?.trim() ? await findTrack(r.artist_name.trim(), r.song_title.trim()) : null
             const note = `${r.kind === 'interpolation' ? '引用・再演' : 'サンプリング'}(Wikipedia: ${w.article})`
             if (DRY) { console.log(`  ${artist.name}『${w.track.title}』 ${r.direction} ${r.artist_name}『${r.song_title}』 ${other ? '[カタログ]' : '[カタログ外]'}`); continue }

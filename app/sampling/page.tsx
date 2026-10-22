@@ -4,6 +4,7 @@ import SectionHeading from '@/app/components/detail/SectionHeading'
 import { hubContent } from '@/app/components/hub/hubContents'
 import { artworkAt } from '@/utils/artworkSize'
 import { createClient } from '@/utils/Supabase/server'
+import { fetchSamplingPairs } from '@/utils/samplingData'
 import TrackSearch from './TrackSearch'
 
 export const metadata = { title: 'Sampling & Mash-Up Anatomy | Music Synapse' }
@@ -17,16 +18,18 @@ const one = <T,>(v: T | T[] | null | undefined): T | null => (Array.isArray(v) ?
 export default async function SamplingPage() {
   const c = hubContent('sampling')
   const supabase = await createClient()
-  const [top, counts, mash] = await Promise.all([
+  const [top, counts, mash, pairs] = await Promise.all([
     supabase.rpc('top_remixed_tracks', { p_limit: 12 }),
-    Promise.all(['remix', 'edit', 'bootleg', 'mashup'].map((t) => supabase.from('track_relation').select('id', { count: 'exact', head: true }).eq('relation_type', t))),
+    Promise.all(['remix', 'edit', 'bootleg', 'mashup', 'sample'].map((t) => supabase.from('track_relation').select('id', { count: 'exact', head: true }).eq('relation_type', t))),
     supabase.from('track_relation').select('track_id, track:track_id(id, title, artist:artist_id(name), album:album_id(jacket_url))').eq('relation_type', 'mashup').limit(24),
+    fetchSamplingPairs(supabase, 10, new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10)),
   ])
-  const [remix, edit, bootleg, mashup] = counts.map((x) => x.count ?? 0)
+  const [remix, edit, bootleg, mashup, sample] = counts.map((x) => x.count ?? 0)
   const tops = (top.data ?? []) as Top[]
   const mashes = ((mash.data ?? []) as unknown as Mash[]).filter((m) => m.track)
   const stats = [
     { label: 'リミックス', value: remix.toLocaleString() },
+    { label: 'サンプリング', value: sample.toLocaleString() },
     { label: 'エディット', value: edit.toLocaleString() },
     { label: 'マッシュアップ', value: (mashup + bootleg).toLocaleString() },
   ]
@@ -35,13 +38,48 @@ export default async function SamplingPage() {
     <div className="grid gap-5">
       <TrackSearch />
       <p className="text-xs leading-relaxed text-white/50">
-        曲を探すと、元の曲と、そこから生まれたリミックス・エディット・マッシュアップを、1枚で見られます。いまは、カタログの曲名から見つけた関係です。
+        曲を探すと、元ネタ(サンプリング元)と、そこから生まれたリミックス・エディット・マッシュアップを、1枚で見られます。関係は、曲名・Genius・Wikipediaから集めています。
       </p>
     </div>
   )
 
   const body = (
     <>
+      {pairs.length > 0 && (
+        <div className="mb-12">
+          <SectionHeading number={c.number} label="SAMPLING" color={c.color} right="元ネタがつながった曲" />
+          <ul className="grid gap-2">
+            {pairs.map((p) => (
+              <li key={p.derived.id + p.original.id} className="min-w-0">
+                <div className="flex min-w-0 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] p-2.5">
+                  <Link href={`/sampling/${p.derived.id}`} className="flex min-w-0 flex-1 items-center gap-2.5 hover:opacity-80">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={artworkAt(p.derived.jacket, 96) ?? ''} alt="" loading="lazy" decoding="async" className="h-11 w-11 shrink-0 rounded-md bg-white/5 object-cover" />
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-bold">{p.derived.title}</span>
+                      <span className="block truncate text-xs text-white/50">{p.derived.artistName}</span>
+                    </span>
+                  </Link>
+                  <span className="shrink-0 text-center">
+                    <span className="block text-base font-black leading-none" style={{ color: c.color }}>
+                      ←
+                    </span>
+                    <span className="block text-[9px] text-white/40">元ネタ</span>
+                  </span>
+                  <Link href={`/sampling/${p.original.id}`} className="flex min-w-0 flex-1 flex-row-reverse items-center gap-2.5 text-right hover:opacity-80">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={artworkAt(p.original.jacket, 96) ?? ''} alt="" loading="lazy" decoding="async" className="h-11 w-11 shrink-0 rounded-md bg-white/5 object-cover" />
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-bold">{p.original.title}</span>
+                      <span className="block truncate text-xs text-white/50">{p.original.artistName}</span>
+                    </span>
+                  </Link>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       <SectionHeading number={c.number} label="MOST REMIXED" color={c.color} right="版の多い曲" />
       <ul className="grid gap-2">
         {tops.map((t) => {
