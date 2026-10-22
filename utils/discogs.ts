@@ -121,7 +121,7 @@ export async function searchRelease(title: string, artistName: string): Promise<
 export type DiscogsReleaseCredit = {
   personName: string
   personDiscogsId: string
-  role: 'producer' | 'mix' | 'mastering' | 'composer' | 'lyricist' | 'arranger' | 'artwork' | 'musician'
+  role: 'producer' | 'mix' | 'mastering' | 'composer' | 'lyricist' | 'arranger' | 'artwork' | 'illustrator' | 'art_director' | 'photographer' | 'musician'
   sourceUrl: string
   trackTitle: string | null
   instrumentName?: string
@@ -143,7 +143,13 @@ const ROLE_MAP: Record<string, DiscogsReleaseCredit['role']> = {
   'arranged by': 'arranger',
   'artwork by': 'artwork',
   design: 'artwork',
-  illustration: 'artwork',
+  // ジャケットの制作者(2026-10-22追加): イラスト・アートディレクション・写真は、アートワークと分けて残す
+  illustration: 'illustrator',
+  'art direction': 'art_director',
+  'art director': 'art_director',
+  'photography by': 'photographer',
+  photography: 'photographer',
+  'cover [photo]': 'photographer',
 }
 
 // 演奏楽器としてよく現れる役割名(MusicBrainz側のINSTRUMENT_NAME_JAと表記を揃える)

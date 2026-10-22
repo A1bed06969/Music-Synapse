@@ -6,7 +6,7 @@ import { searchRelease as searchDiscogsRelease, fetchReleaseCredits as fetchDisc
 export type UnifiedCreditInput = {
   personName: string
   personSourceId: string
-  source: 'musicbrainz' | 'discogs'
+  source: 'musicbrainz' | 'discogs' | 'wikipedia'
   role: string
   sourceUrl: string
   trackId: string | null
@@ -44,7 +44,6 @@ export async function writeAlbumCredits(
     // MusicBrainzはartist.musicbrainz_id、Discogsはartist.discogs_artist_idで
     // 既存アーティストと照合する(ソースごとにID体系が別物のため)
     const artistMatchColumn = source === 'discogs' ? 'discogs_artist_id' : 'musicbrainz_id'
-    const personMatchColumn = source === 'discogs' ? 'discogs_id' : 'musicbrainz_id'
 
     // ミュージシャンロールは、カタログとの人物一致状況に関わらず
     // 「この楽器が使われた」という記録を別途残す(instrument_idはartist_creditにも
@@ -90,11 +89,15 @@ export async function writeAlbumCredits(
       }
     }
 
-    const { data: matchedArtist } = await supabase
-      .from('artist')
-      .select('id')
-      .eq(artistMatchColumn, personSourceId)
-      .maybeSingle()
+    let matchedArtist: { id: string } | null = null
+    if (source === 'wikipedia') {
+      // Wikipedia のクレジットにはIDが無いので、名前がカタログのアーティストと完全一致して、1人に決まるときだけ照合する
+      const { data: sameName } = await supabase.from('artist').select('id').eq('name', personName).limit(2)
+      matchedArtist = sameName && sameName.length === 1 ? { id: sameName[0].id as string } : null
+    } else {
+      const { data } = await supabase.from('artist').select('id').eq(artistMatchColumn, personSourceId).maybeSingle()
+      matchedArtist = data
+    }
 
     if (matchedArtist?.id === artistId) {
       // 自分自身がクレジットされているケース(セルフプロデュース等)は記録不要
@@ -145,47 +148,18 @@ export async function writeAlbumCredits(
       continue
     }
 
-    const { data: existingPerson } = await supabase
-      .from('credit_person')
-      .select('id')
-      .eq(personMatchColumn, personSourceId)
-      .maybeSingle()
-
+    // credit_person は名前だけの表(MusicBrainz/DiscogsのIDカラムは、2026-10のDB再構築で無い)。
+    // 同じ名前の人は同一人物として1行にまとめる(同名の別人が混ざりうるが、クレジットの表示用で、アーティストとの紐付けには使わない)
+    const { data: existingPerson } = await supabase.from('credit_person').select('id').eq('name', personName).limit(1).maybeSingle()
     let creditPersonId = existingPerson?.id as string | undefined
     if (!creditPersonId) {
-      // MB/Discogsのどちらか一方から先に取り込まれ、もう一方のIDカラムが
-      // 空のまま同名の人物が既に存在する場合、新規作成せずそちらへ今回の
-      // ソースIDを補完する(片方のsource_idだけを持つ重複人物の発生を防ぐ)
-      const { data: sameNameCandidate } = await supabase
-        .from('credit_person')
-        .select('id')
-        .eq('name', personName)
-        .is(personMatchColumn, null)
-        .limit(1)
-        .maybeSingle()
-
-      if (sameNameCandidate) {
-        creditPersonId = sameNameCandidate.id
-        const { error: updateError } = await supabase
-          .from('credit_person')
-          .update({ [personMatchColumn]: personSourceId })
-          .eq('id', creditPersonId)
-        if (updateError) {
-          console.error(`人物「${personName}」のID補完に失敗しました:`, updateError)
-        }
-      } else {
-        const { data: createdPerson, error: createError } = await supabase
-          .from('credit_person')
-          .insert({ name: personName, [personMatchColumn]: personSourceId })
-          .select('id')
-          .single()
-        if (createError) {
-          console.error(`人物「${personName}」の作成に失敗しました:`, createError)
-          failureCount += 1
-          continue
-        }
-        creditPersonId = createdPerson.id
+      const { data: createdPerson, error: createError } = await supabase.from('credit_person').insert({ name: personName }).select('id').single()
+      if (createError) {
+        console.error(`人物「${personName}」の作成に失敗しました:`, createError)
+        failureCount += 1
+        continue
       }
+      creditPersonId = createdPerson.id
     }
 
     // artist_creditのユニーク制約は(artist_id, album_id, track_id, credit_person_id,

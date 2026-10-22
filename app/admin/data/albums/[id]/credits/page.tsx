@@ -21,7 +21,7 @@ const SOURCE_LABEL: Record<Source, string> = {
 type UnifiedCredit = {
   personName: string
   personSourceId: string
-  role: 'producer' | 'mix' | 'mastering' | 'composer' | 'lyricist' | 'arranger' | 'artwork' | 'musician'
+  role: 'producer' | 'mix' | 'mastering' | 'composer' | 'lyricist' | 'arranger' | 'artwork' | 'illustrator' | 'art_director' | 'photographer' | 'musician'
   sourceUrl: string
   trackTitle: string | null
   instrumentName?: string

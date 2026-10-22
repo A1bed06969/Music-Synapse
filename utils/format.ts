@@ -23,9 +23,9 @@ export function formatDate(dateStr: string | null): string {
 /** ラジオ局のパワープレイ&ヘビロテ集計期間の表示用。月間集計はperiod_start_dateが
  * 常にその月1日付になっている(実際の集計期間は月全体)ため、日付ではなく
  * 「◯月度」表記にする。週間集計は従来通り日付表示のまま */
-export function formatRotationPeriod(dateStr: string | null, periodType: string): string {
+export function formatRotationPeriod(dateStr: string | null, _periodType?: string): string {
   if (!dateStr) return '未定'
-  if (periodType !== 'monthly') return formatDate(dateStr)
+  // 週間・月間のどちらも、日付は出さず「◯月度」で表記する
   const [y, m] = dateStr.split('-')
   return `${y}年${Number(m)}月度`
 }
@@ -105,6 +105,9 @@ export const CREDIT_ROLE_LABEL: Record<string, string> = {
   lyricist: '作詞',
   arranger: '編曲',
   artwork: 'アートワーク',
+  illustrator: 'イラスト',
+  art_director: 'アートディレクション',
+  photographer: '写真',
   musician: 'ミュージシャン',
 }
 
@@ -117,5 +120,8 @@ export const CREDIT_ROLE_COLOR: Record<string, string> = {
   lyricist: 'border-rose-400/40 text-rose-300',
   arranger: 'border-cyan-400/40 text-cyan-300',
   artwork: 'border-orange-400/40 text-orange-300',
+  illustrator: 'border-pink-400/40 text-pink-300',
+  art_director: 'border-fuchsia-400/40 text-fuchsia-300',
+  photographer: 'border-lime-400/40 text-lime-300',
   musician: 'border-indigo-400/40 text-indigo-300',
 }
