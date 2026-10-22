@@ -69,7 +69,9 @@ const USER_AGENT =
 //   CIRCUIT_BREAKER_COOLDOWN_MSの間はネットワークに一切アクセスせず即座に
 //   失敗させる(ブロック中に叩き続けて悪化させるのを防ぐ)。クールダウンが
 //   明ければ自動的に通常動作へ戻る。
-const MIN_REQUEST_INTERVAL_MS = 3500
+// 2026-10-21: 3.5秒→3.3秒(約18件/分)。20件/分の目安の内側のまま、ユーザー判断で少し詰めた。
+// 403/429(サーキットブレーカー)が出始めたら3.5秒に戻すこと
+const MIN_REQUEST_INTERVAL_MS = 3300
 const CIRCUIT_BREAKER_THRESHOLD = 3
 const CIRCUIT_BREAKER_COOLDOWN_MS = 10 * 60 * 1000
 
@@ -97,6 +99,15 @@ function writeRateLimitState(state: ItunesRateLimitState) {
   }
 }
 
+/** iTunesが一時的に使えない(制限に当たった・クールダウン中)ことを表すエラー。
+ * 「そのアーティスト/アルバムは存在しない」とは別物なので、呼び出し側は「見つからない」として扱わず、
+ * 待ってからやり直すこと(扱いを混同すると、実在する作品が「見つからない/未配信」として登録されてしまう) */
+export class ItunesUnavailableError extends Error {
+  constructor(message: string, readonly cooldownSec: number) {
+    super(message)
+  }
+}
+
 async function fetchItunes(url: string, label: string): Promise<any> {
   const maxAttempts = 4
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -104,7 +115,7 @@ async function fetchItunes(url: string, label: string): Promise<any> {
 
     if (state.cooldownUntil > Date.now()) {
       const remainingSec = Math.ceil((state.cooldownUntil - Date.now()) / 1000)
-      throw new Error(`iTunes API error (${label}): クールダウン中(あと約${remainingSec}秒はリクエストを送らない)`)
+      throw new ItunesUnavailableError(`iTunes API error (${label}): クールダウン中(あと約${remainingSec}秒はリクエストを送らない)`, remainingSec)
     }
 
     const waitMs = MIN_REQUEST_INTERVAL_MS - (Date.now() - state.lastRequestAt)
@@ -126,7 +137,7 @@ async function fetchItunes(url: string, label: string): Promise<any> {
           consecutiveFailures: 0,
           cooldownUntil: Date.now() + CIRCUIT_BREAKER_COOLDOWN_MS,
         })
-        throw new Error(`iTunes API error (${label}): ${res.status}(連続失敗のためクールダウンに入りました)`)
+        throw new ItunesUnavailableError(`iTunes API error (${label}): ${res.status}(連続失敗のためクールダウンに入りました)`, Math.ceil(CIRCUIT_BREAKER_COOLDOWN_MS / 1000))
       }
       writeRateLimitState({ ...current, lastRequestAt: Date.now(), consecutiveFailures })
       if (attempt < maxAttempts) {
@@ -134,6 +145,7 @@ async function fetchItunes(url: string, label: string): Promise<any> {
         continue
       }
     }
+    if (res.status === 403 || res.status === 429) throw new ItunesUnavailableError(`iTunes API error (${label}): ${res.status}`, 60)
     throw new Error(`iTunes API error (${label}): ${res.status}`)
   }
   throw new Error(`iTunes API error (${label}): retries exhausted`)
