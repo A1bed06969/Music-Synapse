@@ -66,12 +66,17 @@ async function main() {
         continue
       }
       let results: Awaited<ReturnType<typeof searchArtist>> = []
-      try {
-        results = await searchArtist(pick.name)
-      } catch (err) {
-        console.error(`  Apple Music検索失敗(${pick.name}):`, (err as Error).message)
+      if (pick.appleId) {
+        // Apple MusicのアーティストIDが分かっているもの(人が確認して指定)は、検索せずIDで直接取り込む
+        results = [{ artistId: pick.appleId, artistName: pick.name } as (typeof results)[number]]
+      } else {
+        try {
+          results = await searchArtist(pick.name)
+        } catch (err) {
+          console.error(`  Apple Music検索失敗(${pick.name}):`, (err as Error).message)
+        }
       }
-      const exactAll = results.filter((r) => keys.includes(norm(r.artistName)))
+      const exactAll = pick.appleId ? results : results.filter((r) => keys.includes(norm(r.artistName)))
       const exact = pick.appleId ? exactAll.filter((r) => r.artistId === pick.appleId) : exactAll
       if (exact.length === 1) {
         if (DRY_RUN) {

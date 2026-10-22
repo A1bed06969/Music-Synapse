@@ -1,5 +1,5 @@
-// トップの連載(01〜11)の名前・色・コピー・リンク先。各連載のページ(3カラム)と右カラムの目次で共有する
-export type HubKey = 'discover' | 'fes' | 'nextBreak' | 'planet' | 'discGuide' | 'curation' | 'crown' | 'genreRoots' | 'connect' | 'tieup' | 'sampling'
+// トップの連載(01〜12)の名前・色・コピー・リンク先。各連載のページ(3カラム)と右カラムの目次で共有する
+export type HubKey = 'discover' | 'fes' | 'nextBreak' | 'planet' | 'discGuide' | 'curation' | 'crown' | 'genreRoots' | 'connect' | 'tieup' | 'sampling' | 'museum'
 
 export type HubContent = {
   key: HubKey
@@ -25,6 +25,7 @@ export const HUB_CONTENTS: HubContent[] = [
   { key: 'connect', number: '09', label: 'CONNECT THE MUSIC MAKERS', heading: ['Connect The', 'Music Makers'], tagline: '音楽をつくる人たちをつなぐ', color: '#b6f23a', href: '/relations' },
   { key: 'tieup', number: '10', label: 'TIE-UP TIME MACHINE', heading: ['Tie-Up', 'Time Machine'], tagline: 'あの頃の主題歌へ、時間旅行', color: '#d86bff', href: '/media/sync' },
   { key: 'sampling', number: '11', label: 'SAMPLING & MASH-UP ANATOMY', heading: ['Sampling &', 'Mash-Up Anatomy'], tagline: '混ぜ合わさった曲を、解剖する', color: '#52e05f', href: '/sampling' },
+  { key: 'museum', number: '12', label: 'ART WORK MUSEUM', heading: ['Art Work', 'Museum'], tagline: 'ジャケットを、あらゆる角度から', color: '#d9b25f', href: '/museum' },
 ]
 
 export function hubContent(key: HubKey): HubContent {

@@ -17,6 +17,7 @@ import { fetchCrownWinners, fetchGenreRoots, fetchConnectPairs } from '@/utils/h
 import { fetchCurations, fetchDiscGuideBooks, fetchPlanetArtists, fetchTieUpYears } from '@/utils/homeCardsMore'
 import TieUpTimeMachineBanner from '@/app/components/home/TieUpTimeMachineBanner'
 import SamplingMashUpAnatomyBanner from '@/app/components/home/SamplingMashUpAnatomyBanner'
+import ArtWorkMuseumBanner from '@/app/components/home/ArtWorkMuseumBanner'
 import HeroBackgroundVideo from '@/app/components/home/HeroBackgroundVideo'
 import LatestNewsList, { NEWS_PREVIEW_COUNT } from '@/app/components/home/LatestNews'
 
@@ -83,7 +84,7 @@ export default async function Home() {
           <NewArrivalsBanner summary={newArrivals} />
         </section>
 
-        {/* 連載は、3列×4行(章ごとに3つ): NEW(01-03) / DIG(04-06) / ARCHIVE(07-09) / EXPLORE(10-12。12は準備中) */}
+        {/* 連載は、3列×4行(章ごとに3つ): NEW(01-03) / DIG(04-06) / ARCHIVE(07-09) / EXPLORE(10-12) */}
         <ChapterLabel title="NEW" caption="新しい音楽に出会う" className="mt-14" />
         <section className="mt-4 grid grid-cols-1 gap-6 lg:grid-cols-3">
           <DiscoverNewMusicBanner albums={albums} />
@@ -109,6 +110,7 @@ export default async function Home() {
         <section className="mt-4 grid grid-cols-1 gap-6 lg:grid-cols-3">
           <TieUpTimeMachineBanner years={tieUps} />
           <SamplingMashUpAnatomyBanner />
+          <ArtWorkMuseumBanner />
         </section>
 
         <section className="mt-14">
