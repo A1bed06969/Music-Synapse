@@ -120,6 +120,8 @@ async function main() {
           start_time: pick.startTime ?? null,
           end_time: null,
           is_headliner: false,
+          // サイトの表記(日本語)が、カタログの名前(ローマ字など)と違うときは、表示名として残す
+          display_name: norm(pick.name) !== norm(artist.name) ? pick.name : null,
         })
         .select('id')
         .single()
