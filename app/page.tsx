@@ -16,6 +16,7 @@ import ConnectTheMusicMakersBanner from '@/app/components/home/ConnectTheMusicMa
 import { fetchCrownWinners, fetchGenreRoots, fetchConnectPairs } from '@/utils/homeCardsCrown'
 import { fetchCurations, fetchDiscGuideBooks, fetchPlanetArtists, fetchTieUpYears } from '@/utils/homeCardsMore'
 import TieUpTimeMachineBanner from '@/app/components/home/TieUpTimeMachineBanner'
+import SamplingMashUpAnatomyBanner from '@/app/components/home/SamplingMashUpAnatomyBanner'
 import HeroBackgroundVideo from '@/app/components/home/HeroBackgroundVideo'
 import LatestNewsList, { NEWS_PREVIEW_COUNT } from '@/app/components/home/LatestNews'
 
@@ -25,7 +26,7 @@ const POWER_PLAY_TOP_COUNT = 5
 // 全企画を出す(バナーの「◯企画・◯件」は、ここに並ぶ企画の合計なので、絞ると実際より少なく出る)
 const CURATION_COUNT = 30
 
-/** 連載の章の見出し(NEW / DIG / ARCHIVE) */
+/** 連載の章の見出し(NEW / DIG / ARCHIVE / EXPLORE) */
 function ChapterLabel({ title, caption, className = '' }: { title: string; caption: string; className?: string }) {
   return (
     <div className={`flex items-center gap-4 ${className}`}>
@@ -82,7 +83,7 @@ export default async function Home() {
           <NewArrivalsBanner summary={newArrivals} />
         </section>
 
-        {/* 連載は、3つの章に分けて並べる(NEW / DIG / ARCHIVE)。ARCHIVEは歴史をたどる4つで、PCは4列 */}
+        {/* 連載は、3列×4行(章ごとに3つ): NEW(01-03) / DIG(04-06) / ARCHIVE(07-09) / EXPLORE(10-12。12は準備中) */}
         <ChapterLabel title="NEW" caption="新しい音楽に出会う" className="mt-14" />
         <section className="mt-4 grid grid-cols-1 gap-6 lg:grid-cols-3">
           <DiscoverNewMusicBanner albums={albums} />
@@ -98,11 +99,16 @@ export default async function Home() {
         </section>
 
         <ChapterLabel title="ARCHIVE" caption="歴史をたどる" className="mt-12" />
-        <section className="mt-4 grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
+        <section className="mt-4 grid grid-cols-1 gap-6 lg:grid-cols-3">
           <CrownTheWinnersBanner data={crown} />
           <GenreRootsTapestryBanner data={genreRoots} />
           <ConnectTheMusicMakersBanner data={connect} />
+        </section>
+
+        <ChapterLabel title="EXPLORE" caption="たどって、解く" className="mt-12" />
+        <section className="mt-4 grid grid-cols-1 gap-6 lg:grid-cols-3">
           <TieUpTimeMachineBanner years={tieUps} />
+          <SamplingMashUpAnatomyBanner />
         </section>
 
         <section className="mt-14">
