@@ -1,5 +1,9 @@
 import { createClient } from '@/utils/Supabase/server'
 import ArtistNetworkList, { type NetworkRelation } from '@/app/components/artist-detail/ArtistNetworkList'
+import SectionHeading from '@/app/components/detail/SectionHeading'
+import { headingOf } from '@/app/components/artist-detail/artistSections'
+import ConnectBanner from '@/app/components/connect/ConnectBanner'
+import { fetchConnectData } from '@/utils/connectGraph'
 
 type RelationRow = {
   id: number
@@ -43,9 +47,14 @@ export default async function NetworkPage({ params }: { params: Promise<{ id: st
     })
     .filter((r): r is NetworkRelation => r !== null)
 
+  // 〇〇のコネクト(09)のバナー。共演した人を数人見せる
+  const connect = await fetchConnectData(supabase, id)
+  const connectPartners = connect ? connect.partners.map((p) => ({ id: p.id, name: p.name, image: p.image })) : []
+
   return (
     <div>
-      <h2 className="text-xs uppercase tracking-wide text-white/40">Artist Network</h2>
+      <SectionHeading {...headingOf('network')} />
+      {connect && <div className="mb-6"><ConnectBanner artistId={id} artistName={connect.center.name} partners={connectPartners} /></div>}
       {/* RelationGraphのEgoTree表示は、このセクションの幅(CENTERカラム)だと
        * ノードラベルが判読できないほど縮小されてしまう問題があり、対応する
        * まで一旦リスト表示のみにしている(デスクトップ/モバイル共通)。 */}

@@ -1,55 +1,37 @@
+import Link from 'next/link'
 import { createClient } from '@/utils/Supabase/server'
-import { fetchAllRows } from '@/utils/fetchAllRows'
-import RelationGraph, { type RelationEdge, type RelationNode } from '@/app/components/RelationGraph'
+import { fetchConnectData } from '@/utils/connectGraph'
+import ConnectView from '@/app/components/connect/ConnectView'
 
-type ArtistRow = { id: string; name: string; image_url: string | null }
-type RelationRow = { artist_id_a: string; artist_id_b: string; relation_type: string; relation_style: string | null; description: string | null }
-type ArtistGenreRow = { artist_id: string; genre: { name: string } | { name: string }[] | null }
+// 最初に開いたときの例と、「たとえば」の候補(名前で引く)
+const START = '星野源'
+const EXAMPLES = ['星野源', '宇多田ヒカル', 'KREVA', '椎名林檎', '布袋寅泰', '米津玄師', 'Creepy Nuts', 'SIRUP']
 
-export default async function RelationsPage() {
+export const metadata = { title: 'Connect The Music Makers | Music Synapse' }
+
+/** Connect The Music Makers の入口。検索欄と、例として1人の相関図を出す */
+export default async function ConnectTopPage() {
   const supabase = await createClient()
+  const { data: rows } = await supabase.from('artist').select('id, name').in('name', EXAMPLES).not('apple_music_artist_id', 'is', null)
+  const examples = EXAMPLES.map((n) => (rows ?? []).find((r) => r.name === n)).filter((r): r is { id: string; name: string } => !!r)
+  const start = examples.find((e) => e.name === START) ?? examples[0]
+  const data = start ? await fetchConnectData(supabase, start.id) : null
 
-  // artist_relation(1675件)・artist_genre(1223件)ともにPostgRESTの1回あたり上限
-  // (1000件)を超えており、単純な.select()だと後半の関係性・ジャンルが相関図から
-  // 丸ごと消えていた(アーティスト自体は既にfetchAllRowsでページング済みだったが、
-  // こちらは対応漏れだった)
-  const [artists, relations, artistGenres] = await Promise.all([
-    fetchAllRows<ArtistRow>(supabase, 'artist', 'id, name, image_url', 'id'),
-    fetchAllRows<RelationRow>(supabase, 'artist_relation', 'artist_id_a, artist_id_b, relation_type, relation_style, description', 'id'),
-    fetchAllRows<ArtistGenreRow>(supabase, 'artist_genre', 'artist_id, genre:genre_id(name)', 'artist_id'),
-  ])
-
-  const categoryByArtist = new Map<string, string>()
-  for (const row of artistGenres ?? []) {
-    if (categoryByArtist.has(row.artist_id)) continue
-    const genre = Array.isArray(row.genre) ? row.genre[0] : row.genre
-    if (genre?.name) categoryByArtist.set(row.artist_id, genre.name)
-  }
-
-  const nodes: RelationNode[] = (artists ?? []).map((a) => ({
-    id: a.id,
-    name: a.name,
-    category: categoryByArtist.get(a.id) ?? null,
-    imageUrl: a.image_url,
-  }))
-
-  const edges: RelationEdge[] = (relations ?? []).map((r) => ({
-    source: r.artist_id_a,
-    target: r.artist_id_b,
-    style: (r.relation_style as 'solid' | 'dotted') ?? 'solid',
-    label: r.description ?? r.relation_type,
-  }))
-
-  return (
-    <div className="mx-auto max-w-[1600px] px-6 py-12">
-      <h1 className="text-2xl font-bold">総合音楽相関図</h1>
-      <p className="mt-2 text-sm text-white/50">
-        全アーティストを横断したつながりのネットワーク。実線は在籍/制作/コラボ、点線はジャンル・シーンや影響関係を表します。「ジャンル」表示ではジャンルごとに区切って配置、「リレーション」表示では実際に繋がりのあるアーティスト同士をまとめて配置します(ノードの色は常にジャンルを表します)。ノードをクリックするとアーティストページへ移動します。
+  const intro = (
+    <div className="grid gap-2">
+      <p className="flex flex-wrap items-center gap-2 text-xs text-white/45">
+        たとえば
+        {examples.map((e) => (
+          <Link key={e.id} href={`/relations/${e.id}`} className="rounded-full border border-white/15 px-3 py-1 text-white/75 hover:border-white/40 hover:text-white">
+            {e.name}
+          </Link>
+        ))}
       </p>
-
-      <div className="mt-8 rounded-lg border border-white/10 bg-white/[0.02]">
-        <RelationGraph nodes={nodes} edges={edges} />
-      </div>
     </div>
   )
+
+  if (!data) {
+    return <div className="mx-auto max-w-[1280px] px-4 py-10 text-sm text-white/60">相関図のデータがまだありません。</div>
+  }
+  return <ConnectView data={data} intro={intro} sample />
 }
