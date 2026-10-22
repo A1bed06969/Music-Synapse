@@ -54,6 +54,7 @@ async function main() {
           // 表示する作品名は、アニメ・ドラマ自身のタイトル(記事名が原作のタイトルのことがあるため)。取れなければ記事名
           work_key: key, work_title: chooseWorkTitle(page.title, page.text, KIND), work_type: KIND, year: YEAR,
           role: t.role ?? '', song_title: t.song_title, artist_name: t.artist_name ?? '', note: t.note, source_url: sourceUrl,
+          part_label: t.part, air_year: t.air_year, air_month: t.air_month,
         })),
         { onConflict: 'work_key,role,song_title,artist_name', ignoreDuplicates: true }
       )

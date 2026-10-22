@@ -13,15 +13,31 @@ const USER_AGENT = 'music-synapse/1.0 (personal research; tie-up collection)'
 const MIN_INTERVAL_MS = 1100
 
 let lastCall = 0
-async function throttledFetch(url: string): Promise<unknown> {
+export async function throttledFetch(url: string): Promise<unknown> {
   const wait = lastCall + MIN_INTERVAL_MS - Date.now()
   if (wait > 0) await new Promise((r) => setTimeout(r, wait))
   lastCall = Date.now()
-  for (let attempt = 1; attempt <= 4; attempt++) {
-    const res = await fetch(url, { headers: { 'User-Agent': USER_AGENT } })
-    if (res.ok) return res.json()
+  for (let attempt = 1; attempt <= 8; attempt++) {
+    let res: Response
+    try {
+      res = await fetch(url, { headers: { 'User-Agent': USER_AGENT } })
+    } catch {
+      // 接続が途中で切れた(ソケットエラーなど)ときは、待ってやり直す
+      await new Promise((r) => setTimeout(r, 3000 * attempt))
+      lastCall = Date.now()
+      continue
+    }
+    if (res.ok) {
+      try {
+        return await res.json()
+      } catch {
+        await new Promise((r) => setTimeout(r, 3000 * attempt))
+        lastCall = Date.now()
+        continue
+      }
+    }
     if (res.status === 429 || res.status >= 500) {
-      await new Promise((r) => setTimeout(r, 4000 * attempt))
+      await new Promise((r) => setTimeout(r, 5000 * attempt))
       lastCall = Date.now()
       continue
     }
@@ -134,7 +150,7 @@ export function chooseWorkTitle(pageTitle: string, raw: string, kind: WorkKind):
 
 const THEME_HEADING = /主題歌|主題曲|テーマソング|テーマ曲|劇中歌|挿入歌|オープニング|エンディング|OP|ED/
 const STAFF_THEME_LINE = /^[*#;: ]*(主題歌|挿入歌|劇中歌|オープニングテーマ|エンディングテーマ|テーマ曲|テーマソング|主題曲|オープニング|エンディング)\s*[-－–—:：]/
-const INFOBOX_KEY = /^\s*\|\s*(オープニング|エンディング|主題歌|テーマ曲|挿入歌|音楽)[^=]*=/
+const INFOBOX_KEY = /^\s*\|\s*(オープニング|エンディング|主題歌|テーマ曲|挿入歌|音楽|放送開始|放送終了|放送期間|公開)[^=]*=/
 
 /** 主題歌などの節と、基礎情報(infobox)の関連欄だけを切り出す。無ければ空文字 */
 export function extractThemeText(raw: string, maxLength = 7000): string {
@@ -186,7 +202,23 @@ export function extractThemeText(raw: string, maxLength = 7000): string {
   return cleanWikitext(joined).slice(0, maxLength)
 }
 
-export type ExtractedTieUp = { role: string | null; song_title: string; artist_name: string | null; note: string | null }
+export type ExtractedTieUp = {
+  role: string | null; song_title: string; artist_name: string | null; note: string | null
+  /** 使われた期・クール・劇場版などの区分(例: 第2期 / 劇場版)。不明・区分なしは null */
+  part: string | null
+  air_year: number | null
+  air_month: number | null
+}
+
+/** 抽出結果の part / air_year / air_month を、安全な形に直す(年は1950〜今年+1、月は1〜12のときだけ採用) */
+function partFields(e: Record<string, unknown>): { part: string | null; air_year: number | null; air_month: number | null } {
+  const part = typeof e.part === 'string' && e.part.trim() ? e.part.trim().slice(0, 40) : null
+  const y = Number(e.air_year)
+  const m = Number(e.air_month)
+  const air_year = Number.isInteger(y) && y >= 1950 && y <= new Date().getFullYear() + 1 ? y : null
+  const air_month = air_year && Number.isInteger(m) && m >= 1 && m <= 12 ? m : null
+  return { part, air_year, air_month }
+}
 
 const SCHEMA = {
   type: Type.ARRAY,
@@ -197,6 +229,9 @@ const SCHEMA = {
       song_title: { type: Type.STRING },
       artist_name: { type: Type.STRING },
       note: { type: Type.STRING },
+      part: { type: Type.STRING },
+      air_year: { type: Type.INTEGER },
+      air_month: { type: Type.INTEGER },
     },
     required: ['song_title'],
   },
@@ -213,7 +248,9 @@ export async function extractTieUps(workTitle: string, kind: WorkKind, themeText
 - song_title は曲名だけ(「」『』は付けない)。副題やバージョン表記(TV size など)は付けない
 - artist_name は、その曲を歌っている(演奏している)アーティストの名前。ユニット名・バンド名はそのまま。不明なら省略
 - role は OP / ED / 主題歌 / 挿入歌 / 劇中歌 のどれかに揃える(第1クールのOP、などは OP にして、期や話数は note に)
-- note は短く(例: 「第1期OP」「第5話」「第2クール」)。40文字以内。無ければ省略
+- note は短く(例: 「第5話」「ED2」)。40文字以内。無ければ省略(期やクールは part に書く)
+- part は、その歌が使われた「期・クール・劇場版などの区分」。例: 「第1期」「第2期」「第3期第1クール」「劇場版」「OVA」。ページの見出し・並び・基礎情報から読み取れるときだけ書く。作品が1期だけで区分が無い・分からないときは省略。劇場版・映画・総集編の歌は「劇場版」にする(映画名があれば「劇場版 …」)
+- air_year / air_month は、part の区分の放送(公開)が始まった年と月。[基礎情報]の「放送開始」欄に、期ごとの開始日(例: 「第1期：2019年7月6日」や、期の区切りごとに並んだ日付)が書かれているので、part に対応する開始日の年・月を必ず書く(期が複数ある作品は、日付が上から順に第1期・第2期…に当たる)。劇場版などで日付がどこにも書かれていなければ省略する(推測しない)
 - 同じ曲が複数箇所に出てきたら1回だけ
 - 該当する歌が書かれていなければ、空の配列を返す
 
@@ -237,7 +274,7 @@ ${themeText}`
     const key = `${role ?? ''}|${song}|${artist ?? ''}`
     if (seen.has(key)) continue
     seen.add(key)
-    out.push({ role, song_title: song, artist_name: artist, note: typeof e.note === 'string' && e.note.trim() ? e.note.trim().slice(0, 60) : null })
+    out.push({ role, song_title: song, artist_name: artist, note: typeof e.note === 'string' && e.note.trim() ? e.note.trim().slice(0, 60) : null, ...partFields(e) })
   }
   return out
 }
@@ -261,7 +298,9 @@ export async function extractTieUpsBatch(
 - song_title は曲名だけ(「」『』は付けない)。副題やバージョン表記(TV size など)は付けない
 - artist_name は、その曲を歌っている(演奏している)アーティストの名前。ユニット名・バンド名はそのまま。不明なら省略
 - role は OP / ED / 主題歌 / 挿入歌 / 劇中歌 のどれかに揃える(第1クールのOP、などは OP にして、期や話数は note に)
-- note は短く(例: 「第1期OP」「第5話」「第2クール」)。40文字以内。無ければ省略
+- note は短く(例: 「第5話」「ED2」)。40文字以内。無ければ省略(期やクールは part に書く)
+- part は、その歌が使われた「期・クール・劇場版などの区分」。例: 「第1期」「第2期」「第3期第1クール」「劇場版」「OVA」。ページの見出し・並び・基礎情報から読み取れるときだけ書く。作品が1期だけで区分が無い・分からないときは省略。劇場版・映画・総集編の歌は「劇場版」にする(映画名があれば「劇場版 …」)
+- air_year / air_month は、part の区分の放送(公開)が始まった年と月。[基礎情報]の「放送開始」欄に、期ごとの開始日(例: 「第1期：2019年7月6日」や、期の区切りごとに並んだ日付)が書かれているので、part に対応する開始日の年・月を必ず書く(期が複数ある作品は、日付が上から順に第1期・第2期…に当たる)。劇場版などで日付がどこにも書かれていなければ省略する(推測しない)
 - 同じ作品で同じ曲が複数箇所に出てきたら1回だけ
 - 該当する歌が書かれていない作品は、何も出力しない
 
@@ -285,7 +324,7 @@ ${sections}`
     const key = `${role ?? ''}|${song}|${artist ?? ''}`
     if (seen[no - 1].has(key)) continue
     seen[no - 1].add(key)
-    out[no - 1].push({ role, song_title: song, artist_name: artist, note: typeof e.note === 'string' && e.note.trim() ? e.note.trim().slice(0, 60) : null })
+    out[no - 1].push({ role, song_title: song, artist_name: artist, note: typeof e.note === 'string' && e.note.trim() ? e.note.trim().slice(0, 60) : null, ...partFields(e) })
   }
   return out
 }
@@ -300,7 +339,51 @@ const BATCH_SCHEMA = {
       song_title: { type: Type.STRING },
       artist_name: { type: Type.STRING },
       note: { type: Type.STRING },
+      part: { type: Type.STRING },
+      air_year: { type: Type.INTEGER },
+      air_month: { type: Type.INTEGER },
     },
     required: ['work_no', 'song_title'],
   },
+}
+
+/** 基礎情報の1欄の値(次の「| 欄名 =」の手前まで)を、記法を取った文字にして返す。欄が無ければ null */
+function infoboxField(raw: string, names: string[]): string | null {
+  const head = raw.slice(0, 15000)
+  const re = new RegExp(`\\n[ \\t]*\\|[ \\t]*(?:${names.join('|')})[ \\t]*=([\\s\\S]*?)(?=\\n[ \\t]*\\|[ \\t]*[^=|\\n]{1,20}[ \\t]*=|\\n\\}\\})`)
+  const m = head.match(re)
+  if (!m) return null
+  return m[1]
+    .replace(/<ref[\s\S]*?(?:<\/ref>|\/>)/gi, '')
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/\{\{[^{}]*\}\}/g, '')
+    .replace(/\[\[(?:[^|\]]*\|)?([^\]]*)\]\]/g, '$1')
+    .replace(/'''?/g, '')
+    .replace(/<[^>]+>/g, '')
+    .trim()
+}
+
+export const SEASON_LABELS = ['冬', '春', '夏', '秋'] as const
+/** 継続(前の年から続いていて、この年に始まった放送が基礎情報に見当たらない作品) */
+export const SEASON_ONGOING = '継続'
+
+/** カテゴリーの年(year)に、この作品の放送が始まった月から「冬・春・夏・秋」を決める(1-3月=冬、4-6=春、7-9=夏、10-12=秋)。
+ * 複数の期が並ぶ作品は、その年に始まった最初の放送で決める。この年に始まった記述が無ければ「継続」。基礎情報が読めなければ null */
+export function extractBroadcastSeason(raw: string, year: number): string | null {
+  // 複数の期が並ぶ作品は、期ごとの日付が「放送開始」「放送終了」のどちらの欄にも入っていることがある。両方を読む
+  const text = ['放送開始', '放送終了', '放送期間'].map((n) => infoboxField(raw, [n]) ?? '').join('\n')
+  if (!text.trim()) return null
+  const months: number[] = []
+  for (const m of text.matchAll(/(\d{4})年(\d{1,2})月/g)) if (Number(m[1]) === year) months.push(Number(m[2]))
+  if (months.length === 0) return /\d{4}年/.test(text) ? SEASON_ONGOING : null
+  const first = Math.min(...months)
+  return SEASON_LABELS[Math.floor((first - 1) / 3)]
+}
+
+/** 原作の無いオリジナル作品か。「原作」欄が空、または「オリジナル」と書かれているときだけ true(欄が無いときは判断しない) */
+export function isOriginalWork(raw: string): boolean {
+  const v = infoboxField(raw, ['原作'])
+  if (v === null) return false
+  return v.replace(/\s/g, '') === '' || /オリジナル/.test(v)
 }

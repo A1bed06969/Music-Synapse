@@ -35,7 +35,7 @@ async function main() {
   const statuses = RETRY_UNMATCHED ? ['pending', 'unmatched'] : ['pending']
   const targets: {
     id: string; work_key: string; work_title: string; work_type: string; year: number | null; season_label: string | null
-    role: string | null; song_title: string; artist_name: string | null; note: string | null; source_url: string; match_method: string | null
+    role: string | null; song_title: string; artist_name: string | null; note: string | null; part_label: string | null; air_year: number | null; air_month: number | null; source_url: string; match_method: string | null
   }[] = []
   for (let offset = 0; ; offset += 1000) {
     const { data } = await supabase.from('sync_candidate').select('*').in('status', statuses).order('created_at').range(offset, offset + 999)
@@ -179,7 +179,7 @@ async function main() {
     if (!workId) continue
     const { data: entry, error } = await supabase
       .from('sync_entry')
-      .insert({ sync_work_id: workId, track_id: chosen.id, usage_detail: c.note, role: c.role || null, source_url: c.source_url, match_method: method, confidence, candidate_id: c.id })
+      .insert({ sync_work_id: workId, track_id: chosen.id, usage_detail: c.note, role: c.role || null, part_label: c.part_label, air_year: c.air_year, air_month: c.air_month, source_url: c.source_url, match_method: method, confidence, candidate_id: c.id })
       .select('id')
       .single()
     if (error?.code === '23505') {
