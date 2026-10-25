@@ -22,6 +22,7 @@
     "clsx": "^2.1.1",
     "d3-geo": "^3.1.1",
     "fast-xml-parser": "^5.10.1",
+    "globe.gl": "^2.46.2",
     "googleapis": "^176.0.0",
     "leaflet": "^1.9.4",
     "lucide-react": "^1.31.0",

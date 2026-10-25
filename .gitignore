@@ -62,3 +62,6 @@ next-env.d.ts
 /.sync-config.json
 /.anglicize-report.json
 /.tsutaya-meiban-pending.json
+
+# 外部APIの取得結果のキャッシュ(再取得を避けるため手元にだけ残す)
+.cache/
