@@ -4,6 +4,7 @@ import { createClient } from '@/utils/Supabase/server'
 import { artworkAt } from '@/utils/artworkSize'
 import { formatDate } from '@/utils/format'
 import CurationVisual from '../CurationVisual'
+import CollapsibleSection from '@/app/components/detail/CollapsibleSection'
 import HubShell from '@/app/components/hub/HubShell'
 import SectionHeading from '@/app/components/detail/SectionHeading'
 import { hubContent } from '@/app/components/hub/hubContents'
@@ -21,8 +22,8 @@ type Entry = {
   metric_value: number | null
   metric_label: string | null
   track:
-    | { id: string; title: string; artist: { name: string } | { name: string }[] | null; album: { jacket_url: string | null } | { jacket_url: string | null }[] | null }
-    | { id: string; title: string; artist: { name: string } | { name: string }[] | null; album: { jacket_url: string | null } | { jacket_url: string | null }[] | null }[]
+    | { id: string; title: string; artist: { name: string } | { name: string }[] | null; album: { jacket_url: string | null; streaming_status: string | null } | { jacket_url: string | null; streaming_status: string | null }[] | null }
+    | { id: string; title: string; artist: { name: string } | { name: string }[] | null; album: { jacket_url: string | null; streaming_status: string | null } | { jacket_url: string | null; streaming_status: string | null }[] | null }[]
     | null
   album:
     | { id: string; title: string; jacket_url: string | null; streaming_status: string | null; artist: { name: string } | { name: string }[] | null }
@@ -52,8 +53,10 @@ function toTile(entry: Entry) {
   const imageUrl = album?.jacket_url ?? trackAlbum?.jacket_url ?? artist?.image_url ?? null
   const isArtistOnly = !track && !album && !!artist
 
-  /** アルバム起点の選出だけ、サブスクで聴ける(配信中)かを持つ。streaming_statusが none / unreleased は未配信 */
-  const streaming = album ? !['none', 'unreleased'].includes(album.streaming_status ?? '') : null
+  /** アルバム・曲起点の選出だけ、サブスクで聴ける(配信中)かを持つ。streaming_statusが none / unreleased は未配信 */
+  // 曲起点の選出(&Premiumなど)は、その曲が入っているアルバムの状態で見る
+  const statusSource = album ?? trackAlbum
+  const streaming = statusSource ? !['none', 'unreleased'].includes(statusSource.streaming_status ?? '') : null
 
   return { id: entry.id, label, href, sub, imageUrl, isArtistOnly, periodDate: entry.period_date, streaming }
 }
@@ -132,7 +135,7 @@ export default async function MediaFeatureDetailPage({
 
   // PostgRESTは1リクエスト1000件までのため、bounce(4千件超)のような大きな企画は、ページを分けて全件取る
   const ENTRY_COLUMNS = `id, rank, previous_rank, period_date, metric_value, metric_label,
-       track:track_id(id, title, artist:artist_id(name), album:album_id(jacket_url)),
+       track:track_id(id, title, artist:artist_id(name), album:album_id(jacket_url, streaming_status)),
        album:album_id(id, title, jacket_url, streaming_status, artist:artist_id(name)),
        artist:artist_id(id, name, image_url)`
   const entries: Entry[] = []
@@ -278,21 +281,18 @@ export default async function MediaFeatureDetailPage({
           </nav>
         )}
         {hasMultipleYears ? (
-          tilesByYear.map((group) => (
-            <section key={group.year} className="mt-14 first:mt-6">
-              <div className="flex items-center gap-4">
-                <h2 className="text-2xl font-bold text-white">
-                  {group.year}
-                  <span className="ml-1 text-sm font-medium text-white/40">年</span>
-                </h2>
-                <span className="text-sm font-medium tabular-nums text-white/50">
-                  {group.tiles.length}
-                  {group.tiles.every((t) => t.streaming !== null) ? '枚' : '件'}
-                </span>
-                <span className="h-px flex-1 bg-white/15" />
-              </div>
+          tilesByYear.map((group, i) => (
+            <CollapsibleSection
+              key={group.year}
+              title={group.year}
+              suffix="年"
+              count={group.tiles.length}
+              unit={group.tiles.every((t) => t.streaming !== null) ? '枚' : '件'}
+              defaultOpen={i === 0 || tilesByYear.length <= 2}
+              first={i === 0}
+            >
               <TileGrid tiles={group.tiles} />
-            </section>
+            </CollapsibleSection>
           ))
         ) : (
           <TileGrid tiles={tiles} />

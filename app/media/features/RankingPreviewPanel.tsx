@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { artworkAt } from '@/utils/artworkSize'
+import CollapsibleSection from '@/app/components/detail/CollapsibleSection'
 import { type RankingPreview, type RankingPreviewEntry } from './actions'
 
 function yearOf(entry: RankingPreviewEntry): string {
@@ -125,18 +126,13 @@ function RankedList({ entries }: { entries: RankingPreviewEntry[] }) {
   return (
     <div>
       {groups.map(([label, group], i) => (
-        <section key={label} className={i === 0 ? '' : 'mt-14'}>
-          <div className="flex items-center gap-4">
-            <h3 className="text-2xl font-bold text-white">{label}</h3>
-            <span className="h-px flex-1 bg-white/15" />
-            <span className="shrink-0 text-xs text-white/30">{group.length}件</span>
-          </div>
-          <ol className="mt-4 divide-y divide-white/5">
+        <CollapsibleSection key={label} title={label} count={group.length} defaultOpen={i === 0} first={i === 0}>
+          <ol className="divide-y divide-white/5">
             {group.map((entry) => (
               <RankedRow key={entry.id} entry={entry} />
             ))}
           </ol>
-        </section>
+        </CollapsibleSection>
       ))}
     </div>
   )
@@ -163,22 +159,13 @@ export default function RankingPreviewPanel({ preview }: { preview: RankingPrevi
     return <RankedList entries={preview.entries} />
   }
 
+  // 新しい年だけ開いておく(件数が多い企画で、スマホの画面が何十万pxにもならないように)。年が1つしかなければ、そのまま開く
   return (
     <div>
       {yearGroups.map(([year, entries], i) => (
-        <section key={year} className={i === 0 ? '' : 'mt-14'}>
-          <div className="flex items-center gap-4">
-            <h3 className="text-2xl font-bold text-white">
-              {year}
-              {year !== '年度不明' && <span className="ml-1 text-sm font-medium text-white/40">年</span>}
-            </h3>
-            <span className="h-px flex-1 bg-white/15" />
-            <span className="shrink-0 text-xs text-white/30">{entries.length}件</span>
-          </div>
-          <div className="mt-6">
-            <TileGrid entries={entries} />
-          </div>
-        </section>
+        <CollapsibleSection key={year} title={year} suffix={year !== '年度不明' ? '年' : undefined} count={entries.length} defaultOpen={i === 0 || yearGroups.length <= 2} first={i === 0}>
+          <TileGrid entries={entries} />
+        </CollapsibleSection>
       ))}
     </div>
   )

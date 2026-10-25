@@ -102,8 +102,6 @@ export default async function SyncArchivePage({
         yearStats.set(slot.year, ys)
       }
       if (needle && !titleHit && !firstOf(e.track)!.title.toLowerCase().includes(needle)) continue
-      const yearSel = Number(yearParam) || null
-      if (yearSel && slot.year !== yearSel) continue
       const key = `${slot.year ?? 0}-${slot.season ?? 'x'}`
       let g = groupMap.get(key)
       if (!g) {
@@ -118,20 +116,37 @@ export default async function SyncArchivePage({
     }
   }
   const years = Array.from(yearStats.entries()).map(([y, v]): [number, { works: number; entries: number }] => [y, { works: v.works.size, entries: v.entries }]).sort((a, b) => b[0] - a[0])
-  const year = Number(yearParam) || null
-  const groups = Array.from(groupMap.values())
+  // 年を決めていないときは、最新の年だけを出す(全年を一度に並べると、何十万pxの長さになるため)。「すべて」は年を all にした場合だけ、上限つきで出す
+  const showAll = yearParam === 'all'
+  const year = showAll ? null : Number(yearParam) || (needle ? null : (years[0]?.[0] ?? null))
+  const MAX_SLICES_ALL = 150
+  const allGroups = Array.from(groupMap.values()).filter((g) => !year || g.year === year)
+  const groups = allGroups
     .map((g) => {
       const h = g.season ? SEASON_HEADING[g.season] : { label: 'その他', sub: '放送時期が不明の作品' }
       return { ...g, label: h.label, sub: h.sub, rank: seasonRank(g.season), slices: Array.from(g.slices.values()) }
     })
     .sort((a, b) => (b.year ?? 0) - (a.year ?? 0) || a.rank - b.rank)
-  const worksCount = groups.reduce((n, g) => n + g.slices.length, 0)
+  // 年を決めていない(すべて・検索)ときは、新しい順に上限の作品数まで。残りは年を選んで見てもらう
+  let shownGroups = groups
+  let hiddenWorks = 0
+  if (!year) {
+    let n = 0
+    shownGroups = []
+    for (const g of groups) {
+      if (n >= MAX_SLICES_ALL) { hiddenWorks += g.slices.length; continue }
+      shownGroups.push(g)
+      n += g.slices.length
+    }
+  }
+  const worksCount = shownGroups.reduce((n, g) => n + g.slices.length, 0)
 
   const buildHref = (patch: { year?: number | null; work_type?: string | null }) => {
     const p = new URLSearchParams()
     const y = patch.year === undefined ? year : patch.year
     const t = patch.work_type === undefined ? workType : patch.work_type
     if (y) p.set('year', String(y))
+    else if (patch.year === null) p.set('year', 'all')
     if (t) p.set('work_type', t)
     if (q) p.set('q', q)
     const s = p.toString()
@@ -217,7 +232,7 @@ export default async function SyncArchivePage({
         <p className="mt-10 text-sm text-white/40">該当するタイアップ実績が登録されていません。</p>
       ) : (
         <div className="mt-6 flex min-w-0 flex-col gap-8">
-          {groups.map((g) => (
+          {shownGroups.map((g) => (
             <section key={g.key} className="min-w-0">
               <div className="sticky top-[57px] z-10 -mx-1 mb-3 flex items-baseline gap-3 border-b border-white/10 bg-[#0a0a0a]/95 px-1 py-2 backdrop-blur lg:top-0">
                 {g.year && !year && <span className="text-xl font-black tabular-nums text-white/70">{g.year}</span>}
@@ -280,6 +295,11 @@ export default async function SyncArchivePage({
         </ul>
             </section>
           ))}
+          {hiddenWorks > 0 && (
+            <p className="rounded-lg border border-dashed border-white/15 p-4 text-sm leading-relaxed text-white/55">
+              新しい順に{worksCount}作品までを表示しています(ほかに{hiddenWorks}作品)。年を選ぶと、その年の作品がすべて並びます。
+            </p>
+          )}
         </div>
       )}
     </>
