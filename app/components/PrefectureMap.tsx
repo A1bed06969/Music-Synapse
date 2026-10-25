@@ -17,6 +17,8 @@ export type TvStationData = {
   stationName: string
   /** 地図のバッジに出す短い名前 */
   shortName: string
+  /** この月に曲が無いとき、データのある最新の月(例「2026年8月」)。「0曲」が未登録ではなくデータの途切れだと分かるように出す */
+  latestLabel?: string | null
   entries: (PrefectureEntry & { campaign: string | null })[]
 }
 
@@ -165,9 +167,14 @@ export default function PrefectureMap({ data, tv = [] }: { data: PrefectureMapDa
                   stroke={hasData ? TV_ACCENT : 'rgba(255,255,255,0.15)'}
                   strokeWidth={3}
                 />
-                <text x={36} y={TV_PILL.height / 2 + 13} fontSize={38} fontWeight={700} fill={textColor}>
+                <text x={36} y={!hasData && station.latestLabel ? TV_PILL.height / 2 - 2 : TV_PILL.height / 2 + 13} fontSize={38} fontWeight={700} fill={textColor}>
                   {station.shortName}
                 </text>
+                {!hasData && station.latestLabel && (
+                  <text x={36} y={TV_PILL.height / 2 + 28} fontSize={22} fontWeight={600} fill="rgba(255,255,255,0.4)">
+                    最新は{station.latestLabel}分
+                  </text>
+                )}
                 <text
                   x={TV_PILL.width - 36}
                   y={TV_PILL.height / 2 + 14}

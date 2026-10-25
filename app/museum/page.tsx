@@ -8,9 +8,9 @@ import { createClient } from '@/utils/Supabase/server'
 
 export const metadata = { title: 'Art Work Museum | Music Synapse' }
 
-const ROOMS = [
+const ROOMS: { head: string; body: string; href?: string }[] = [
   { head: '色で探す', body: 'ジャケットの色から、同じ色合いの作品を並べます。' },
-  { head: '描いた人で探す', body: 'イラストレーター・アートディレクター・写真家から、手がけた作品をたどります。' },
+  { head: '描いた人で探す', body: 'イラストレーター・アートディレクター・写真家から、手がけた作品をたどります。', href: '/museum/creators' },
   { head: '時代で探す', body: '発売年ごとに、ジャケットのデザインの移り変わりを見ます。' },
   { head: 'ジャンルで探す', body: 'ジャンルごとの、ジャケットの特徴を比べます。' },
   { head: '題材で探す', body: '人物・風景・文字だけ、など、絵の題材から探します。' },
@@ -53,14 +53,25 @@ export default async function MuseumPage() {
   )
   const right = (
     <section>
-      <SectionHeading number={c.number} label="ROOMS" color={c.color} right="準備中" />
+      <SectionHeading number={c.number} label="ROOMS" color={c.color} right="一部公開" />
       <ul className="grid gap-2">
         {ROOMS.map((r) => (
           <li key={r.head} className="rounded-xl border border-white/10 bg-white/[0.03] p-3.5">
-            <p className="text-sm font-bold" style={{ color: c.color }}>
-              {r.head}
-            </p>
-            <p className="mt-1 text-xs leading-relaxed text-white/50">{r.body}</p>
+            {r.href ? (
+              <Link href={r.href} className="block hover:opacity-80">
+                <p className="text-sm font-bold" style={{ color: c.color }}>
+                  {r.head} →
+                </p>
+                <p className="mt-1 text-xs leading-relaxed text-white/50">{r.body}</p>
+              </Link>
+            ) : (
+              <>
+                <p className="text-sm font-bold" style={{ color: c.color }}>
+                  {r.head}
+                </p>
+                <p className="mt-1 text-xs leading-relaxed text-white/50">{r.body}</p>
+              </>
+            )}
           </li>
         ))}
       </ul>

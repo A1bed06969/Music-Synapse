@@ -46,12 +46,40 @@ export async function throttledFetch(url: string): Promise<unknown> {
   throw new Error('Wikipedia APIが繰り返し失敗しました')
 }
 
-export type WorkKind = 'anime' | 'drama'
+export type WorkKind = 'anime' | 'drama' | 'movie'
 
-export const KIND_LABEL: Record<WorkKind, string> = { anime: 'テレビアニメ', drama: 'テレビドラマ' }
+export const KIND_LABEL: Record<WorkKind, string> = { anime: 'テレビアニメ', drama: 'テレビドラマ', movie: '映画' }
+
+/** 「2025年の日本公開映画」の記事からリンクされている映画の記事の一覧(カテゴリーが映画のものだけ)。
+ * 映画は、年ごとの「日本公開映画」の記事(月ごとの一覧)に作品がまとまっているので、そのリンクをたどる。 */
+export async function fetchMovieTitles(year: number): Promise<string[]> {
+  const links: string[] = []
+  let cont: Record<string, string> = {}
+  for (let page = 0; page < 12; page++) {
+    const params = new URLSearchParams({ action: 'query', prop: 'links', titles: `${year}年の日本公開映画`, pllimit: 'max', plnamespace: '0', redirects: '1', format: 'json', ...cont })
+    const json = (await throttledFetch(`${API}?${params}`)) as { query?: { pages: Record<string, { links?: { title: string }[] }> }; continue?: Record<string, string> }
+    for (const p of Object.values(json.query?.pages ?? {})) for (const l of p.links ?? []) links.push(l.title)
+    if (!json.continue) break
+    cont = json.continue
+  }
+  const candidates = Array.from(new Set(links.filter((t) => !/^\d{4}年|^\d+月\d*日?$|映画祭|映画賞|^第\d+回|一覧|興行|^Category:/.test(t))))
+  const films: string[] = []
+  for (let i = 0; i < candidates.length; i += 50) {
+    const params = new URLSearchParams({ action: 'query', prop: 'categories', titles: candidates.slice(i, i + 50).join('|'), cllimit: 'max', redirects: '1', format: 'json' })
+    const json = (await throttledFetch(`${API}?${params}`)) as { query?: { pages: Record<string, { title: string; categories?: { title: string }[] }> } }
+    for (const p of Object.values(json.query?.pages ?? {})) {
+      const cats = (p.categories ?? []).map((c) => c.title)
+      // 「◯年の映画」「日本の映画作品」「…の実写映画」などに入っていて、人物・歌手などの記事ではないもの
+      // その年の映画(「◯年の映画」「◯年のアニメ映画」など)に入っているものだけ。再上映・旧作(別の年のカテゴリーだけ)は除く
+      if (cats.some((c) => new RegExp(`^Category:${year}年の(映画|アニメ映画|日本の映画)$`).test(c)) && !cats.some((c) => /存命人物|日本の歌手|日本の俳優/.test(c))) films.push(p.title)
+    }
+  }
+  return Array.from(new Set(films))
+}
 
 /** 「2025年のテレビアニメ」などのカテゴリーの記事タイトル一覧。一覧記事(「…(日本)」など)は除く */
 export async function fetchCategoryTitles(kind: WorkKind, year: number): Promise<string[]> {
+  if (kind === 'movie') return fetchMovieTitles(year)
   const titles: string[] = []
   let cont: string | undefined
   do {

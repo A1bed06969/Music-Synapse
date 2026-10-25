@@ -120,7 +120,8 @@ async function main() {
     for (const t of picks) {
       tally.tracks++
       const s = await genius(`/search?q=${encodeURIComponent(`${artist.name} ${t.title}`)}`)
-      if (!s || s.status === 401) throw new Error('Genius: トークンが無効です(401)')
+      if (!s) { console.log('Genius: 制限(429)などで応答が得られないため止めます。'); save(); process.exit(75) }
+      if (s.status === 401) throw new Error('Genius: トークンが無効です(401)')
       const hit = ((s.json?.response?.hits ?? []) as { type: string; result: GSong }[])
         .map((h) => h.result)
         .find((r) => norm(r.title) === norm(t.title) && r.primary_artist && norm(r.primary_artist.name) === norm(artist.name as string))

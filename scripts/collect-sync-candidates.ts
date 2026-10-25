@@ -9,7 +9,7 @@
  *  - LLMの無料枠が尽きたら、そこで止まる(終了コード75。枠の回復後に同じコマンドで続きから)
  *
  * 実行方法:
- *   npx tsx --env-file=.env.local scripts/collect-sync-candidates.ts --kind=anime|drama --year=2025 [--limit=N] [--sample] [--dry-run]
+ *   npx tsx --env-file=.env.local scripts/collect-sync-candidates.ts --kind=anime|drama|movie --year=2025 [--limit=N] [--sample] [--dry-run]
  *   --sample: カテゴリーの先頭からではなく、ランダムにN件(品質の試し見用)
  */
 import { createAdminClient } from '@/utils/Supabase/admin'
@@ -24,14 +24,14 @@ const DRY_RUN = process.argv.includes('--dry-run')
 const SAMPLE = process.argv.includes('--sample')
 
 async function main() {
-  if ((KIND !== 'anime' && KIND !== 'drama') || !YEAR) {
-    console.error('使い方: npx tsx --env-file=.env.local scripts/collect-sync-candidates.ts --kind=anime|drama --year=2025 [--limit=N] [--sample] [--dry-run]')
+  if ((KIND !== 'anime' && KIND !== 'drama' && KIND !== 'movie') || !YEAR) {
+    console.error('使い方: npx tsx --env-file=.env.local scripts/collect-sync-candidates.ts --kind=anime|drama|movie --year=2025 [--limit=N] [--sample] [--dry-run]')
     process.exit(1)
   }
   const supabase = createAdminClient()
 
   let titles = await fetchCategoryTitles(KIND, YEAR)
-  console.log(`${YEAR}年の${KIND === 'anime' ? 'テレビアニメ' : 'テレビドラマ'}: ${titles.length}作品`)
+  console.log(`${YEAR}年の${KIND === 'anime' ? 'テレビアニメ' : KIND === 'drama' ? 'テレビドラマ' : '映画'}: ${titles.length}作品`)
   if (SAMPLE) titles = [...titles].sort(() => Math.random() - 0.5)
   if (LIMIT) titles = titles.slice(0, LIMIT)
 

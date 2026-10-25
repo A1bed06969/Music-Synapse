@@ -33,3 +33,40 @@ export async function fetchGalleryPicks(supabase: SupabaseClient, n: number, see
   }
   return pieces.sort((a, b) => hash(a.id) - hash(b.id)).slice(0, n)
 }
+
+export type CoverCreator = { personId: string; name: string; albums: number; roles: string[] }
+
+export async function fetchTopCreators(supabase: SupabaseClient, limit: number): Promise<CoverCreator[]> {
+  const { data } = await supabase.rpc('top_cover_creators', { p_limit: limit })
+  return ((data ?? []) as { person_id: string; name: string; albums: number; roles: string[] }[]).map((r) => ({ personId: r.person_id, name: r.name, albums: Number(r.albums), roles: r.roles ?? [] }))
+}
+
+export type CreatorWork = MuseumPiece & { roles: string[] }
+
+/** 制作者(credit_person)が手がけたジャケット。同じ名前の人は同一人物として、まとめて引く */
+export async function fetchCreatorWorks(supabase: SupabaseClient, personId: string): Promise<{ name: string; works: CreatorWork[] } | null> {
+  const { data: p } = await supabase.from('credit_person').select('id, name').eq('id', personId).maybeSingle()
+  if (!p) return null
+  const { data: same } = await supabase.from('credit_person').select('id').eq('name', p.name as string).limit(50)
+  const ids = (same ?? []).map((x) => x.id as string)
+  const { data } = await supabase
+    .from('artist_credit')
+    .select('role, album:album_id(id, title, jacket_url, release_date, artist:artist_id(id, name))')
+    .in('credit_person_id', ids)
+    .in('role', ['artwork', 'illustrator', 'art_director', 'photographer'])
+    .not('album_id', 'is', null)
+    .limit(1500)
+  const byAlbum = new Map<string, CreatorWork>()
+  for (const r of (data ?? []) as unknown as { role: string; album: Row['album'] | Row['album'][] }[]) {
+    const a = one(r.album)
+    if (!a) continue
+    const ex = byAlbum.get(a.id)
+    if (ex) {
+      if (!ex.roles.includes(r.role)) ex.roles.push(r.role)
+      continue
+    }
+    const ar = one(a.artist)
+    byAlbum.set(a.id, { id: a.id, title: a.title, artistId: ar?.id ?? null, artistName: ar?.name ?? null, jacket: a.jacket_url ?? '', year: a.release_date ? Number(a.release_date.slice(0, 4)) : null, roles: [r.role] })
+  }
+  return { name: p.name as string, works: Array.from(byAlbum.values()).sort((x, y) => (x.year ?? 9999) - (y.year ?? 9999)) }
+}

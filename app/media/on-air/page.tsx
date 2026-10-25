@@ -246,7 +246,7 @@ export default async function OnAirPage({
   const { data: tvPicks } = await supabase
     .from('radio_airplay_pick')
     .select(
-      `station_name, campaign_name, artist_name, track_title, is_domestic, candidate_artist_name, candidate_artwork_url, picked_date,
+      `station_name, campaign_name, artist_name, track_title, is_domestic, candidate_artist_name, candidate_artwork_url, picked_date, registered_rotation_id,
        rotation:registered_rotation_id(
          track:track_id(id, title, artist:artist_id(name), album:album_id(jacket_url)),
          album:album_id(id, title, jacket_url, artist:artist_id(name))
@@ -256,9 +256,49 @@ export default async function OnAirPage({
     .gte('picked_date', monthStart)
     .lt('picked_date', monthEnd)
     .order('id', { ascending: true })
+  // 管理画面から直接登録した、TV局のオンエア登録(radio_rotation)。スプレッドシート由来の選曲(radio_airplay_pick)に
+  // 紐づいていないものは、こちらからバッジに足す(紐づいているものは、上で出しているので二重にしない)
+  const linkedRotationIds = new Set((tvPicks ?? []).map((p) => p.registered_rotation_id).filter(Boolean) as string[])
+  const { data: tvRotations } = await supabase
+    .from('radio_rotation')
+    .select(
+      `id, music_type, period_start_date,
+       media_program:media_program_id(media:media_id(name, media_type)),
+       track:track_id(id, title, artist:artist_id(name), album:album_id(jacket_url))`
+    )
+    .gte('period_start_date', monthStart)
+    .lt('period_start_date', monthEnd)
+    .limit(500)
+  type TvRot = NonNullable<typeof tvRotations>[number]
+  const rotationEntriesFor = (stationName: string) =>
+    ((tvRotations ?? []) as TvRot[])
+      .filter((r) => {
+        const mp = firstOf(r.media_program)
+        const media = mp ? firstOf(mp.media) : null
+        return media?.media_type === 'tv' && media.name === stationName && !linkedRotationIds.has(r.id)
+      })
+      .map((r) => {
+        const track = firstOf(r.track)
+        const album = track ? firstOf(track.album) : null
+        const artist = track ? firstOf(track.artist) : null
+        return {
+          stationName,
+          campaign: null as string | null,
+          targetLabel: track ? [track.title, artist?.name].filter(Boolean).join(' — ') : '(曲不明)',
+          targetHref: track ? `/tracks/${track.id}` : null,
+          musicType: (r.music_type === 'OVERSEAS' ? 'OVERSEAS' : 'DOMESTIC') as 'DOMESTIC' | 'OVERSEAS',
+          artworkUrl: artworkAt(album?.jacket_url ?? null, 200),
+        }
+      })
+
+  // その月に曲が無い局には、データのある最新の月を添える(スプレッドシートの更新待ちなのか、本当に0なのかが分かるように)
+  const { data: tvLatest } = await supabase.from('radio_airplay_pick').select('station_name, picked_date').eq('region', 'TV').order('picked_date', { ascending: false }).limit(300)
+  const latestByStation = new Map<string, string>()
+  for (const r of tvLatest ?? []) if (!latestByStation.has(r.station_name as string)) latestByStation.set(r.station_name as string, r.picked_date as string)
   const tvData: TvStationData[] = TV_STATIONS.map((st) => ({
     ...st,
-    entries: (tvPicks ?? [])
+    latestLabel: latestByStation.get(st.stationName) ? `${Number(latestByStation.get(st.stationName)!.slice(0, 4))}年${Number(latestByStation.get(st.stationName)!.slice(5, 7))}月` : null,
+    entries: [...(tvPicks ?? [])
       .filter((p) => p.station_name === st.stationName)
       .map((p) => {
         // 本登録済み(radio_rotationに紐付いた)ものは曲ページへのリンクと実際のジャケットを出す。
@@ -288,7 +328,7 @@ export default async function OnAirPage({
                 ? artworkAt(p.candidate_artwork_url, 200)
                 : null,
         }
-      }),
+      }), ...rotationEntriesFor(st.stationName)],
   }))
 
   const c = hubContent('nextBreak')
