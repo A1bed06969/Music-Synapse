@@ -11,15 +11,38 @@ export const metadata = { title: 'Music Planet Tour | Music Synapse' }
 
 /** Music Planet Tour: 地球儀で、アーティストの出身地をたどる。
  * ライブ会場・レコードショップの層は、平面の地図(/map/flat)に残している */
+type SpotRow = { id: string; name: string; address: string | null; city: string | null; country: string | null; latitude: number; longitude: number } & Record<string, unknown>
+
+/** 地球儀に点で出す店・ライブハウス(座標のあるもの全件。1リクエスト1000件までなので、ページを分けて取る) */
+async function fetchSpots(supabase: Awaited<ReturnType<typeof createClient>>, table: 'livehouse' | 'recordshop', urlColumn: string) {
+  const out: { id: string; name: string; address: string | null; city: string | null; country: string | null; url: string | null; lat: number; lng: number }[] = []
+  for (let from = 0; ; from += 1000) {
+    const { data } = await supabase
+      .from(table)
+      .select(`id, name, address, city, country, latitude, longitude, ${urlColumn}`)
+      .not('latitude', 'is', null)
+      .not('longitude', 'is', null)
+      .order('id')
+      .range(from, from + 999)
+    const rows = (data ?? []) as unknown as SpotRow[]
+    for (const r of rows) {
+      out.push({ id: r.id, name: r.name, address: r.address, city: r.city, country: r.country, url: (r[urlColumn] as string | null) ?? null, lat: Number(r.latitude), lng: Number(r.longitude) })
+    }
+    if (rows.length < 1000) break
+  }
+  return out
+}
+
 export default async function MapPage() {
   const supabase = await createClient()
   const c = hubContent('planet')
-  const [counts, { data: countryRows }, { count: livehouseCount }, { count: shopCount }] = await Promise.all([
+  const [counts, { data: countryRows }, livehouseSpots, shopSpots] = await Promise.all([
     fetchPlaceCounts(supabase),
     supabase.rpc('country_artist_counts'),
-    supabase.from('livehouse').select('id', { count: 'exact', head: true }),
-    supabase.from('recordshop').select('id', { count: 'exact', head: true }),
+    fetchSpots(supabase, 'livehouse', 'url'),
+    fetchSpots(supabase, 'recordshop', 'official_site_url'),
   ])
+  const spots = { livehouse: livehouseSpots, shop: shopSpots }
   const places = counts.map((p) => ({
     id: p.id,
     label: placeLabel(p),
@@ -74,16 +97,16 @@ export default async function MapPage() {
       label: 'ライブハウス',
       color: '#ffb35c',
       description: '各地のライブハウス・フェス会場を、街ごとに。',
-      count: livehouseCount ?? 0,
-      ready: false,
+      count: livehouseSpots.length,
+      ready: livehouseSpots.length > 0,
     },
     {
       key: 'shop',
       label: 'レコードショップ',
       color: '#52e05f',
       description: '国内外のレコードショップを、街ごとに。',
-      count: shopCount ?? 0,
-      ready: false,
+      count: shopSpots.length,
+      ready: shopSpots.length > 0,
     },
   ]
 
@@ -100,7 +123,7 @@ export default async function MapPage() {
   )
   const body = (
     <>
-      <GlobeLoader places={places} />
+      <GlobeLoader places={places} spots={spots} />
       <PlanetDiscover cities={counts} rareCountries={rareCountries} />
     </>
   )
