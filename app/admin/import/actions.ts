@@ -13,6 +13,7 @@ import {
   type ItunesArtist,
   type ItunesAlbum,
   type ItunesTrack,
+  lookupExistingCollectionIds,
 } from '@/utils/itunes'
 import { fetchAppleMusicArtistImage } from '@/utils/appleMusicImage'
 import { autoImportFromMusicBrainz, autoImportFromDiscogs } from '@/utils/creditImport'
@@ -733,9 +734,26 @@ export async function flagDelistedAlbums(supabase: SupabaseClient, artistId: str
     .eq('artist_id', artistId)
     .not('apple_music_album_id', 'is', null)
 
-  for (const existing of existingArtistAlbums ?? []) {
-    if (existing.apple_music_album_id && !fetchedAlbumIds.has(existing.apple_music_album_id)) {
-      if (existing.streaming_status === 'none') continue // 既に反映済み
+  // アーティスト別の一覧は最大200件までしか返らず、また米国のストアから登録したアルバムは日本の一覧に出てこない。
+  // 一覧に無いだけで配信停止とみなすと配信中の作品まで「配信なし」になるため、アルバムIDで日本・米国の両方を直接引いて、
+  // どちらにも無いものだけを配信停止の候補にする(iTunesが一時的に使えないときは、何も変えない)
+  const candidates = (existingArtistAlbums ?? []).filter(
+    (a) => a.apple_music_album_id && !fetchedAlbumIds.has(a.apple_music_album_id) && a.streaming_status !== 'none'
+  )
+  if (candidates.length === 0) return
+  let stillAvailable: Set<string>
+  try {
+    const ids = candidates.map((a) => a.apple_music_album_id as string)
+    const jp = await lookupExistingCollectionIds(ids, 'JP')
+    const us = await lookupExistingCollectionIds(ids.filter((id) => !jp.has(id)), 'US')
+    stillAvailable = new Set([...jp, ...us])
+  } catch (err) {
+    console.error('配信停止の確認(アルバムIDでの照会)に失敗したため、今回は判定しません:', (err as Error).message)
+    return
+  }
+
+  for (const existing of candidates) {
+    if (existing.apple_music_album_id && !stillAvailable.has(existing.apple_music_album_id)) {
       const { error: delistError } = await supabase
         .from('album')
         .update({

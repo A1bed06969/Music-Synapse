@@ -1,14 +1,12 @@
 import Link from 'next/link'
+import { HUB_CONTENTS } from './hub/hubContents'
+import { anton } from './detail/displayFont'
 
 const NAV_LINKS = [
   { href: '/artists', label: 'アーティスト' },
   { href: '/albums', label: 'アルバム' },
   { href: '/tracks', label: 'トラック' },
-  { href: '/events', label: 'フェス&イベント' },
-  { href: '/discguides', label: 'ディスクガイド' },
-  { href: '/map', label: 'マップ' },
   { href: '/media', label: 'メディア' },
-  { href: '/relations', label: '相関図' },
   { href: '/search', label: '検索' },
 ]
 
@@ -28,7 +26,19 @@ export default function SiteFooter() {
 
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-white/40">サイトマップ</p>
-            <ul className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm text-white/60">
+            <ul className="mt-3 space-y-2 text-sm text-white/60">
+              {HUB_CONTENTS.map((c) => (
+                <li key={c.key}>
+                  <Link href={c.href} className="flex items-center gap-2.5 transition hover:text-white">
+                    <span className={`${anton.className} w-6 text-base leading-none`} style={{ color: c.color }}>
+                      {c.number}
+                    </span>
+                    <span className="text-xs font-bold tracking-wide">{c.label}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+            <ul className="mt-5 grid grid-cols-2 gap-x-4 gap-y-2 border-t border-white/10 pt-4 text-sm text-white/60">
               {NAV_LINKS.map((link) => (
                 <li key={link.href}>
                   <Link href={link.href} className="transition hover:text-white">
@@ -53,6 +63,10 @@ export default function SiteFooter() {
           <p>&copy; {new Date().getFullYear()} Music Synapse. All rights reserved.</p>
           <p>本サイトは各種音楽配信サービスのアフィリエイトプログラムを利用している場合があります。</p>
         </div>
+        <p className="mt-4 text-[11px] leading-relaxed text-white/30">
+          ジャケット画像・試聴音源は、Apple Music / iTunes Store から提供されたものを、その作品の紹介のために表示しています(provided courtesy of iTunes)。各作品の「Apple Music」リンクから、配信ページで聴けます。
+          Apple Music、iTunes は Apple Inc. の商標です。ジャケット画像の権利は、各権利者に帰属します。
+        </p>
       </div>
     </footer>
   )

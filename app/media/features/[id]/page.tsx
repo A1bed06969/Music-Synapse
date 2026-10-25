@@ -130,23 +130,30 @@ export default async function MediaFeatureDetailPage({
 
   const isSelection = ranking.list_type === 'selection'
 
-  const { data: entries } = await supabase
-    .from('ranking_entry')
-    .select(
-      `id, rank, previous_rank, period_date, metric_value, metric_label,
+  // PostgRESTは1リクエスト1000件までのため、bounce(4千件超)のような大きな企画は、ページを分けて全件取る
+  const ENTRY_COLUMNS = `id, rank, previous_rank, period_date, metric_value, metric_label,
        track:track_id(id, title, artist:artist_id(name), album:album_id(jacket_url)),
        album:album_id(id, title, jacket_url, streaming_status, artist:artist_id(name)),
        artist:artist_id(id, name, image_url)`
-    )
-    .eq('ranking_id', id)
-    .order(isSelection ? 'id' : 'rank', { ascending: true })
+  const entries: Entry[] = []
+  for (let from = 0; ; from += 1000) {
+    const { data: page } = await supabase
+      .from('ranking_entry')
+      .select(ENTRY_COLUMNS)
+      .eq('ranking_id', id)
+      .order(isSelection ? 'id' : 'rank', { ascending: true })
+      .order('id', { ascending: true })
+      .range(from, from + 999)
+    entries.push(...((page ?? []) as unknown as Entry[]))
+    if ((page ?? []).length < 1000) break
+  }
 
   const media = firstOf(ranking.media)
 
   // 複数年にまたがるselectionコンテンツ(Fender NEXT等、年ごとにクラスが分かれる
   // もの)は年見出しで区切って表示する。単一期間のコンテンツ(タワレコメンの
   // 月次選出等)では見出しを出す意味が無いため、実際に複数年ある時だけ分岐する。
-  const allTiles = (entries ?? []).map((e) => toTile(e as Entry))
+  const allTiles = entries.map((e) => toTile(e))
   // 配信状況タブ(アルバム選出が含まれるセレクションだけ)。絞り込み中はアーティスト単体などの選出は出さない
   const streamingCount = allTiles.filter((t) => t.streaming === true).length
   const unreleasedCount = allTiles.filter((t) => t.streaming === false).length
@@ -278,6 +285,10 @@ export default async function MediaFeatureDetailPage({
                   {group.year}
                   <span className="ml-1 text-sm font-medium text-white/40">年</span>
                 </h2>
+                <span className="text-sm font-medium tabular-nums text-white/50">
+                  {group.tiles.length}
+                  {group.tiles.every((t) => t.streaming !== null) ? '枚' : '件'}
+                </span>
                 <span className="h-px flex-1 bg-white/15" />
               </div>
               <TileGrid tiles={group.tiles} />

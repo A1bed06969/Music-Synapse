@@ -65,7 +65,8 @@ function extractThumbnail(raw: XmlNode): string | null {
 
   const enclosure = raw.enclosure
   if (enclosure?.['@_url'] && String(enclosure['@_type'] ?? '').startsWith('image')) {
-    return enclosure['@_url']
+    // &Premiumの画像はhttpで配信されるため、httpsのページで混在にならないようhttpsに揃える
+    return String(enclosure['@_url']).replace(/^http:\/\/img\.andpremium\.jp/, 'https://img.andpremium.jp')
   }
 
   // media:thumbnail等が無い場合、本文HTML中の最初の<img>から拾う
@@ -114,7 +115,8 @@ function normalizeRssItems(channel: XmlNode, sourceName: string): NewsItem[] {
       .map((c) => c.trim())
       .filter((c) => c && !/^\d+$/.test(c))
     const publishedAt = item.pubDate ?? new Date().toISOString()
-    const title = textOf(item.title).trim()
+    // &Premiumは、題名の末尾に「 | & Premium (アンド プレミアム)」が付く
+    const title = textOf(item.title).replace(/\s*\|\s*&\s*Premium.*$/, '').trim()
     return {
       id: textOf(item.guid) || textOf(item.link) || `${sourceName}-${i}`,
       source: sourceName,

@@ -18,4 +18,6 @@ export const NEWS_SOURCES: NewsSource[] = [
   { name: 'TURN', feedUrl: 'https://turntokyo.com/feed/' },
   { name: 'Mikiki', feedUrl: 'https://mikiki.tokyo.jp/list/feed/rss' },
   { name: 'NME Japan', feedUrl: 'https://nme-jp.com/feed/' },
+  // &Premium(マガジンハウス)は、MUSICタグのフィードだけを取り込む(サイト全体のフィードは食・暮らしなども混ざる)
+  { name: '& Premium', feedUrl: 'https://andpremium.jp/tags/music/feed' },
 ]

@@ -284,6 +284,17 @@ export async function fetchAlbumById(collectionId: number, country = 'JP'): Prom
   return data.results.find((r: any) => r.wrapperType === 'collection') ?? null
 }
 
+/** アルバムIDをまとめて引き、指定ストアで見つかったIDの集合を返す(1回に最大150件ずつ) */
+export async function lookupExistingCollectionIds(collectionIds: string[], country = 'JP'): Promise<Set<string>> {
+  const found = new Set<string>()
+  for (let i = 0; i < collectionIds.length; i += 150) {
+    const chunk = collectionIds.slice(i, i + 150)
+    const data = await fetchItunes(`${ITUNES_LOOKUP_BASE}?id=${chunk.join(',')}&entity=album&country=${country}`, 'collection ids lookup')
+    for (const r of data.results ?? []) if (r.wrapperType === 'collection') found.add(String(r.collectionId))
+  }
+  return found
+}
+
 /**
  * キーワードでアルバムを検索する(entity=album)。管理画面の検索・選択式
  * バルク登録UIで使う。iTunes Search APIの上限は200件だが、検索候補表示用に
@@ -330,8 +341,8 @@ export async function fetchTrackById(trackId: number): Promise<ItunesTrackSearch
  * キーワードでトラックを検索する(entity=song)。管理画面の検索・選択式
  * バルク登録UIで使う
  */
-export async function searchTracks(term: string, limit = 10): Promise<ItunesTrackSearchResult[]> {
-  const url = `https://itunes.apple.com/search?term=${encodeURIComponent(term)}&entity=song&limit=${limit}&country=JP`
+export async function searchTracks(term: string, limit = 10, country = 'JP'): Promise<ItunesTrackSearchResult[]> {
+  const url = `https://itunes.apple.com/search?term=${encodeURIComponent(term)}&entity=song&limit=${limit}&country=${country}`
   const data = await fetchItunes(url, 'track search')
   return (data.results ?? [])
     .filter((r: any) => r.wrapperType === 'track')
