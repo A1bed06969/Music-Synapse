@@ -601,7 +601,8 @@ export default async function OnAirPage({
   )
 
   const stats = [
-    { label: `${monthLabel(currentMonth)}のランキング`, value: ranking.length },
+    // ランキングは上位20件までなので、数字には「その月に選ばれた曲の総数」(同じ曲は1曲と数える)を出す
+    { label: `${monthLabel(currentMonth)}のパワープレイ選出曲`, value: rankingMap.size },
     { label: 'プッシュした都道府県', value: prefectureData.length },
   ]
 

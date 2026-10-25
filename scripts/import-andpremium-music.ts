@@ -18,6 +18,9 @@ import type { AndPremiumPick } from './extract-andpremium-music'
 
 const APPLY = process.argv.includes('--apply')
 const jsonPath = process.argv.slice(2).find((a) => !a.startsWith('--'))
+// 登録のとき(register-andpremium-unmatched.ts)にApple Musicで見つかった「アーティスト名・アルバム名」。
+// 選曲の表記(例: The Jam)と、カタログの表記(例: ザ・ジャム)が違っても、このアルバムの曲として確定できる
+const aliasPath = process.argv.find((a) => a.startsWith('--aliases='))?.slice('--aliases='.length)
 
 const CORNERS = {
   music: {
@@ -66,7 +69,35 @@ async function main() {
 
   const resolved: { pick: AndPremiumPick; artist_id: string; track_id: string; multi: boolean }[] = []
   const missing: { pick: AndPremiumPick; reason: string }[] = []
+  const aliases: Record<string, { artist: string; album: string }> = aliasPath ? JSON.parse(readFileSync(aliasPath, 'utf-8')) : {}
   for (const p of picks) {
+    // 登録時にApple Musicで見つかったアルバムがあれば、その(アーティスト名・アルバム名)の曲として確定する
+    const alias = aliases[`${p.artist_name}\t${p.track_title}`]
+    if (alias) {
+      const { data: albs } = await supabase.from('album').select('id, title, artist:artist_id(id, name)').ilike('title', escapeLike(alias.album)).limit(20)
+      const hit = (albs ?? []).find((a) => {
+        const ar = Array.isArray(a.artist) ? a.artist[0] : a.artist
+        return norm(a.title as string) === norm(alias.album) && ar && norm((ar as { name: string }).name) === norm(alias.artist)
+      })
+      if (hit) {
+        const ar = (Array.isArray(hit.artist) ? hit.artist[0] : hit.artist) as { id: string; name: string }
+        const { data: tr } = await supabase.from('track').select('id, title').eq('album_id', hit.id as string)
+        const t = (tr ?? []).find((x) => norm(x.title as string) === norm(p.track_title))
+        if (t) { resolved.push({ pick: p, artist_id: ar.id, track_id: t.id as string, multi: false }); continue }
+      }
+      // アーティスト名の表記が違う(例: Bill Evans Trio ↔ ビル・エヴァンス・トリオ)ときは、「アルバム名が一致し、その中に選曲の曲がある」
+      // アルバムが、カタログに1枚だけの場合に限って確定する
+      const sameAlbum = (albs ?? []).filter((a) => norm(a.title as string) === norm(alias.album))
+      const found: { artist_id: string; track_id: string }[] = []
+      for (const a of sameAlbum) {
+        const ar = (Array.isArray(a.artist) ? a.artist[0] : a.artist) as { id: string; name: string } | null
+        if (!ar) continue
+        const { data: tr } = await supabase.from('track').select('id, title').eq('album_id', a.id as string)
+        const t = (tr ?? []).find((x) => norm(x.title as string) === norm(p.track_title))
+        if (t) found.push({ artist_id: ar.id, track_id: t.id as string })
+      }
+      if (found.length === 1) { resolved.push({ pick: p, artist_id: found[0].artist_id, track_id: found[0].track_id, multi: false }); continue }
+    }
     const aid = artistId.get(p.artist_name)
     if (!aid) { missing.push({ pick: p, reason: 'artist_not_in_catalog' }); continue }
     if (aid === 'ambiguous') { missing.push({ pick: p, reason: 'artist_ambiguous' }); continue }
